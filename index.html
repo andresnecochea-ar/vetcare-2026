@@ -768,11 +768,12 @@ if('serviceWorker'in navigator){window.addEventListener('load',()=>{const c=`con
     z-index: 200;
     transform: translateY(20px);
     opacity: 0;
+    pointer-events: none;   /* invisible NO debe bloquear toques (tapaba el bottom-nav) */
     transition: all .3s ease;
     font-weight: var(--fw-medium);
     font-size: var(--fs-sm);
   }
-  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.show { transform: translateY(0); opacity: 1; pointer-events: auto; }
 
   /* Birthday alert */
   .birthday-alert {
