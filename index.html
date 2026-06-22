@@ -1286,12 +1286,13 @@ if('serviceWorker'in navigator){window.addEventListener('load',()=>{const c=`con
     /* Hoja "Más" deslizable desde abajo */
     .more-sheet {
       display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 140;
+      pointer-events: none;   /* cerrada NO intercepta toques del bottom-nav */
       background: var(--bg-alt); border-radius: 18px 18px 0 0;
       padding: 8px 16px calc(20px + env(safe-area-inset-bottom, 0px));
       box-shadow: 0 -6px 30px rgba(42,34,51,.22);
       transform: translateY(110%); transition: transform .28s cubic-bezier(.4,0,.2,1);
     }
-    .more-sheet.show { transform: translateY(0); }
+    .more-sheet.show { transform: translateY(0); pointer-events: auto; }
     .more-sheet-handle {
       width: 40px; height: 4px; border-radius: 2px; background: var(--border-strong);
       margin: 8px auto 16px;
