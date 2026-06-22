@@ -1257,17 +1257,18 @@ if('serviceWorker'in navigator){window.addEventListener('load',()=>{const c=`con
     .bottom-nav {
       display: flex; position: fixed; bottom: 0; left: 0; right: 0;
       background: var(--bg-alt); border-top: 1px solid var(--border);
-      padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
-      z-index: 120; justify-content: space-around;
+      padding: 0 4px; padding-bottom: env(safe-area-inset-bottom, 0px);
+      z-index: 120; justify-content: space-around; align-items: stretch;
       box-shadow: 0 -2px 14px rgba(42,34,51,.08);
     }
     .bottom-nav-item {
       display: flex; flex-direction: column; align-items: center; gap: 3px;
-      padding: 4px 6px; font-size: var(--fs-2xs); font-weight: var(--fw-medium);
+      font-size: var(--fs-2xs); font-weight: var(--fw-medium);
       color: var(--text-mute); cursor: pointer; background: none; border: none;
-      flex: 1; min-height: 48px; justify-content: center;
-      font-family: var(--font-body); border-radius: var(--radius-sm);
+      flex: 1; height: 60px; justify-content: center;
+      font-family: var(--font-body);
       transition: color .15s ease;
+      -webkit-tap-highlight-color: transparent; touch-action: manipulation;
     }
     .bottom-nav-item .ico { width: 22px; height: 22px; }
     .bottom-nav-item.active, .bottom-nav-item:active { color: var(--accent); }
@@ -1351,6 +1352,14 @@ if('serviceWorker'in navigator){window.addEventListener('load',()=>{const c=`con
     th, td { padding: 9px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     td .actions { gap: 4px; }
     td .actions .btn { padding: 5px 8px; }
+
+    /* CALENDARIO en móvil: las 7 columnas deben entrar sí o sí.
+       min-width:0 permite que 1fr funcione; el contenido se trunca. */
+    .calendar-grid { width: 100%; }
+    .cal-day { min-width: 0; padding: 4px 3px; min-height: 64px; overflow: hidden; }
+    .cal-day-name { padding: 6px 2px; font-size: 9px; letter-spacing: 0; }
+    .cal-day .num { font-size: var(--fs-2xs); }
+    .cal-event-mini { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8px; padding: 1px 3px; }
   }
   .is-hidden { display: none !important; }
 </style>
@@ -3653,6 +3662,10 @@ function renderToday() {
       <div class="today-col">
         <div class="today-col-head"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"> <rect x="4" y="4.5" width="16" height="15.5" rx="3"/> <path d="M8 3v3M16 3v3M4 8.5h16"/> <path d="M8.2 14l2.2 2.2 5.2-5.2"/> </svg><h3>Turnos clínicos</h3><span class="count">${dayAppts.length}</span></div>
         ${dayAppts.length === 0 ? '<div class="empty-state">Sin turnos para hoy</div>' : dayAppts.map(a=>apptSlot(a,'')).join('')}
+      </div>
+      <div class="today-col">
+        <div class="today-col-head"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"> <circle cx="6.2" cy="7.4" r="2.1"/> <circle cx="6.2" cy="16.6" r="2.1"/> <path d="M8 8.6l9.8 8M8 15.4l9.8-8"/> <path d="M17.8 7.4l2.2-1.6M17.8 16.6l2.2 1.6"/> </svg><h3>Peluquería</h3><span class="count">${dayGroom.length}</span></div>
+        ${dayGroom.length === 0 ? '<div class="empty-state">Sin turnos para hoy</div>' : dayGroom.map(a=>apptSlot(a,'grooming')).join('')}
       </div>
       <div class="today-col">
         <div class="today-col-head"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"> <path d="M18 10.5c0-3.5-2.2-6-6-6s-6 2.5-6 6v3.3l-1.7 2.8h15.4L18 13.8v-3.3Z"/> <path d="M10 19c.4 1 1.1 1.5 2 1.5s1.6-.5 2-1.5"/> <circle cx="18.5" cy="5.2" r="1.4"/> </svg><h3>Avisos</h3><span class="count">${dayReminders.length}</span></div>
