@@ -1447,3 +1447,48 @@
 /* ===== Campos de texto siempre con fondo blanco ===== */
 input, select, textarea, .input { background:#fff !important; color:#1a1a1a !important; }
 input::placeholder, textarea::placeholder { color:#9a9a9a; }
+
+/* ===== T2: Pacientes - ficha cuadrada 1:1 en desktop ===== */
+.pet-photo { height:auto; aspect-ratio:1/1; }
+
+/* ===== T2: Pacientes en movil - grilla 2 por fila ===== */
+@media (max-width: 768px) {
+  .pets-grid { grid-template-columns: 1fr 1fr; gap:10px; }
+  .pet-card-body { padding:10px 11px; }
+  .pet-card-body h3 { font-size:0.98rem; }
+  .pet-card-body .meta { font-size:0.78rem; }
+}
+
+/* ===== T2: Modales a pantalla completa en movil, scroll solo vertical ===== */
+@media (max-width: 768px) {
+  .modal-overlay { padding:0; }
+  .modal, .modal.modal-lg {
+    width:100vw; max-width:100vw; height:100vh; max-height:100vh;
+    border-radius:0; display:flex; flex-direction:column;
+  }
+  .modal .modal-header { position:sticky; top:0; z-index:5; }
+  .modal .modal-body { flex:1; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; }
+}
+
+/* ===== T2: Ficha clinica en movil - datos en vertical, sin scroll horizontal ===== */
+@media (max-width: 768px) {
+  .pet-header { flex-direction:column; align-items:center; text-align:center; gap:12px; }
+  .pet-header .pet-info { width:100%; }
+  .pet-header .btn { width:100%; }
+  .tabs .tab { flex-shrink:0; white-space:nowrap; }
+  .modal-body .form-row { flex-direction:column; gap:10px; }
+  .modal-body table { font-size:0.85rem; }
+}
+
+/* ===== T3: Panel - graficos responsive (en movil 1 columna, no se corta) ===== */
+.dashboard-charts { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
+@media (max-width: 768px) {
+  .dashboard-charts { grid-template-columns:1fr; }
+}
+
+/* ===== T3: Evitar scroll horizontal global - ajustar todo a la pantalla ===== */
+html, body { max-width:100%; overflow-x:hidden; }
+.main, .content-col, #mainContent { max-width:100%; overflow-x:hidden; }
+.main img, .main canvas, .main video { max-width:100%; }
+/* Tablas anchas: scroll solo dentro de su contenedor, no de la pagina */
+.table-wrap, .card[style*="overflow-x"] { overflow-x:auto; max-width:100%; }
