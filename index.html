@@ -1097,6 +1097,16 @@ if('serviceWorker'in navigator){window.addEventListener('load',()=>{const c=`con
     font-size: var(--fs-base); color: var(--text-mute);
     flex-shrink: 0; vertical-align: middle;
   }
+  /* Silueta genérica por especie (cuando no hay foto cargada) */
+  .pet-photo.is-silhouette,
+  .pet-mini-avatar.is-silhouette,
+  .pet-avatar.is-silhouette {
+    background-color: var(--sidebar-bg);
+    background-size: 72%;
+    background-repeat: no-repeat;
+    background-position: center;
+  }
+  .pet-mini-avatar.is-silhouette { background-size: 78%; }
 
   /* ── Stock alert bar ── */
   .stock-alert {
@@ -1928,7 +1938,7 @@ function renderPetList(pets) {
       const age = p.birthdate ? calcAge(p.birthdate) : '—';
       const statusTag = p.chronicConditions ? '<span class="tag danger">Crónico</span>' : p.allergies ? '<span class="tag warning">Alergia</span>' : '<span class="tag">OK</span>';
       return `<tr>
-        <td><div class="pet-mini-avatar" style="${p.photo?`background-image:url('${p.photo}')`:''}">${!p.photo?'◉':''}</div></td>
+        <td><div class="pet-mini-avatar${p.photo?'':' is-silhouette'}" style="${petPhotoStyle(p)}"></div></td>
         <td><a style="cursor:pointer;color:var(--accent);font-weight: var(--fw-bold)" onclick="openPetDetail('${p.id}')">${escapeHtml(p.name)}</a></td>
         <td class="col-sec">${escapeHtml(p.species||'—')} / ${escapeHtml(p.breed||'—')}</td>
         <td class="col-sec">${escapeHtml(p.sex||'—')}</td>
@@ -1941,12 +1951,35 @@ function renderPetList(pets) {
   </table></div>`;
 }
 
+function petSilhouette(species) {
+  const s = (species || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const map = [
+    [/perr|cachorr|canin|can\b/, 'perro'],
+    [/gat|felin|minin/, 'gato'],
+    [/conej|liebr|cobay|cuy/, 'conejo'],
+    [/ave|pajar|pajaro|loro|cotorr|canari|periquit|cacatu|agapor|ninfa|pollo|gallin|pat[oa]/, 'ave'],
+    [/tortug|reptil|iguan|lagart|galapag|quelon/, 'tortuga'],
+    [/raton|rat[oó]n|hamster|jerbo|chinchill|huron|ardilla|roedor/, 'roedor'],
+    [/pez|pec|carp|gold|betta|acuari/, 'pez'],
+    [/caball|equin|yegua|poni|pony|potr/, 'caballo'],
+  ];
+  let icon = 'patita';
+  for (const [re, name] of map) { if (re.test(s)) { icon = name; break; } }
+  return 'assets/pets/' + icon + '.png';
+}
+function petPhotoStyle(p) {
+  const src = p.photo ? p.photo : petSilhouette(p.species);
+  return `background-image:url('${src}')`;
+}
+
 function petCardHTML(p) {
   const owners = (p.ownerIds || []).map(id => db.owners.find(o => o.id === id)).filter(Boolean);
   const age = p.birthdate ? calcAge(p.birthdate) : '—';
   return `
     <div class="pet-card" onclick="openPetDetail('${p.id}')">
-      <div class="pet-photo" style="${p.photo ? `background-image:url('${p.photo}')` : ''}">${!p.photo ? '◉' : ''}</div>
+      <div class="pet-photo${p.photo ? '' : ' is-silhouette'}" style="${petPhotoStyle(p)}"></div>
       <div class="pet-card-body">
         <h3>${escapeHtml(p.name)}</h3>
         <div class="meta">${escapeHtml(p.species || '—')} · ${escapeHtml(p.breed || '—')}</div>
@@ -2064,8 +2097,7 @@ function openPetDetail(id) {
     </div>
     <div class="modal-body">
       <div class="pet-header">
-        <label class="pet-avatar" style="${pet.photo ? `background-image:url('${pet.photo}')` : ''}" title="Click para cambiar foto">
-          ${!pet.photo ? '◉' : ''}
+        <label class="pet-avatar${pet.photo ? '' : ' is-silhouette'}" style="${petPhotoStyle(pet)}" title="Click para cambiar foto">
           <input type="file" accept="image/*" onchange="uploadPetPhoto('${pet.id}', this)">
         </label>
         <div class="pet-info" style="flex:1">
@@ -3037,7 +3069,7 @@ function renderBirthdays() {
           const owners = (pet.ownerIds||[]).map(id => db.owners.find(o=>o.id===id)).filter(Boolean);
           const promoMsg = encodeURIComponent(`🎉 ¡Hola! ${pet.name} está por cumplir ${pet.age} años el ${formatDate(pet.nextBirthday.toISOString().split('T')[0])} 🎂\n\nDesde la veterinaria le queremos regalar un 15% de descuento en su próximo control y baño. ¡Esperamos su visita!`);
           return `<div class="pet-card" style="cursor:default">
-            <div class="pet-photo" style="${pet.photo?`background-image:url('${pet.photo}')`:''}">${!pet.photo?'★':''}</div>
+            <div class="pet-photo${pet.photo?'':' is-silhouette'}" style="${petPhotoStyle(pet)}"></div>
             <div class="pet-card-body">
               <h3>${escapeHtml(pet.name)}</h3>
               <div class="meta">${pet.daysUntil === 0 ? '🎂 ¡HOY cumple ' + pet.age + '!' : `Cumple ${pet.age} años en ${pet.daysUntil} día${pet.daysUntil>1?'s':''}`}</div>
