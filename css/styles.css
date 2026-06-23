@@ -1492,3 +1492,13 @@ html, body { max-width:100%; overflow-x:hidden; }
 .main img, .main canvas, .main video { max-width:100%; }
 /* Tablas anchas: scroll solo dentro de su contenedor, no de la pagina */
 .table-wrap, .card[style*="overflow-x"] { overflow-x:auto; max-width:100%; }
+
+/* ===== T4: Selector de asociaciones con buscador ===== */
+.assoc-picker { border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; }
+.assoc-search { border:none !important; border-bottom:1px solid var(--border) !important; border-radius:0 !important; }
+.assoc-list { max-height:180px; overflow-y:auto; background:#fff; }
+.assoc-row { display:flex; align-items:center; gap:10px; padding:9px 12px; cursor:pointer; border-bottom:1px solid var(--border); color:#1a1a1a; }
+.assoc-row:last-child { border-bottom:none; }
+.assoc-row:hover { background:var(--bg-soft); }
+.assoc-row input[type=checkbox] { width:auto; margin:0; flex:none; }
+.assoc-empty { padding:14px; text-align:center; color:var(--text-mute); font-size:var(--fs-sm); }

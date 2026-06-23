@@ -149,7 +149,11 @@ function attachPetListeners() {}
 function openPetModal(id) {
   const pet = id ? db.pets.find(p => p.id === id) : { id: uid(), ownerIds: [] };
   const isNew = !id;
-  const ownerOpts = db.owners.map(o => `<option value="${o.id}" ${(pet.ownerIds||[]).includes(o.id)?'selected':''}>${escapeHtml(o.name)}</option>`).join('');
+  const ownerItems = db.owners.map(o => ({ id:o.id, label:o.name + (o.dni?' · DNI '+o.dni:''), search:(o.name||'')+' '+(o.dni||'') }));
+  const speciesCommon = ['Perro','Gato','Conejo','Ave','Tortuga','Roedor','Pez','Caballo','Otro'];
+  const curSp = pet.species||'';
+  const spOpts = speciesCommon.map(s=>`<option value="${s}" ${curSp===s?'selected':''}>${s}</option>`).join('')
+    + (curSp && speciesCommon.indexOf(curSp)===-1 ? `<option value="${escapeAttr(curSp)}" selected>${escapeHtml(curSp)}</option>` : '');
 
   showModal(`
     <div class="modal-header">
@@ -159,7 +163,7 @@ function openPetModal(id) {
     <div class="modal-body">
       <div class="form-row">
         <div class="form-group"><label>Nombre *</label><input type="text" id="pName" value="${escapeAttr(pet.name||'')}" aria-required="true"><span class="field-error"></span></div>
-        <div class="form-group"><label>Especie</label><input type="text" id="pSpecies" value="${escapeAttr(pet.species||'')}" placeholder="Perro, Gato, Conejo..."></div>
+        <div class="form-group"><label>Especie</label><select id="pSpecies"><option value="">—</option>${spOpts}</select></div>
       </div>
       <div class="form-row-3">
         <div class="form-group"><label>Raza</label><input type="text" id="pBreed" value="${escapeAttr(pet.breed||'')}"></div>
@@ -172,9 +176,8 @@ function openPetModal(id) {
         <div class="form-group"><label>Microchip</label><input type="text" id="pChip" value="${escapeAttr(pet.microchip||'')}"></div>
       </div>
       <div class="form-group">
-        <label>Tutores asociados (Ctrl/Cmd + clic para múltiples)</label>
-        <select id="pOwners" multiple style="min-height:80px">${ownerOpts}</select>
-        <small style="color:var(--text-mute);font-size:var(--fs-2xs)">¿No está en la lista? Crea el tutor primero en la sección Tutores.</small>
+        <label>Tutores asociados</label>
+        ${db.owners.length ? assocPicker('petOwnersPicker', ownerItems, pet.ownerIds||[]) : '<small style="color:var(--text-mute)">No hay tutores todavía. Creá uno en la sección Tutores.</small>'}
       </div>
       <div class="form-group"><label>Alergias conocidas</label><textarea id="pAllergies">${escapeHtml(pet.allergies||'')}</textarea></div>
       <div class="form-group"><label>Condiciones crónicas</label><textarea id="pChronic">${escapeHtml(pet.chronicConditions||'')}</textarea></div>
@@ -191,7 +194,7 @@ function openPetModal(id) {
 function savePet(id, isNew) {
   const name = document.getElementById('pName').value.trim();
   if (!validateField('pName', !!name, 'El nombre es obligatorio')) return;
-  const ownerIds = Array.from(document.querySelectorAll('#pOwners input[type=checkbox]:checked')).map(cb => cb.value);
+  const ownerIds = document.getElementById('petOwnersPicker') ? getAssocSelected('petOwnersPicker') : (id ? (db.pets.find(p=>p.id===id)||{}).ownerIds||[] : []);
   const data = {
     id,
     name,

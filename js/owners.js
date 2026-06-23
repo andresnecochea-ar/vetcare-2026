@@ -76,6 +76,10 @@ function openOwnerModal(id) {
       </div>
       <div class="form-group"><label>Dirección</label><input type="text" id="oAddress" value="${escapeAttr(owner.address||'')}"></div>
       <div class="form-group"><label>DNI / Documento</label><input type="text" id="oDni" value="${escapeAttr(owner.dni||'')}"></div>
+      <div class="form-group">
+        <label>Mascotas asociadas</label>
+        ${db.pets.length ? assocPicker('ownerPetsPicker', db.pets.map(p=>({id:p.id,label:p.name+(p.species?' · '+p.species:''),search:(p.name||'')+' '+(p.species||'')})), db.pets.filter(p=>(p.ownerIds||[]).includes(owner.id)).map(p=>p.id)) : '<small style="color:var(--text-mute)">No hay mascotas todavía. Creá una en la sección Pacientes.</small>'}
+      </div>
       <div class="form-group"><label>Notas</label><textarea id="oNotes">${escapeHtml(owner.notes||'')}</textarea></div>
     </div>
     <div class="modal-footer">
@@ -100,6 +104,16 @@ function saveOwner(id, isNew) {
   };
   if (isNew) db.owners.push(data);
   else { const i = db.owners.findIndex(o=>o.id===id); db.owners[i] = data; }
+  if (document.getElementById('ownerPetsPicker')) {
+    const chosen = getAssocSelected('ownerPetsPicker');
+    db.pets.forEach(p => {
+      p.ownerIds = p.ownerIds || [];
+      const has = p.ownerIds.includes(id);
+      const want = chosen.includes(p.id);
+      if (want && !has) p.ownerIds.push(id);
+      if (!want && has) p.ownerIds = p.ownerIds.filter(oid => oid !== id);
+    });
+  }
   saveDB();
   closeModal();
   render();
