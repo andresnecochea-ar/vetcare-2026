@@ -1407,22 +1407,9 @@ if('serviceWorker'in navigator){
     .cal-event-mini { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8px; padding: 1px 3px; }
   }
   .is-hidden { display: none !important; }
-
-/* ── Splash de carga ── */
-#splash{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;background:#6F2DBD;background:linear-gradient(160deg,#6F2DBD 0%,#A663CC 100%);transition:opacity .45s ease;}
-#splash.hide{opacity:0;pointer-events:none;}
-#splash .splash-logo{width:96px;height:96px;border-radius:24px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;animation:splashPulse 1.6s ease-in-out infinite;}
-#splash .splash-logo svg{width:64px;height:64px;display:block;}
-#splash .splash-logo svg path{fill:#fff;}
-#splash .splash-name{color:#fff;font-size:26px;font-weight:700;letter-spacing:.04em;font-family:var(--font-head,inherit);}
-#splash .splash-spin{width:34px;height:34px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:splashSpin .8s linear infinite;}
-@keyframes splashSpin{to{transform:rotate(360deg);}}
-@keyframes splashPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.07);}}
-.welcome-logo-source{display:none;}
 </style>
 </head>
 <body>
-<div id="splash"><div class="splash-logo" id="splashLogo"></div><div class="splash-name">VetCare</div><div class="splash-spin"></div></div>
 <!-- PANTALLA DE BIENVENIDA -->
 <div id="welcomeScreen" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg);padding:24px;">
   <div style="background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:48px 40px;max-width:480px;width:100%;text-align:center;">
@@ -3634,27 +3621,14 @@ function seedDemo() {
 // [24] INIT — punto de entrada de la app
 // ========================================
 applyTheme();
-// Capturar el SVG del logo original (esta dentro del welcomeScreen) para reusarlo
-var _logoHTML='';
-(function(){
-  try{
-    var wl=document.querySelector('#welcomeScreen .welcome-logo');
-    if(wl){ _logoHTML=wl.innerHTML; }
-    var sl=document.getElementById('splashLogo');
-    if(sl&&_logoHTML){ sl.innerHTML=_logoHTML; }
-  }catch(e){}
-})();
-function hideSplash(){ var s=document.getElementById('splash'); if(s){ s.classList.add('hide'); setTimeout(function(){ if(s&&s.parentNode) s.style.display='none'; },500); } }
 // ---------- Pantalla de login / registro ----------
 function showLogin(){
-  hideSplash();
   document.getElementById('appShell').classList.add('is-hidden');
   document.getElementById('globalSearchWrap').style.display = 'none';
   var lb=document.getElementById('logoutBtn'); if(lb) lb.style.display='none';
   var ws = document.getElementById('welcomeScreen');
   ws.style.display = 'flex';
   ws.innerHTML = '<div style="max-width:380px;width:100%;background:#fff;border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.12);padding:32px;">'
-    + '<div style="width:64px;height:64px;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;">'+(_logoHTML||'')+'</div>'
     + '<h1 style="margin:0 0 4px;font-size:26px;color:#6F2DBD;">VetCare</h1>'
     + '<p id="authSub" style="margin:0 0 20px;color:#777;font-size:14px;">Ingresá con tu cuenta</p>'
     + '<div id="authError" style="display:none;background:#fde8e8;color:#c0392b;padding:10px;border-radius:10px;font-size:13px;margin-bottom:12px;"></div>'
@@ -3712,7 +3686,6 @@ async function enterApp(){
   document.getElementById('globalSearchWrap').style.display = 'flex';
   applyTheme(); render(); updateBadges();
   var lb=document.getElementById('logoutBtn'); if(lb) lb.style.display='block';
-  hideSplash();
   toast('Bienvenido ' + (currentUser && currentUser.name ? currentUser.name : '') + ' ✓');
 }
 async function logout(){ await apiLogout(); showLogin(); }
@@ -3730,8 +3703,7 @@ async function logout(){ await apiLogout(); showLogin(); }
         applyTheme(); render(); updateBadges();
         toast('Modo local (sin servidor configurado)');
       }
-      hideSplash();
-    } catch(e){ hideSplash(); }
+    } catch(e){}
     return;
   }
   if(authToken){
