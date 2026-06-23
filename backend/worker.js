@@ -179,8 +179,12 @@ export default {
     try {
       // ---------- AUTH ----------
       if (path === '/api/register' && req.method === 'POST') {
-        const { email, password, name } = await req.json();
+        const { email, password, name, inviteCode } = await req.json();
         if (!email || !password) return json({ error: 'Faltan email o contraseña' }, 400, origin);
+        // Registro protegido: hace falta la clave de invitación.
+        if (!env.INVITE_CODE || inviteCode !== env.INVITE_CODE) {
+          return json({ error: 'Clave de invitación incorrecta' }, 403, origin);
+        }
         const exists = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email.toLowerCase()).first();
         if (exists) return json({ error: 'Ese email ya está registrado' }, 409, origin);
         const { hash, salt } = await hashPassword(password);
