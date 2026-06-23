@@ -1419,8 +1419,6 @@ if('serviceWorker'in navigator){
 @keyframes splashSpin{to{transform:rotate(360deg);}}
 @keyframes splashPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.07);}}
 .welcome-logo-source{display:none;}
-.login-logo svg{width:100%;height:100%;display:block;}
-.login-logo svg path{fill:#6F2DBD;}
 </style>
 </head>
 <body>
@@ -3656,7 +3654,7 @@ function showLogin(){
   var ws = document.getElementById('welcomeScreen');
   ws.style.display = 'flex';
   ws.innerHTML = '<div style="max-width:380px;width:100%;background:#fff;border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.12);padding:32px;">'
-    + '<div class="login-logo" style="width:56px;height:56px;margin:0 0 14px;display:flex;align-items:center;justify-content:flex-start;">'+(_logoHTML||'')+'</div>'
+    + '<div style="width:64px;height:64px;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;">'+(_logoHTML||'')+'</div>'
     + '<h1 style="margin:0 0 4px;font-size:26px;color:#6F2DBD;">VetCare</h1>'
     + '<p id="authSub" style="margin:0 0 20px;color:#777;font-size:14px;">Ingresá con tu cuenta</p>'
     + '<div id="authError" style="display:none;background:#fde8e8;color:#c0392b;padding:10px;border-radius:10px;font-size:13px;margin-bottom:12px;"></div>'
