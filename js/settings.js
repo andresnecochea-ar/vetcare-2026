@@ -4,7 +4,7 @@
    y de los recibos, y acceso al respaldo.
    ===================================================================== */
 
-var APP_VERSION = '5.1';
+var APP_VERSION = '5.2';
 
 function _ensureSettings(){
   if(!db.settings) db.settings = {};
@@ -26,8 +26,8 @@ function openSettings(){
 
     + '<div class="settings-section">'
     + '  <div class="settings-label">Apariencia</div>'
-    + '  <button class="btn btn-secondary" style="width:100%" onclick="toggleTheme();openSettings()">'
-    +      (dark ? '☀ Cambiar a modo claro' : '☾ Cambiar a modo oscuro') + '</button>'
+    + '  <button class="btn btn-secondary" style="width:100%;display:flex;align-items:center;justify-content:center" onclick="toggleTheme();openSettings()">'
+    +      '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:1.05em;height:1.05em;vertical-align:-.16em;margin-right:8px"><path d="M19.4 15.2A7.2 7.2 0 0 1 8.8 4.6 8.2 8.2 0 1 0 19.4 15.2Z"/></svg>' + (dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro') + '</button>'
     + '</div>'
 
     + '<div class="settings-section">'
@@ -51,7 +51,7 @@ function openSettings(){
     + '<div class="settings-section settings-version">'
     + '  <div class="settings-label">Version</div>'
     + '  <div class="settings-version-row"><span>VetCare v' + APP_VERSION + '</span></div>'
-    + '  <button class="btn btn-secondary" style="width:100%;margin-top:8px;display:flex;align-items:center;justify-content:center" onclick="forceUpdate()"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:1.05em;height:1.05em;vertical-align:-.16em;margin-right:7px"><path d="M20 11a8 8 0 1 0-.9 4.5"/><path d="M20 5v6h-6"/></svg>Buscar actualizaciones</button>'
+    + '  <button class="btn btn-secondary" style="width:100%;margin-top:8px;display:flex;align-items:center;justify-content:center" onclick="forceUpdate()"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:1.05em;height:1.05em;vertical-align:-.16em;margin-right:8px"><circle cx="10.5" cy="10.5" r="5.8"/><path d="M15 15l4.5 4.5"/></svg>Buscar actualizaciones</button>'
     + '</div>'
 
     + '</div>'
@@ -69,7 +69,6 @@ function saveSettings(){
   toast('Datos guardados');
 }
 
-// Recarga forzada sin cache: desregistra service workers, borra caches y recarga.
 async function forceUpdate(){
   toast('Buscando actualizaciones...');
   try{
@@ -82,7 +81,6 @@ async function forceUpdate(){
       for(var j=0;j<keys.length;j++){ await caches.delete(keys[j]); }
     }
   }catch(e){}
-  // Romper cache de la URL agregando un parametro y recargar.
   var u = new URL(window.location.href);
   u.searchParams.set('_r', Date.now().toString());
   window.location.replace(u.toString());
