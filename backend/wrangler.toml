@@ -1,0 +1,8 @@
+name = "vetcare-api"
+main = "worker.js"
+compatibility_date = "2026-06-23"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "vetcare"
+database_id = "57abd6e4-a2c0-4ae3-a0ae-c3b7ccd5d799"
