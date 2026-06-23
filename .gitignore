@@ -1,0 +1,13 @@
+# Caché de herramientas (wrangler) — contiene datos de cuenta, no debe subirse
+backend/.wrangler/
+
+# Copias locales de respaldo (git ya guarda el historial)
+backups/
+
+# Temporales de migración
+backend/_*.js
+backend/migrate.py
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
