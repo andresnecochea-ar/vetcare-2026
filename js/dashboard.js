@@ -43,7 +43,7 @@ function renderDashboard() {
       ${lowStock>0?`<div class="stat-card"><div class="stat-label">⚠ Stock bajo</div><div class="stat-val" style="color:var(--warning)">${lowStock}</div></div>`:''}
       ${pendingInv>0?`<div class="stat-card"><div class="stat-label">🧾 Recibos pendientes</div><div class="stat-val" style="color:var(--warning)">${pendingInv}</div></div>`:''}
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+    <div class="dashboard-charts">
       <div class="card"><h3 style="margin-bottom:14px">Actividad — últimos 7 días</h3>
         <div class="chart-wrap"><canvas id="chartAppts"></canvas></div></div>
       <div class="card"><h3 style="margin-bottom:14px">Pacientes por especie</h3>

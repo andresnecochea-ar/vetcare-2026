@@ -1,4 +1,5 @@
-let petViewMode = 'grid';
+// En movil arranca en lista (mas comodo); en desktop en grilla.
+let petViewMode = (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) ? 'list' : 'grid';
 
 function renderPets() {
   const species = [...new Set(db.pets.map(p=>p.species).filter(Boolean))];
