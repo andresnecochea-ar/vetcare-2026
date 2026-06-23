@@ -2302,7 +2302,7 @@ function compressImage(file, cb){
   reader.onload=function(ev){
     var img=new Image();
     img.onload=function(){
-      var MAX=600; // lado mas largo
+      var MAX=1200; // lado mas largo
       var w=img.width, hgt=img.height;
       if(w>hgt){ if(w>MAX){ hgt=Math.round(hgt*MAX/w); w=MAX; } }
       else { if(hgt>MAX){ w=Math.round(w*MAX/hgt); hgt=MAX; } }
@@ -2311,7 +2311,7 @@ function compressImage(file, cb){
       var ctx=canvas.getContext('2d');
       ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,hgt); // fondo blanco para PNG con transparencia
       ctx.drawImage(img,0,0,w,hgt);
-      var TARGET=50*1024; // 50 KB
+      var TARGET=100*1024; // 100 KB
       var q=0.85, out=canvas.toDataURL('image/jpeg',q);
       // bajar calidad hasta entrar en 100KB (o llegar a q minima)
       while(out.length>TARGET*1.37 && q>0.4){ q-=0.1; out=canvas.toDataURL('image/jpeg',q); }
