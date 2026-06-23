@@ -5,11 +5,11 @@ function renderInvoices() {
   const paid = invs.filter(i=>i.status==='paid').length;
   return `
     <div class="page-header">
-      <div class="title"><small>Administración</small><h1>Facturación</h1></div>
-      <button class="btn btn-primary" onclick="openInvoiceModal()">+ Nueva factura</button>
+      <div class="title"><small>Administración</small><h1>Recibos</h1></div>
+      <button class="btn btn-primary" onclick="openInvoiceModal()">+ Nuevo recibo</button>
     </div>
     <div class="grid-stats">
-      <div class="stat-card"><div class="stat-label">💰 Total facturado</div><div class="stat-val" style="color:var(--color-navy)">$${total.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
+      <div class="stat-card"><div class="stat-label">💰 Total cobrado</div><div class="stat-val" style="color:var(--color-navy)">$${total.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
       <div class="stat-card"><div class="stat-label">⏳ Pendiente cobro</div><div class="stat-val" style="color:var(--warning)">$${pendTotal.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
       <div class="stat-card"><div class="stat-label">✅ Cobrados</div><div class="stat-val" style="color:var(--color-mint-hover)">${paid}</div></div>
       <div class="stat-card"><div class="stat-label">🧾 Comprobantes</div><div class="stat-val">${invs.length}</div></div>
@@ -19,7 +19,7 @@ function renderInvoices() {
         <thead><tr><th>#</th><th>Tutor</th><th class="col-sec">Paciente</th><th class="col-sec">Fecha</th><th>Total</th><th class="col-sec">Estado</th><th></th></tr></thead>
         <tbody>
         ${invs.length===0
-          ?'<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-mute)">Sin facturas todavía. ¡Creá la primera!</td></tr>'
+          ?'<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-mute)">Sin recibos todavía. ¡Creá el primero!</td></tr>'
           :invs.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(inv=>{
               const owner=db.owners.find(o=>o.id===inv.ownerId);
               const pet=db.pets.find(p=>p.id===inv.petId);
@@ -52,7 +52,7 @@ function openInvoiceModal(id) {
   const petOpts=db.pets.map(p=>`<option value="${p.id}" ${inv.petId===p.id?'selected':''} >${escapeHtml(p.name)}</option>`).join('');
   showModal(`
     <div class="modal-header">
-      <h2>${isNew?'Nueva factura':'Editar factura #'+(inv.number||'')}</h2>
+      <h2>${isNew?'Nuevo recibo':'Editar recibo #'+(inv.number||'')}</h2>
       <button class="close-btn" onclick="closeModal()">&times;</button>
     </div>
     <div class="modal-body">
@@ -89,7 +89,7 @@ function openInvoiceModal(id) {
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveInvoice('${id||''}',${isNew})">💾 ${isNew?'Crear factura':'Guardar cambios'}</button>
+      <button class="btn btn-primary" onclick="saveInvoice('${id||''}',${isNew})">💾 ${isNew?'Crear recibo':'Guardar cambios'}</button>
     </div>
   `,true);
   updateInvTotal();
@@ -134,13 +134,13 @@ function saveInvoice(id,isNew){
   if(isNew){db.invoices.push(inv);}
   else{const idx=db.invoices.findIndex(i=>i.id===id);if(idx>-1)db.invoices[idx]=inv;else db.invoices.push(inv);}
   saveDB();closeModal();currentView='invoices';render();
-  toast(isNew?'Factura creada ✓':'Factura actualizada ✓');
+  toast(isNew?'Recibo creado ✓':'Recibo actualizado ✓');
 }
 
 function deleteInvoice(id){
-  showConfirm('¿Eliminar esta factura?',()=>{
+  showConfirm('¿Eliminar este recibo?',()=>{
     db.invoices=(db.invoices||[]).filter(i=>i.id!==id);
-    saveDB();render();toast('Factura eliminada');
+    saveDB();render();toast('Recibo eliminado');
   });
 }
 
@@ -150,13 +150,14 @@ function printInvoice(id){
   const pet=db.pets.find(p=>p.id===inv.petId);
   const sl=inv.status==='paid'?'Cobrado':inv.status==='cancelled'?'Cancelado':'Pendiente';
   const w=window.open('','_blank');
-  w.document.write('<!DOCTYPE html><html><head><title>Factura #'+(inv.number||inv.id.slice(-4))+'</title>'
+  w.document.write('<!DOCTYPE html><html><head><title>Recibo #'+(inv.number||inv.id.slice(-4))+'</title>'
     +'<style>body{font-family:Georgia,serif;padding:40px;max-width:620px;margin:auto;color:#1a1a1a}'
     +'h1{font-size:1.5rem;margin-bottom:6px}.meta{color:#666;font-size:.9rem;margin-bottom:20px;padding:10px;background:#f9f9f9;border-radius:4px}'
     +'table{width:100%;border-collapse:collapse;margin:20px 0}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f5f5f5}'
     +'.total{text-align:right;font-size:1.3rem;font-weight:bold;padding:12px 0}'
     +'@media print{button{display:none}}</style></head><body>'
-    +'<h1>'+escapeHtml(db.clinicName||'VetCare')+' \u2014 Factura #'+(inv.number||inv.id.slice(-4).toUpperCase())+'</h1>'
+    +'<h1>'+escapeHtml((db.settings&&db.settings.clinicName)||db.clinicName||'VetCare')+' \u2014 Recibo #'+(inv.number||inv.id.slice(-4).toUpperCase())+'</h1>'
+    +((db.settings&&(db.settings.receiptAddress||db.settings.receiptPhone||db.settings.receiptTaxId))?'<div style="color:#666;font-size:.85rem;margin-bottom:14px">'+[db.settings.receiptAddress,db.settings.receiptPhone,db.settings.receiptTaxId?'CUIT '+db.settings.receiptTaxId:''].filter(Boolean).map(escapeHtml).join(' \u00b7 ')+'</div>':'')
     +'<div class="meta">Fecha: '+formatDate(inv.date)+' \u00b7 Estado: '+sl
     +(owner?'<br>Tutor: '+escapeHtml(owner.name):'')
     +(pet?' \u00b7 Paciente: '+escapeHtml(pet.name):'')+'</div>'

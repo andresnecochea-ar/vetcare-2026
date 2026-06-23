@@ -38,10 +38,10 @@ function renderDashboard() {
       <div class="stat-card"><div class="stat-label">🐾 Pacientes</div><div class="stat-val" style="color:var(--color-navy)">${db.pets.length}</div></div>
       <div class="stat-card"><div class="stat-label">👥 Tutores</div><div class="stat-val">${db.owners.length}</div></div>
       <div class="stat-card"><div class="stat-label">📅 Turnos hoy</div><div class="stat-val" style="color:var(--color-navy)">${todayAppts+todayGroom}</div></div>
-      <div class="stat-card"><div class="stat-label">💰 Facturado total</div><div class="stat-val" style="color:var(--color-mint-hover)">$${totalBilled.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
+      <div class="stat-card"><div class="stat-label">💰 Cobrado total</div><div class="stat-val" style="color:var(--color-mint-hover)">$${totalBilled.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
       ${pendingRem>0?`<div class="stat-card"><div class="stat-label">🔔 Avisos pendientes</div><div class="stat-val" style="color:var(--color-coral)">${pendingRem}</div></div>`:''}
       ${lowStock>0?`<div class="stat-card"><div class="stat-label">⚠ Stock bajo</div><div class="stat-val" style="color:var(--warning)">${lowStock}</div></div>`:''}
-      ${pendingInv>0?`<div class="stat-card"><div class="stat-label">🧾 Facturas pendientes</div><div class="stat-val" style="color:var(--warning)">${pendingInv}</div></div>`:''}
+      ${pendingInv>0?`<div class="stat-card"><div class="stat-label">🧾 Recibos pendientes</div><div class="stat-val" style="color:var(--warning)">${pendingInv}</div></div>`:''}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
       <div class="card"><h3 style="margin-bottom:14px">Actividad — últimos 7 días</h3>
