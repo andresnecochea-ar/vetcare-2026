@@ -6,13 +6,21 @@
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
-// --- CORS: permití el origen donde corra tu index.html ---
+// --- CORS: solo se permiten estos orígenes ---
+const ALLOWED_ORIGINS = [
+  'https://andresnecochea-ar.github.io', // GitHub Pages (producción)
+  'http://localhost',                    // pruebas locales
+  'http://127.0.0.1',
+  'null',                                // archivo index.html abierto con doble clic (file://)
+];
 function cors(origin) {
+  const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
-    'Access-Control-Allow-Origin': origin || '*',
+    'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
   };
 }
 
