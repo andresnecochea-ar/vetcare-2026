@@ -2,7 +2,7 @@ function updateBadges() {
   const now = new Date(); now.setHours(0,0,0,0);
   const in7 = new Date(now.getTime() + 7*24*60*60*1000);
   const reminderCount = db.reminders.filter(r => !r.completed && new Date(r.date) <= in7).length;
-  const invCount = db.inventory.filter(i => parseInt(i.stock||0) <= parseInt(i.minStock||0)).length;
+  const invCount = db.inventory.filter(i => invTotalStock(i) <= parseInt(i.minStock||0)).length;
   const bR = document.getElementById('badgeReminders');
   const bI = document.getElementById('badgeInventory');
   if (bR) { bR.textContent = reminderCount; bR.style.display = reminderCount > 0 ? '' : 'none'; }
