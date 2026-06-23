@@ -5,7 +5,7 @@ function renderDashboard() {
   const invoices = db.invoices||[];
   const totalBilled = invoices.reduce((s,i)=>s+(parseFloat(i.total)||0),0);
   const pendingInv = invoices.filter(i=>i.status==='pending').length;
-  const lowStock = db.inventory.filter(i=>parseInt(i.stock)<=parseInt(i.minStock||0)).length;
+  const lowStock = db.inventory.filter(i=>invTotalStock(i)<=parseInt(i.minStock||0)).length;
   const pendingRem = db.reminders.filter(r=>!r.completed).length;
   const days7 = Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-6+i);return d.toISOString().split('T')[0];});
   const apptCounts = days7.map(d=>db.appointments.filter(a=>a.date===d).length+db.groomingAppointments.filter(a=>a.date===d).length);
@@ -14,7 +14,7 @@ function renderDashboard() {
   db.pets.forEach(p=>{const s=p.species||'Otro';speciesCount[s]=(speciesCount[s]||0)+1;});
   const spKeys=Object.keys(speciesCount), spVals=spKeys.map(k=>speciesCount[k]);
   const spColors=['#6F2DBD','#A663CC','#F4B860','#c08fe0','#e5a04d','#8a52b8'];
-  const lowItems=db.inventory.filter(i=>parseInt(i.stock)<=parseInt(i.minStock||0));
+  const lowItems=db.inventory.filter(i=>invTotalStock(i)<=parseInt(i.minStock||0));
   setTimeout(()=>{
     const c1=document.getElementById('chartAppts');
     if(c1&&window.Chart){if(c1._ci)c1._ci.destroy();
@@ -43,7 +43,7 @@ function renderDashboard() {
       ${lowStock>0?`<div class="stat-card"><div class="stat-label">⚠ Stock bajo</div><div class="stat-val" style="color:var(--warning)">${lowStock}</div></div>`:''}
       ${pendingInv>0?`<div class="stat-card"><div class="stat-label">🧾 Recibos pendientes</div><div class="stat-val" style="color:var(--warning)">${pendingInv}</div></div>`:''}
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+    <div class="dashboard-charts">
       <div class="card"><h3 style="margin-bottom:14px">Actividad — últimos 7 días</h3>
         <div class="chart-wrap"><canvas id="chartAppts"></canvas></div></div>
       <div class="card"><h3 style="margin-bottom:14px">Pacientes por especie</h3>
@@ -55,7 +55,7 @@ function renderDashboard() {
     <div class="card" style="border-left:3px solid var(--warning);margin-bottom:16px">
       <h3 style="color:var(--warning);margin-bottom:10px">⚠ Stock bajo</h3>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
-        ${lowItems.map(i=>`<span style="background:var(--bg-soft);padding:4px 12px;border-radius:20px;font-size:var(--fs-sm)">${escapeHtml(i.name)} <strong style="color:var(--warning)">(${i.stock} ${i.unit||'u'})</strong></span>`).join('')}
+        ${lowItems.map(i=>`<span style="background:var(--bg-soft);padding:4px 12px;border-radius:20px;font-size:var(--fs-sm)">${escapeHtml(i.name)} <strong style="color:var(--warning)">(${invTotalStock(i)} u)</strong></span>`).join('')}
       </div></div>`:''}
   `;
 }

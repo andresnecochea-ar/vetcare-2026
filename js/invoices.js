@@ -35,7 +35,7 @@ function renderInvoices() {
                 <td style="white-space:nowrap">
                   <button class="btn btn-sm" onclick="printInvoice('${inv.id}')" title="Imprimir">🖨</button>
                   <button class="btn btn-sm" onclick="openInvoiceModal('${inv.id}')" title="Editar">✏</button>
-                  <button class="btn btn-sm btn-danger" onclick="deleteInvoice('${inv.id}')" title="Eliminar">✕</button>
+                  <button class="btn btn-sm btn-danger" onclick="deleteInvoice('${inv.id}')" title="Eliminar">${iconX()}</button>
                 </td></tr>`;}).join('')}
         </tbody>
       </table>
@@ -78,7 +78,7 @@ function openInvoiceModal(id) {
             <input type="text" placeholder="Descripción" value="${escapeAttr(item.desc||'')} " class="inv-desc" style="flex:3">
             <input type="number" placeholder="Cant." value="${item.qty||1}" class="inv-qty" style="flex:0.7;min-width:55px" oninput="updateInvTotal()">
             <input type="number" placeholder="Precio" value="${item.price||0}" class="inv-price" style="flex:1;min-width:75px" oninput="updateInvTotal()">
-            <button class="btn btn-sm btn-danger" onclick="this.closest('.inv-item').remove();updateInvTotal()" style="flex:none">✕</button>
+            <button class="btn btn-sm btn-danger" onclick="this.closest('.inv-item').remove();updateInvTotal()" style="flex:none" title="Quitar">${iconX()}</button>
           </div>`).join('')}
       </div>
       <button class="btn btn-sm" onclick="addInvItem()" style="margin-top:4px">+ Agregar ítem</button>
@@ -101,7 +101,7 @@ function addInvItem(){
   d.innerHTML=`<input type="text" placeholder="Descripción" class="inv-desc" style="flex:3">
     <input type="number" placeholder="Cant." value="1" class="inv-qty" style="flex:0.7;min-width:55px" oninput="updateInvTotal()">
     <input type="number" placeholder="Precio" value="0" class="inv-price" style="flex:1;min-width:75px" oninput="updateInvTotal()">
-    <button class="btn btn-sm btn-danger" onclick="this.closest('.inv-item').remove();updateInvTotal()" style="flex:none">✕</button>`;
+    <button class="btn btn-sm btn-danger" onclick="this.closest('.inv-item').remove();updateInvTotal()" style="flex:none" title="Quitar">${iconX()}</button>`;
   c.appendChild(d);
 }
 
