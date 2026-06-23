@@ -31,7 +31,7 @@ function renderPets() {
         <option value="con">Con condición crónica</option>
         <option value="sin">Sin condición crónica</option>
       </select>
-      <button class="btn btn-sm" onclick="clearPetFilters()">✕ Limpiar</button>
+      <button class="btn btn-sm" onclick="clearPetFilters()">${iconX()} Limpiar</button>
     </div>
     <div id="petsGrid">
       ${renderPetItems(db.pets)}

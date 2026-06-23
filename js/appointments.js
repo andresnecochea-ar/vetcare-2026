@@ -18,7 +18,7 @@ function renderAppointments() {
       <td class="col-sec">${escapeHtml(a.vet||'—')}</td>
       <td class="col-sec"><span${notesFull.length>40?' data-tip="'+escapeAttr(notesFull)+'"':''} style="white-space:nowrap">${escapeHtml(notesShort)}</span></td>
       <td class="col-sec"><span class="tag ${isPast?'':'accent'}">${isPast?'Pasado':'Próximo'}</span></td>
-      <td><div class="actions"><button class="btn btn-sm" onclick="openApptModal('${a.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="deleteAppt('${a.id}')">×</button></div></td>
+      <td><div class="actions"><button class="btn btn-sm" onclick="openApptModal('${a.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="deleteAppt('${a.id}')" title="Eliminar">${iconX()}</button></div></td>
     </tr>`;
   }
   return `
@@ -113,7 +113,7 @@ function renderGrooming() {
               <td class="col-sec"><span class="tag ${a.status==='Completado'?'accent':a.status==='Cancelado'?'danger':''}">${a.status||'Pendiente'}</span></td>
               <td class="col-sec">${a.reminder ? `<span style='font-size:var(--fs-2xs);background:var(--color-lilac-soft);color:#6a4fa0;border:1px solid var(--color-lilac);border-radius:20px;padding:2px 8px;'>&#128276; ${escapeHtml(a.reminder)}</span>` : '<span style="color:var(--text-mute);font-size:var(--fs-xs)">—</span>'}</td>
               <td class="col-sec"><span class="tag ${isPast?'':'accent'}">${isPast?'Pasado':'Próximo'}</span></td>
-              <td><div class="actions"><button class="btn btn-sm" onclick="openGroomModal('${a.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="deleteGroom('${a.id}')">×</button></div></td>
+              <td><div class="actions"><button class="btn btn-sm" onclick="openGroomModal('${a.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="deleteGroom('${a.id}')" title="Eliminar">${iconX()}</button></div></td>
             </tr>`;
           }).join('')}
         </tbody>

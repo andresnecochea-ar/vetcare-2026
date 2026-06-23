@@ -14,9 +14,9 @@ function renderInventory() {
               <td class="col-sec">${escapeHtml(i.category||'—')}</td>
               <td>${i.stock} ${parseInt(i.stock||0) <= parseInt(i.minStock||0) ? '<span class="tag danger">Bajo</span>' : ''}</td>
               <td class="col-sec">${i.minStock||'—'}</td>
-              <td class="col-sec">${i.price?'$'+i.price:'—'}</td>
+              <td class="col-sec">${i.price?'$'+parseFloat(i.price).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</td>
               <td class="col-sec">${i.expiry?formatDate(i.expiry):'—'}</td>
-              <td><div class="actions"><button class="btn btn-sm" onclick="openInvModal('${i.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="deleteInv('${i.id}')">×</button></div></td>
+              <td><div class="actions"><button class="btn btn-sm" onclick="openInvModal('${i.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="deleteInv('${i.id}')" title="Eliminar">${iconX()}</button></div></td>
             </tr>
           `).join('')}
         </tbody>

@@ -1443,3 +1443,7 @@
 .settings-version-row { font-size:1.05rem; font-weight:var(--fw-medium); color:var(--text); }
 .input { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg); color:var(--text); font-size:var(--fs-sm); font-family:inherit; box-sizing:border-box; }
 .input:focus { outline:none; border-color:var(--accent); }
+
+/* ===== Campos de texto siempre con fondo blanco ===== */
+input, select, textarea, .input { background:#fff !important; color:#1a1a1a !important; }
+input::placeholder, textarea::placeholder { color:#9a9a9a; }

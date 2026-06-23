@@ -21,11 +21,11 @@ function renderReminders() {
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${owners.map(o => o.phone ? `<a class="contact-btn wa" href="https://wa.me/${cleanPhone(o.phone)}?text=${encodeURIComponent('Hola '+o.name+', desde la veterinaria le recordamos: '+r.title)}" target="_blank" title="Avisar a ${escapeAttr(o.name)}">WA</a>` : '').join('')}
           <button class="btn btn-sm" onclick="completeReminder('${r.id}')">✓</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteReminder('${r.id}')">×</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteReminder('${r.id}')" title="Eliminar">${iconX()}</button>
         </div>
       </div>`;
     }).join('')}
-    ${completed.length ? `<h3 style="margin:24px 0 10px">Completados recientes</h3>${completed.map(r => `<div class="reminder-item" style="opacity:.6;border-left-color:var(--text-mute)"><div class="info"><strong>${escapeHtml(r.title)}</strong><small>${formatDate(r.date)}</small></div><button class="btn btn-sm btn-danger" onclick="deleteReminder('${r.id}')">×</button></div>`).join('')}` : ''}
+    ${completed.length ? `<h3 style="margin:24px 0 10px">Completados recientes</h3>${completed.map(r => `<div class="reminder-item" style="opacity:.6;border-left-color:var(--text-mute)"><div class="info"><strong>${escapeHtml(r.title)}</strong><small>${formatDate(r.date)}</small></div><button class="btn btn-sm btn-danger" onclick="deleteReminder('${r.id}')" title="Eliminar">${iconX()}</button></div>`).join('')}` : ''}
   `;
 }
 
@@ -38,7 +38,7 @@ function openReminderModal(id, presetDate) {
     <div class="modal-body">
       <div class="form-group"><label>Título *</label><input type="text" id="rTitle" value="${escapeAttr(r.title||'')}" placeholder="Ej: Llamar para control post-cirugía"></div>
       <div class="form-row">
-        <div class="form-group"><label>Fecha *</label><input type="date" id="rDate" value="${r.date||''}"></div>
+        <div class="form-group"><label>Fecha del aviso *</label><input type="date" id="rDate" value="${r.date||''}"></div>
         <div class="form-group"><label>Paciente (opcional)</label><select id="rPet"><option value="">—</option>${petOpts}</select></div>
       </div>
       <div class="form-group"><label>Notas</label><textarea id="rNotes">${escapeHtml(r.notes||'')}</textarea></div>
