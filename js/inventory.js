@@ -1,29 +1,30 @@
 // ========================================
-// [18] VISTA: INVENTARIO (con lotes y vencimientos)
+// [18] VISTA: INVENTARIO (stock por lotes; catalogo se gestiona en Opciones)
 // ========================================
 
-// Stock total de un producto = suma de las cantidades de sus lotes.
 function invTotalStock(it){
   return (it.lots||[]).reduce(function(s,l){ return s + (parseInt(l.qty)||0); }, 0);
 }
-// Vencimiento mas proximo (de los lotes que tienen fecha). Devuelve 'YYYY-MM-DD' o ''.
 function invNextExpiry(it){
   var fechas = (it.lots||[]).map(function(l){ return l.expiry; }).filter(Boolean).sort();
   return fechas.length ? fechas[0] : '';
 }
 function _fmtMoney(v){ return '$'+parseFloat(v||0).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
+// ---- INVENTARIO: solo stock de productos ya existentes ----
 function renderInventory() {
   return `
     <div class="page-header">
       <div class="title"><small>Stock de productos</small><h1>Inventario</h1></div>
-      <button class="btn btn-primary" onclick="openInvModal()">+ Nuevo producto</button>
+      <button class="btn btn-secondary" onclick="openCatalog()">Gestionar catálogo</button>
     </div>
-    <div class="table-wrap">
+    ${db.inventory.length === 0
+      ? '<div class="empty-state">No hay productos en el catálogo. Agregalos desde Opciones › Catálogo de productos (o el botón de arriba).</div>'
+      : `<div class="table-wrap">
       <table>
-        <thead><tr><th>Producto</th><th class="col-sec">Categoría</th><th>Stock</th><th class="col-sec">Mínimo</th><th class="col-sec">Precio</th><th class="col-sec">Próx. venc.</th><th></th></tr></thead>
+        <thead><tr><th>Producto</th><th class="col-sec">Categoría</th><th>Stock</th><th class="col-sec">Mínimo</th><th class="col-sec">Precio</th><th class="col-sec">Próx. venc.</th><th>Stock</th></tr></thead>
         <tbody>
-          ${db.inventory.length === 0 ? '<tr><td colspan="7"><div class="empty-state">Sin productos registrados. Agregá vacunas, medicamentos, alimentos, etc.</div></td></tr>' : db.inventory.map(i => {
+          ${db.inventory.map(i => {
             const total = invTotalStock(i);
             const low = total <= parseInt(i.minStock||0);
             const next = invNextExpiry(i);
@@ -37,20 +38,44 @@ function renderInventory() {
               <td class="col-sec">${i.price?_fmtMoney(i.price):'—'}</td>
               <td class="col-sec">${venc}</td>
               <td><div class="actions" style="white-space:nowrap">
-                <button class="btn btn-sm btn-primary" onclick="openAddLotModal('${i.id}')" title="Cargar stock">+ Stock</button>
-                <button class="btn btn-sm" onclick="openUseStockModal('${i.id}')" title="Usar/bajar stock">Usar</button>
-                <button class="btn btn-sm" onclick="openInvModal('${i.id}')">Editar</button>
-                <button class="btn btn-sm btn-danger" onclick="deleteInv('${i.id}')" title="Eliminar">${iconX()}</button>
+                <button class="btn btn-sm btn-primary" onclick="openAddLotModal('${i.id}')" title="Cargar stock">+</button>
+                <button class="btn btn-sm" onclick="openUseStockModal('${i.id}')" title="Usar/bajar stock">−</button>
               </div></td>
             </tr>`;
           }).join('')}
         </tbody>
       </table>
-    </div>
+    </div>`}
   `;
 }
 
-// ---- Alta / edicion de producto (datos, sin stock directo) ----
+// ---- CATALOGO (gestion de productos) ----
+function openCatalog() {
+  const rows = db.inventory.length === 0
+    ? '<div class="empty-state">Sin productos. Creá el primero.</div>'
+    : `<div class="table-wrap"><table>
+        <thead><tr><th>Producto</th><th class="col-sec">Categoría</th><th class="col-sec">Mínimo</th><th class="col-sec">Precio</th><th></th></tr></thead>
+        <tbody>${db.inventory.map(i=>`
+          <tr>
+            <td><strong>${escapeHtml(i.name)}</strong></td>
+            <td class="col-sec">${escapeHtml(i.category||'—')}</td>
+            <td class="col-sec">${i.minStock||'—'}</td>
+            <td class="col-sec">${i.price?_fmtMoney(i.price):'—'}</td>
+            <td><div class="actions" style="white-space:nowrap">
+              <button class="btn btn-sm" onclick="openInvModal('${i.id}')">Editar</button>
+              <button class="btn btn-sm btn-danger" onclick="deleteInv('${i.id}')" title="Eliminar">${iconX()}</button>
+            </div></td>
+          </tr>`).join('')}</tbody></table></div>`;
+  showModal(`
+    <div class="modal-header"><h2>Catálogo de productos</h2><button class="close-btn" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      <button class="btn btn-primary" style="margin-bottom:14px" onclick="openInvModal()">+ Nuevo producto</button>
+      ${rows}
+    </div>
+  `, true);
+}
+
+// ---- Alta / edicion de producto ----
 function openInvModal(id) {
   const i = id ? db.inventory.find(x=>x.id===id) : { id: uid(), lots: [] };
   const isNew = !id;
@@ -68,11 +93,11 @@ function openInvModal(id) {
         <div class="form-group"><label>Precio</label><input type="number" step="0.01" id="iPrice" value="${i.price||''}"></div>
       </div>
       <div class="form-group"><label>Notas</label><textarea id="iNotes">${escapeHtml(i.notes||'')}</textarea></div>
-      ${isNew ? '<small style="color:var(--text-mute)">Después de crear el producto, usá "+ Stock" para cargar unidades con su vencimiento.</small>' : `<small style="color:var(--text-mute)">Stock actual: ${invTotalStock(i)} unidades en ${(i.lots||[]).length} lote(s).</small>`}
+      ${isNew ? '<small style="color:var(--text-mute)">Luego cargá el stock desde la sección Inventario con el botón +.</small>' : `<small style="color:var(--text-mute)">Stock actual: ${invTotalStock(i)} u en ${(i.lots||[]).length} lote(s).</small>`}
     </div>
     <div class="modal-footer">
       ${!isNew ? `<button class="btn btn-danger" onclick="deleteInv('${i.id}')">Eliminar</button>` : ''}
-      <button class="btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn" onclick="openCatalog()">Volver</button>
       <button class="btn btn-primary" onclick="saveInv('${i.id}', ${isNew})">Guardar</button>
     </div>
   `);
@@ -90,10 +115,10 @@ function saveInv(id, isNew) {
     it.notes = document.getElementById('iNotes').value;
     if (!it.lots) it.lots = [];
   }
-  saveDB(); closeModal(); render(); toast('Producto guardado');
+  saveDB(); openCatalog(); render(); toast('Producto guardado');
 }
 
-// ---- Cargar stock (agregar un lote) ----
+// ---- Cargar stock (agregar lote) ----
 function openAddLotModal(id) {
   const it = db.inventory.find(x=>x.id===id);
   if(!it) return;
@@ -124,7 +149,7 @@ function saveLot(id) {
   saveDB(); closeModal(); render(); toast('Stock cargado ✓');
 }
 
-// ---- Usar / bajar stock (elegir lote) ----
+// ---- Usar / bajar stock ----
 function openUseStockModal(id) {
   const it = db.inventory.find(x=>x.id===id);
   if(!it) return;
@@ -160,12 +185,12 @@ function useStock(id) {
   if (!lot) { toast('Lote no encontrado'); return; }
   if (qty > lot.qty) { toast('No hay tantas unidades en ese lote ('+lot.qty+')'); return; }
   lot.qty -= qty;
-  if (lot.qty <= 0) it.lots = it.lots.filter(l=>l.id!==lot.id); // lote agotado se borra
+  if (lot.qty <= 0) it.lots = it.lots.filter(l=>l.id!==lot.id);
   saveDB(); closeModal(); render(); toast('Stock descontado ✓');
 }
 
 function deleteInv(id) {
-  showConfirm('¿Eliminar este producto del inventario?', () => {
+  showConfirm('¿Eliminar este producto del catálogo? Se pierde su stock.', () => {
     db.inventory = db.inventory.filter(i=>i.id!==id);
     saveDB(); closeModal(); render();
   });

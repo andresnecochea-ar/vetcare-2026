@@ -180,7 +180,7 @@ let calRef = new Date();            // fecha de referencia para semana/dia
 function calViewSwitcher() {
   return `<div class="cal-view-switch">
     <button class="btn btn-sm ${calView==='month'?'active':''}" onclick="setCalView('month')">Mes</button>
-    <button class="btn btn-sm ${calView==='week'?'active':''}" onclick="setCalView('week')">Semana</button>
+    <button class="btn btn-sm ${calView==='week'?'active':''}" onclick="setCalView('week')">Sem</button>
     <button class="btn btn-sm ${calView==='day'?'active':''}" onclick="setCalView('day')">Día</button>
   </div>`;
 }
@@ -233,8 +233,7 @@ function renderMonthView() {
   return `
     <div class="page-header">
       <div class="title"><small>Vista mensual</small><h1>Calendario</h1></div>
-      <div style="display:flex;gap:8px;align-items:center">${calViewSwitcher()}
-      <button class="btn btn-primary" onclick="openReminderModal()">+ Nuevo aviso</button></div>
+      <div style="display:flex;gap:8px;align-items:center">${calViewSwitcher()}</div>
     </div>
     <div class="card">
       <div class="calendar-header">
@@ -264,7 +263,7 @@ function changeMonth(d) {
   render();
 }
 
-function _weekStart(ref){ var d=new Date(ref.getFullYear(),ref.getMonth(),ref.getDate()); d.setDate(d.getDate()-d.getDay()); return d; }
+function _weekStart(ref){ var d=new Date(ref.getFullYear(),ref.getMonth(),ref.getDate()); var dow=(d.getDay()+6)%7; d.setDate(d.getDate()-dow); return d; }
 
 function renderWeekView(){
   var dayNames=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
@@ -285,8 +284,7 @@ function renderWeekView(){
   return `
     <div class="page-header">
       <div class="title"><small>Vista semanal</small><h1>Calendario</h1></div>
-      <div style="display:flex;gap:8px;align-items:center">${calViewSwitcher()}
-      <button class="btn btn-primary" onclick="openReminderModal()">+ Nuevo aviso</button></div>
+      <div style="display:flex;gap:8px;align-items:center">${calViewSwitcher()}</div>
     </div>
     <div class="card">
       <div class="calendar-header">
@@ -308,8 +306,7 @@ function renderDayView(){
   return `
     <div class="page-header">
       <div class="title"><small>Vista diaria</small><h1>Calendario</h1></div>
-      <div style="display:flex;gap:8px;align-items:center">${calViewSwitcher()}
-      <button class="btn btn-primary" onclick="openReminderModal()">+ Nuevo aviso</button></div>
+      <div style="display:flex;gap:8px;align-items:center">${calViewSwitcher()}</div>
     </div>
     <div class="card">
       <div class="calendar-header">
