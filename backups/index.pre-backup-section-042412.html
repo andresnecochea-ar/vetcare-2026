@@ -3463,41 +3463,58 @@ function printInvoice(id){
 // ========================================
 function renderBackup() {
   const sizeKB = (JSON.stringify(db).length / 1024).toFixed(1);
-  const turnos = db.appointments.length + db.groomingAppointments.length;
+  const idbStatusHtml = idb ? '<span style="color:var(--color-mint-hover);font-weight: var(--fw-bold)">● IndexedDB activo — datos guardados automáticamente</span>' : '<span style="color:var(--warning)">● Sin IndexedDB — exportá manualmente</span>';
   return `
     <div class="page-header">
       <div class="title"><small>Seguridad de datos</small><h1>Respaldo y restauración</h1></div>
     </div>
     <div class="card">
       <h3>Estado actual</h3>
-      <p style="margin-bottom:12px"><span style="color:var(--color-mint-hover);font-weight:var(--fw-bold)">● Datos guardados en la nube</span> — se sincronizan automáticamente en Cloudflare.</p>
-      <p style="color:var(--text-soft);margin-top:6px">${db.pets.length} pacientes · ${db.owners.length} tutores · ${turnos} turnos · ${db.reminders.length} avisos · <strong>${sizeKB} KB</strong></p>
-      <p style="color:var(--text-mute);font-size:var(--fs-xs);margin-top:6px">Tus datos están seguros en el servidor. La copia local es un respaldo adicional opcional que podés guardar en tu computadora.</p>
+      <p style="margin-bottom:12px">${idbStatusHtml}</p>
+      <p style="color:var(--text-soft);margin-top:6px">Tamaño total: <strong>${sizeKB} KB</strong> · ${db.pets.length} pacientes · ${db.owners.length} tutores · ${db.appointments.length+db.groomingAppointments.length} turnos · ${db.reminders.length} avisos</p>
+      <p style="color:var(--text-mute);font-size:var(--fs-xs);margin-top:6px">Los datos viven en memoria durante la sesión. Exportá regularmente con el botón de arriba para no perder información.</p>
     </div>
 
-    <h3 style="margin-top:24px;margin-bottom:8px">Descargar copia local</h3>
-    <p style="color:var(--text-soft);font-size:var(--fs-sm);margin-bottom:12px">Guardá un archivo <strong>.vetcare</strong> en tu computadora como resguardo extra.</p>
+    <h3 style="margin-top:24px;margin-bottom:8px">Exportar respaldo</h3>
+    <p style="color:var(--text-soft);font-size:var(--fs-sm);margin-bottom:12px">Descarga un archivo JSON que puedes guardar en cualquier lugar.</p>
     <div class="backup-options">
       <div class="backup-card">
-        <h4>Respaldo completo</h4>
-        <p>Todos los datos, incluidas las fotos de mascotas e imágenes de estudios.</p>
+        <h4>Respaldo total</h4>
+        <p>Todos los datos: pacientes, tutores, turnos, historiales, imágenes, etc.</p>
         <button class="btn btn-primary" onclick="exportVetcare('full')">↓ Descargar todo</button>
       </div>
       <div class="backup-card">
-        <h4>Liviano (sin imágenes)</h4>
-        <p>Todos los datos excepto las fotos. Archivo más chico, ideal para enviar por mail.</p>
+        <h4>Solo pacientes y tutores</h4>
+        <p>Sin turnos ni avisos. Útil para migrar datos esenciales.</p>
+        <button class="btn" onclick="exportVetcare('lite')">↓ Descargar</button>
+      </div>
+      <div class="backup-card">
+        <h4>Solo agenda</h4>
+        <p>Turnos médicos, peluquería y avisos pendientes.</p>
+        <button class="btn" onclick="exportBackup('agenda')">↓ Descargar</button>
+      </div>
+      <div class="backup-card">
+        <h4>Sin imágenes (liviano)</h4>
+        <p>Todo excepto fotos de mascotas e imágenes de estudios. Archivo más pequeño.</p>
         <button class="btn" onclick="exportVetcare('lite')">↓ Descargar</button>
       </div>
     </div>
 
-    <h3 style="margin-top:24px;margin-bottom:8px">Restaurar desde una copia</h3>
-    <p style="color:var(--text-soft);font-size:var(--fs-sm);margin-bottom:12px">Cargá un archivo .vetcare. Se <strong>agregan</strong> los registros que falten; no se borra ni pisa nada de lo que ya está en el sistema.</p>
+    <h3 style="margin-top:24px;margin-bottom:8px">Restaurar respaldo</h3>
+    <p style="color:var(--text-soft);font-size:var(--fs-sm);margin-bottom:12px">Carga un archivo de respaldo previamente exportado.</p>
     <div class="card">
-      <input type="file" id="restoreFile" accept=".vetcare,.json">
-      <div style="margin-top:12px">
-        <button class="btn btn-primary" onclick="restoreBackup('merge')">Cargar y fusionar</button>
+      <input type="file" id="restoreFile" accept=".json">
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="restoreBackup('replace')">Reemplazar todos los datos</button>
+        <button class="btn" onclick="restoreBackup('merge')">Fusionar con datos existentes</button>
       </div>
-      <p style="color:var(--text-mute);font-size:var(--fs-xs);margin-top:10px">Como los datos son compartidos, lo restaurado queda disponible para todo el equipo.</p>
+      <p style="color:var(--danger);font-size:var(--fs-xs);margin-top:10px">⚠ "Reemplazar" eliminará todos los datos actuales antes de restaurar.</p>
+    </div>
+
+    <h3 style="margin-top:24px;margin-bottom:8px;color:var(--danger)">Zona peligrosa</h3>
+    <div class="card" style="border-color:var(--danger)">
+      <p style="margin-bottom:10px">Eliminar permanentemente todos los datos del sistema. Esta acción no se puede deshacer.</p>
+      <button class="btn btn-danger" onclick="wipeAllData()">Borrar TODO</button>
     </div>
   `;
 }
@@ -3535,26 +3552,29 @@ function exportBackup(type) {
 
 function restoreBackup(mode) {
   const file = document.getElementById('restoreFile').files[0];
-  if (!file) { toast('Seleccioná un archivo'); return; }
+  if (!file) { toast('Selecciona un archivo'); return; }
+  if (mode === 'replace' && !confirm('¿Reemplazar TODOS los datos actuales? Esta acción no se puede deshacer.')) return;
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
       const imported = JSON.parse(e.target.result);
       delete imported._meta;
-      let added = 0;
-      // Siempre fusiona por id: agrega lo que falta, nunca borra ni pisa.
-      ['pets','owners','appointments','groomingAppointments','reminders','inventory','invoices'].forEach(key => {
-        if (imported[key] && Array.isArray(imported[key])) {
-          db[key] = db[key] || [];
-          const existing = new Set(db[key].map(x=>x.id));
-          imported[key].forEach(item => {
-            if (item && item.id && !existing.has(item.id)) { db[key].push(item); added++; }
-          });
-        }
-      });
+      if (mode === 'replace') {
+        db = { ...defaultData, ...imported };
+      } else {
+        // Merge by id
+        ['pets','owners','appointments','groomingAppointments','reminders','inventory'].forEach(key => {
+          if (imported[key] && Array.isArray(imported[key])) {
+            const existing = new Set(db[key].map(x=>x.id));
+            imported[key].forEach(item => {
+              if (!existing.has(item.id)) db[key].push(item);
+            });
+          }
+        });
+      }
       saveDB();
       render();
-      toast(added>0 ? ('Respaldo fusionado: '+added+' registros nuevos') : 'No había registros nuevos para agregar');
+      toast('Respaldo restaurado');
     } catch (err) {
       toast('Archivo inválido');
     }
