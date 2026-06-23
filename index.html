@@ -934,11 +934,12 @@ if('serviceWorker'in navigator){window.addEventListener('load',()=>{const c=`con
   /* Botón cerrar búsqueda (solo mobile, cuando está expandida) */
   .gs-close-btn {
     display: none;
+    align-items: center; justify-content: center;
     position: absolute;
-    right: 8px; top: 50%; transform: translateY(-50%);
-    width: 30px; height: 30px;
+    right: 6px; top: 50%; transform: translateY(-50%);
+    width: 42px; height: 42px;
     border: none; background: transparent;
-    color: var(--text-mute); font-size: 22px; line-height: 1;
+    color: var(--text-mute); font-size: 26px; line-height: 1;
     cursor: pointer; border-radius: 50%;
   }
   .gs-close-btn:hover { background: var(--bg-soft); color: var(--text); }
@@ -1325,6 +1326,7 @@ if('serviceWorker'in navigator){window.addEventListener('load',()=>{const c=`con
     #globalSearchWrap.search-open .header-logo-btn,
     #globalSearchWrap.search-open .header-search-btn { display: none; }
     #globalSearchWrap.search-open .global-search-inner { display: block; flex: 1; max-width: none; margin-left: 0; }
+    #globalSearchWrap.search-open .global-search-inner input { padding-right: 48px; }
     .gs-close-btn { display: inline-flex; }
     .today-grid { grid-template-columns: 1fr; gap: 12px; }
 
