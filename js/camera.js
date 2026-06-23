@@ -9,21 +9,24 @@ var _camStream = null;
 var _camPetId = null;
 var _camFacing = 'environment';
 
-function isMobileDevice(){
-  return (navigator.maxTouchPoints > 0 || 'ontouchstart' in window)
-    && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+// Mostrar "Tomar foto" si el dispositivo es tactil y soporta camara.
+// No depende del userAgent (que falla en muchos telefonos reales).
+function deviceCanCapture(){
+  var hasCamera = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  var isTouch = (navigator.maxTouchPoints > 0) || ('ontouchstart' in window);
+  return hasCamera && isTouch;
 }
 
 function choosePhotoSource(petId){
-  var camOption = isMobileDevice()
-    ? '<button class="btn btn-primary" style="width:100%;margin-bottom:10px" onclick="openCamera(\'' + petId + '\')">\U0001F4F7 Tomar foto</button>'
+  var camOption = deviceCanCapture()
+    ? '<button class="btn btn-primary" style="width:100%;margin-bottom:10px;display:flex;align-items:center;justify-content:center" onclick="openCamera(\'' + petId + '\')"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em;vertical-align:-.18em;margin-right:8px"><path d="M4 8.5h3l1.4-2.2h7.2L17 8.5h3a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.4"/></svg>Tomar foto</button>'
     : '';
   showModal(
     '<div class="modal-header"><h3>Foto del paciente</h3>'
     + '<button class="close-btn" onclick="closeModal()">&times;</button></div>'
     + '<div class="modal-body" style="text-align:center">'
     + camOption
-    + '<label class="btn btn-secondary" style="width:100%;cursor:pointer;display:block">\U0001F5BC️ Subir desde archivo'
+    + '<label class="btn btn-secondary" style="width:100%;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em;vertical-align:-.18em;margin-right:8px"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><circle cx="8.6" cy="9.4" r="1.6"/><path d="M4 17l4.6-4.4a1.4 1.4 0 0 1 1.9 0L15 17M13.5 15l2.3-2.1a1.4 1.4 0 0 1 1.9 0L20.5 15"/></svg>Subir desde archivo'
     + '<input type="file" accept="image/*" style="display:none" onchange="uploadPetPhoto(\'' + petId + '\', this); closeModal();"></label>'
     + '</div>'
   );
