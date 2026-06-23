@@ -89,6 +89,8 @@ if('serviceWorker'in navigator){window.addEventListener('load',()=>{const c=`con
     --sidebar-bg:          #f4ecfa;
     --sidebar-border:      #e6d8ea;
     --sidebar-item-active: #FFFFFF;
+    /* Zebra striping de tablas (filas impares) */
+    --row-stripe:          #faf4fb;
     --radius:    10px;
     --radius-sm: 6px;
     --font-display: 'Fraunces', Georgia, serif;
@@ -124,6 +126,7 @@ if('serviceWorker'in navigator){window.addEventListener('load',()=>{const c=`con
     --sidebar-bg:          #241b32;
     --sidebar-border:      #352c40;
     --sidebar-item-active: #2c2040;
+    --row-stripe:          #2a2335;
     --color-violet:        #a779e8;
     --color-violet-2:      #c39ae0;
     --color-warm:          #f4b860;
@@ -448,6 +451,8 @@ if('serviceWorker'in navigator){window.addEventListener('load',()=>{const c=`con
     font-size: var(--fs-sm);
   }
   tr:last-child td { border-bottom: none; }
+  /* Zebra striping: filas impares con un tono tenue para facilitar la lectura */
+  tbody tr:nth-child(odd) td { background: var(--row-stripe); }
   tr:hover td { background: var(--bg-soft); }
   td .actions { display: flex; gap: 6px; }
 
