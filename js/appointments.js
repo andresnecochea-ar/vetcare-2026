@@ -174,8 +174,27 @@ function deleteGroom(id) {
 // ========================================
 let calMonth = new Date().getMonth();
 let calYear = new Date().getFullYear();
+let calView = 'month';              // 'month' | 'week' | 'day'
+let calRef = new Date();            // fecha de referencia para semana/dia
+
+function calViewSwitcher() {
+  return `<div class="cal-view-switch">
+    <button class="btn btn-sm ${calView==='month'?'active':''}" onclick="setCalView('month')">Mes</button>
+    <button class="btn btn-sm ${calView==='week'?'active':''}" onclick="setCalView('week')">Semana</button>
+    <button class="btn btn-sm ${calView==='day'?'active':''}" onclick="setCalView('day')">Día</button>
+  </div>`;
+}
+function setCalView(v){ calView = v; render(); }
+function _ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function shiftRef(days){ calRef = new Date(calRef.getFullYear(), calRef.getMonth(), calRef.getDate()+days); render(); }
 
 function renderCalendar() {
+  if (calView === 'week') return renderWeekView();
+  if (calView === 'day') return renderDayView();
+  return renderMonthView();
+}
+
+function renderMonthView() {
   const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const dayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
   const firstDay = new Date(calYear, calMonth, 1);
@@ -214,7 +233,8 @@ function renderCalendar() {
   return `
     <div class="page-header">
       <div class="title"><small>Vista mensual</small><h1>Calendario</h1></div>
-      <button class="btn btn-primary" onclick="openReminderModal()">+ Nuevo aviso</button>
+      <div style="display:flex;gap:8px;align-items:center">${calViewSwitcher()}
+      <button class="btn btn-primary" onclick="openReminderModal()">+ Nuevo aviso</button></div>
     </div>
     <div class="card">
       <div class="calendar-header">
@@ -242,6 +262,67 @@ function changeMonth(d) {
   if (calMonth > 11) { calMonth = 0; calYear++; }
   if (calMonth < 0) { calMonth = 11; calYear--; }
   render();
+}
+
+function _weekStart(ref){ var d=new Date(ref.getFullYear(),ref.getMonth(),ref.getDate()); d.setDate(d.getDate()-d.getDay()); return d; }
+
+function renderWeekView(){
+  var dayNames=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  var monthNames=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  var start=_weekStart(calRef);
+  var days=[]; for(var i=0;i<7;i++){ var d=new Date(start); d.setDate(start.getDate()+i); days.push(d); }
+  var today=_ymd(new Date());
+  var cols=days.map(function(d){
+    var ds=_ymd(d);
+    var ev=getEventsForDate(ds);
+    return '<div class="cal-week-col '+(ds===today?'today':'')+'" onclick="openDayDetail(\''+ds+'\')">'
+      + '<div class="cal-week-head">'+dayNames[d.getDay()]+' '+d.getDate()+'</div>'
+      + '<div class="cal-week-events">'
+      + (ev.length? ev.map(function(e){return '<div class="cal-event-mini '+e.cls+'" title="'+escapeAttr(e.title)+'">'+escapeHtml(e.title)+'</div>';}).join('') : '<div class="cal-week-empty">—</div>')
+      + '</div></div>';
+  }).join('');
+  var rangeLabel = days[0].getDate()+' '+monthNames[days[0].getMonth()]+' — '+days[6].getDate()+' '+monthNames[days[6].getMonth()];
+  return `
+    <div class="page-header">
+      <div class="title"><small>Vista semanal</small><h1>Calendario</h1></div>
+      <div style="display:flex;gap:8px;align-items:center">${calViewSwitcher()}
+      <button class="btn btn-primary" onclick="openReminderModal()">+ Nuevo aviso</button></div>
+    </div>
+    <div class="card">
+      <div class="calendar-header">
+        <button class="btn btn-sm" onclick="shiftRef(-7)">‹</button>
+        <h2>${rangeLabel}</h2>
+        <button class="btn btn-sm" onclick="shiftRef(7)">›</button>
+      </div>
+      <div class="cal-week-grid">${cols}</div>
+    </div>
+  `;
+}
+
+function renderDayView(){
+  var dayNames=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  var monthNames=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  var ds=_ymd(calRef);
+  var ev=getEventsForDate(ds);
+  var label=dayNames[calRef.getDay()]+' '+calRef.getDate()+' de '+monthNames[calRef.getMonth()];
+  return `
+    <div class="page-header">
+      <div class="title"><small>Vista diaria</small><h1>Calendario</h1></div>
+      <div style="display:flex;gap:8px;align-items:center">${calViewSwitcher()}
+      <button class="btn btn-primary" onclick="openReminderModal()">+ Nuevo aviso</button></div>
+    </div>
+    <div class="card">
+      <div class="calendar-header">
+        <button class="btn btn-sm" onclick="shiftRef(-1)">‹</button>
+        <h2>${label}</h2>
+        <button class="btn btn-sm" onclick="shiftRef(1)">›</button>
+      </div>
+      <div class="cal-day-list">
+        ${ev.length ? ev.map(function(e){return '<div class="cal-day-row '+e.cls+'">'+escapeHtml(e.title)+'</div>';}).join('') : '<div class="empty-state">Sin eventos este día</div>'}
+      </div>
+      <div style="margin-top:14px"><button class="btn btn-sm" onclick="openDayDetail('${ds}')">Ver detalle / agregar</button></div>
+    </div>
+  `;
 }
 
 function getEventsForDate(dateStr) {

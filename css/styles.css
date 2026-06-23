@@ -1502,3 +1502,21 @@ html, body { max-width:100%; overflow-x:hidden; }
 .assoc-row:hover { background:var(--bg-soft); }
 .assoc-row input[type=checkbox] { width:auto; margin:0; flex:none; }
 .assoc-empty { padding:14px; text-align:center; color:var(--text-mute); font-size:var(--fs-sm); }
+
+/* ===== T5: Calendario - selector de vista y vistas semana/dia ===== */
+.cal-view-switch { display:inline-flex; gap:4px; }
+.cal-view-switch .btn.active { background:var(--accent); color:#fff; }
+.cal-week-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+.cal-week-col { border:1px solid var(--border); border-radius:var(--radius-sm); min-height:120px; padding:6px; cursor:pointer; background:var(--bg-alt); }
+.cal-week-col.today { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+.cal-week-head { font-size:var(--fs-xs); font-weight:var(--fw-bold); margin-bottom:6px; color:var(--text-soft); }
+.cal-week-events { display:flex; flex-direction:column; gap:3px; }
+.cal-week-empty { color:var(--text-mute); font-size:var(--fs-xs); }
+.cal-day-list { display:flex; flex-direction:column; gap:8px; }
+.cal-day-row { padding:12px 14px; border-radius:var(--radius-sm); background:var(--bg-soft); border-left:3px solid var(--accent); }
+.cal-day-row.info { border-left-color:var(--info); }
+.cal-day-row.warning { border-left-color:var(--warning); }
+@media (max-width: 768px) {
+  .cal-week-grid { grid-template-columns:1fr; }
+  .cal-week-col { min-height:auto; }
+}
