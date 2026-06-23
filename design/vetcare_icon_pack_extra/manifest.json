@@ -1,0 +1,54 @@
+{
+  "name": "VetCare Extra Icons",
+  "style": {
+    "viewBox": "0 0 24 24",
+    "fill": "none",
+    "stroke": "currentColor",
+    "strokeWidth": 1.8,
+    "strokeLinecap": "round",
+    "strokeLinejoin": "round"
+  },
+  "count": 8,
+  "icons": [
+    {
+      "name": "configuracion",
+      "label": "Configuración",
+      "file": "svg/configuracion.svg"
+    },
+    {
+      "name": "modo-oscuro",
+      "label": "Modo oscuro",
+      "file": "svg/modo-oscuro.svg"
+    },
+    {
+      "name": "subir-datos",
+      "label": "Subir datos",
+      "file": "svg/subir-datos.svg"
+    },
+    {
+      "name": "descargar-datos",
+      "label": "Descargar datos",
+      "file": "svg/descargar-datos.svg"
+    },
+    {
+      "name": "camara",
+      "label": "Cámara de fotos",
+      "file": "svg/camara.svg"
+    },
+    {
+      "name": "galeria",
+      "label": "Imagen de galería",
+      "file": "svg/galeria.svg"
+    },
+    {
+      "name": "buscar",
+      "label": "Buscar",
+      "file": "svg/buscar.svg"
+    },
+    {
+      "name": "cerrar",
+      "label": "Cerrar",
+      "file": "svg/cerrar.svg"
+    }
+  ]
+}
