@@ -6,7 +6,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="VetCare">
 <script>
-if('serviceWorker'in navigator){window.addEventListener('load',()=>{const c=`const CACHE='vc5';self.addEventListener('install',e=>{self.skipWaiting();});self.addEventListener('activate',e=>{self.clients.claim();});self.addEventListener('fetch',e=>{e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)));});`;const b=new Blob([c],{type:'application/javascript'});navigator.serviceWorker.register(URL.createObjectURL(b)).catch(()=>{});});}
+/* Service worker DESACTIVADO durante desarrollo para evitar versiones cacheadas viejas.
+   Esta limpieza des-registra cualquier SW previo y borra sus cachés al cargar. */
+if('serviceWorker'in navigator){
+  navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{});
+  if(window.caches&&caches.keys){caches.keys().then(ks=>ks.forEach(k=>caches.delete(k))).catch(()=>{});}
+}
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -2013,6 +2018,7 @@ function attachPetListeners() {}
 function openPetModal(id) {
   const pet = id ? db.pets.find(p => p.id === id) : { id: uid(), ownerIds: [] };
   const isNew = !id;
+  const ownerOpts = db.owners.map(o => `<option value="${o.id}" ${(pet.ownerIds||[]).includes(o.id)?'selected':''}>${escapeHtml(o.name)}</option>`).join('');
 
   showModal(`
     <div class="modal-header">
@@ -2807,7 +2813,7 @@ function renderGrooming() {
 function openGroomModal(id) {
   const a = id ? db.groomingAppointments.find(x=>x.id===id) : { id: uid() };
   const isNew = !id;
-  const petOpts = db.pets.map(p => `<option value="${p.id}" ${(a.petId===p.id||p.id===presetPetId)?'selected':''}>${escapeHtml(p.name)}</option>`).join('');
+  const petOpts = db.pets.map(p => `<option value="${p.id}" ${a.petId===p.id?'selected':''}>${escapeHtml(p.name)}</option>`).join('');
   showModal(`
     <div class="modal-header"><h2>${isNew?'Nuevo turno de peluquería':'Editar turno'}</h2><button class="close-btn" onclick="closeModal()">&times;</button></div>
     <div class="modal-body">
@@ -3494,6 +3500,35 @@ function closeModal() {
   document.getElementById('modalContainer').innerHTML = '';
 }
 
+function validateField(fieldId, isValid, message) {
+  const field = document.getElementById(fieldId);
+  const err = field ? field.closest('.form-group')?.querySelector('.field-error') : null;
+  if (isValid) {
+    if (err) { err.textContent = ''; err.classList.remove('show'); }
+    if (field) field.classList.remove('input-error');
+    return true;
+  }
+  if (err) { err.textContent = message || 'Campo inválido'; err.classList.add('show'); }
+  if (field) field.classList.add('input-error');
+  return false;
+}
+
+let _confirmCb = null;
+function showConfirm(message, onConfirm) {
+  _confirmCb = onConfirm;
+  const ov = document.getElementById('confirmOverlay');
+  document.getElementById('confirmMsg').textContent = message;
+  ov.classList.add('show');
+  document.getElementById('confirmOk').onclick = () => {
+    ov.classList.remove('show');
+    const cb = _confirmCb; _confirmCb = null;
+    if (cb) cb();
+  };
+  document.getElementById('confirmCancel').onclick = () => {
+    ov.classList.remove('show'); _confirmCb = null;
+  };
+}
+
 // ========================================
 // [06b] UTILS (formato y texto) — formatDate, calcAge, cleanPhone, escapeHtml
 // ========================================
@@ -3724,4 +3759,3 @@ function renderToday() {
 </script>
 </body>
 </html>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
