@@ -247,9 +247,7 @@ function openPetDetail(id) {
     </div>
     <div class="modal-body">
       <div class="pet-header">
-        <label class="pet-avatar${pet.photo ? '' : ' is-silhouette'}" style="${petPhotoStyle(pet)}" title="Click para cambiar foto">
-          <input type="file" accept="image/*" onchange="uploadPetPhoto('${pet.id}', this)">
-        </label>
+        <div class="pet-avatar${pet.photo ? '' : ' is-silhouette'}" style="${petPhotoStyle(pet)};cursor:pointer" title="Click para cambiar foto" onclick="choosePhotoSource('${pet.id}')"></div>
         <div class="pet-info" style="flex:1">
           <h2>${escapeHtml(pet.name)}</h2>
           <div class="meta">${escapeHtml(pet.species||'—')} · ${escapeHtml(pet.breed||'—')} · ${age}</div>
