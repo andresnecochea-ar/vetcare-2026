@@ -4,7 +4,7 @@
    y de los recibos, y acceso al respaldo.
    ===================================================================== */
 
-var APP_VERSION = '5.7';
+var APP_VERSION = '5.8';
 
 function _ensureSettings(){
   if(!db.settings) db.settings = {};
@@ -41,6 +41,12 @@ function openSettings(){
     + '  <input class="input" id="setRecPhone" placeholder="Telefono" value="' + escapeAttr(s.receiptPhone) + '" style="margin-bottom:8px">'
     + '  <input class="input" id="setRecTax" placeholder="CUIT" value="' + escapeAttr(s.receiptTaxId) + '">'
     + '  <button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="saveSettings()">Guardar datos</button>'
+    + '</div>'
+
+    + '<div class="settings-section">'
+    + '  <div class="settings-label">Catálogo de productos</div>'
+    + '  <button class="btn btn-secondary" style="width:100%" onclick="openCatalog()">Gestionar productos</button>'
+    + '  <small style="color:var(--text-mute);display:block;margin-top:6px">Definí acá la lista de productos. El stock se carga desde la sección Inventario.</small>'
     + '</div>'
 
     + '<div class="settings-section">'

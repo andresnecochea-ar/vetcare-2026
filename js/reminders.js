@@ -95,6 +95,28 @@ function getUpcomingBirthdays(days = 30) {
   return result.sort((a,b) => a.daysUntil - b.daysUntil);
 }
 
+var DEFAULT_BIRTHDAY_TEMPLATE = '🎉 ¡Hola! [nombre] está por cumplir [edad] años el [fecha] 🎂\n\nDesde la veterinaria le queremos regalar un 15% de descuento en su próximo control y baño. ¡Esperamos su visita!';
+
+function birthdayTemplate(){
+  return (db.settings && db.settings.birthdayTemplate) ? db.settings.birthdayTemplate : DEFAULT_BIRTHDAY_TEMPLATE;
+}
+// Reemplaza los placeholders por los datos reales de la mascota.
+function fillBirthdayMsg(pet){
+  var fecha = formatDate(pet.nextBirthday.toISOString().split('T')[0]);
+  return birthdayTemplate()
+    .replace(/\[nombre\]/gi, pet.name)
+    .replace(/\[edad\]/gi, pet.age)
+    .replace(/\[fecha\]/gi, fecha);
+}
+function saveBirthdayTemplate(){
+  var ta = document.getElementById('birthdayTpl');
+  if(!ta) return;
+  if(!db.settings) db.settings = {};
+  db.settings.birthdayTemplate = ta.value;
+  saveDB();
+  toast('Plantilla guardada ✓');
+}
+
 function renderBirthdays() {
   const upcoming = getUpcomingBirthdays(60);
   return `
@@ -106,7 +128,7 @@ function renderBirthdays() {
       `<div class="pets-grid">
         ${upcoming.map(pet => {
           const owners = (pet.ownerIds||[]).map(id => db.owners.find(o=>o.id===id)).filter(Boolean);
-          const promoMsg = encodeURIComponent(`🎉 ¡Hola! ${pet.name} está por cumplir ${pet.age} años el ${formatDate(pet.nextBirthday.toISOString().split('T')[0])} 🎂\n\nDesde la veterinaria le queremos regalar un 15% de descuento en su próximo control y baño. ¡Esperamos su visita!`);
+          const promoMsg = encodeURIComponent(fillBirthdayMsg(pet));
           return `<div class="pet-card" style="cursor:default">
             <div class="pet-photo${pet.photo?'':' is-silhouette'}" style="${petPhotoStyle(pet)}"></div>
             <div class="pet-card-body">
@@ -124,10 +146,9 @@ function renderBirthdays() {
     }
     <div class="card" style="margin-top:24px">
       <h3>Plantilla de mensaje promocional</h3>
-      <p style="color:var(--text-soft);font-size:var(--fs-sm);margin-top:6px">Este es el mensaje que se envía al hacer clic en WhatsApp/Email:</p>
-      <div class="promo-template">🎉 ¡Hola! [Nombre mascota] está por cumplir [edad] años el [fecha] 🎂
-
-Desde la veterinaria le queremos regalar un 15% de descuento en su próximo control y baño. ¡Esperamos su visita!</div>
+      <p style="color:var(--text-soft);font-size:var(--fs-sm);margin-top:6px">Editá el mensaje que se envía por WhatsApp/Email. Usá <strong>[nombre]</strong>, <strong>[edad]</strong> y <strong>[fecha]</strong> y se reemplazan automáticamente.</p>
+      <textarea id="birthdayTpl" class="input" rows="5" style="margin-top:10px">${escapeHtml(birthdayTemplate())}</textarea>
+      <button class="btn btn-primary" style="margin-top:10px" onclick="saveBirthdayTemplate()">Guardar plantilla</button>
     </div>
   `;
 }

@@ -1520,3 +1520,16 @@ html, body { max-width:100%; overflow-x:hidden; }
   .cal-week-grid { grid-template-columns:1fr; }
   .cal-week-col { min-height:auto; }
 }
+
+/* ===== Topbar movil: altura fija para que abrir el buscador no mueva nada ===== */
+@media (max-width: 768px) {
+  #globalSearchWrap {
+    height: 64px; min-height: 64px; box-sizing: border-box;
+    padding: 0 16px; display: flex; align-items: center; gap: 10px;
+  }
+  #globalSearchWrap.search-open { height: 64px; min-height: 64px; padding: 0 16px; }
+  #globalSearchWrap.search-open .global-search-inner { display: flex; align-items: center; height: 100%; }
+  #globalSearchWrap.search-open .global-search-inner input {
+    height: 42px; box-sizing: border-box;
+  }
+}
