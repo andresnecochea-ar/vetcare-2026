@@ -15,11 +15,10 @@ function _fmtMoney(v){ return '$'+parseFloat(v||0).toLocaleString('es-AR',{minim
 function renderInventory() {
   return `
     <div class="page-header">
-      <div class="title"><small>Stock de productos</small><h1>Inventario</h1></div>
-      <button class="btn btn-secondary" onclick="openCatalog()">Gestionar catálogo</button>
+      <div class="title"><small>Control de stock</small><h1>Inventario</h1></div>
     </div>
     ${db.inventory.length === 0
-      ? '<div class="empty-state">No hay productos en el catálogo. Agregalos desde Opciones › Catálogo de productos (o el botón de arriba).</div>'
+      ? '<div class="empty-state">No hay productos cargados. Definí primero el catálogo desde Opciones › Catálogo de productos.</div>'
       : `<div class="table-wrap">
       <table>
         <thead><tr><th>Producto</th><th class="col-sec">Categoría</th><th>Stock</th><th class="col-sec">Mínimo</th><th class="col-sec">Precio</th><th class="col-sec">Próx. venc.</th><th>Stock</th></tr></thead>

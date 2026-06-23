@@ -4,7 +4,7 @@
    y de los recibos, y acceso al respaldo.
    ===================================================================== */
 
-var APP_VERSION = '5.8';
+var APP_VERSION = '5.9';
 
 function _ensureSettings(){
   if(!db.settings) db.settings = {};
