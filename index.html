@@ -20,7 +20,7 @@ if('serviceWorker'in navigator){
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/styles.css?v=5.0">
 </head>
 <body>
 <div id="splash"><div class="splash-logo" id="splashLogo"></div><div class="splash-name">VetCare</div><div class="splash-spin"></div></div>
@@ -70,15 +70,14 @@ if('serviceWorker'in navigator){
       <button class="nav-item" data-view="dashboard" type="button"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"> <rect x="3.5" y="4" width="17" height="16" rx="3"/> <path d="M8 15v1.8M12 12v4.8M16 9.5v7.3"/> <path d="M7 8h4M7 11h2"/> <rect x="14" y="7" width="3.5" height="2.2" rx=".7"/> </svg><span class="nav-label">Panel</span></button>
       <button class="nav-item" data-view="reminders" type="button"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"> <path d="M18 10.5c0-3.5-2.2-6-6-6s-6 2.5-6 6v3.3l-1.7 2.8h15.4L18 13.8v-3.3Z"/> <path d="M10 19c.4 1 1.1 1.5 2 1.5s1.6-.5 2-1.5"/> <circle cx="18.5" cy="5.2" r="1.4"/> </svg><span class="nav-label">Avisos</span><span class="nav-badge" id="badgeReminders" style="display:none">0</span></button>
       <button class="nav-item" data-view="inventory" type="button"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"> <path d="M4 8l8-4 8 4-8 4-8-4Z"/> <path d="M4 8v8l8 4 8-4V8"/> <path d="M12 12v8"/> <path d="M8.2 6.1l8 4"/> </svg><span class="nav-label">Inventario</span><span class="nav-badge orange" id="badgeInventory" style="display:none">0</span></button>
-      <button class="nav-item" data-view="invoices" type="button"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"> <path d="M6 3.8h12v16.4l-2-1.2-2 1.2-2-1.2-2 1.2-2-1.2-2 1.2V3.8Z"/> <path d="M9 8h6M9 11.5h6M9 15h3.8"/> <circle cx="15.6" cy="15" r=".3"/> </svg><span class="nav-label">Facturación</span><span class="nav-badge green" id="badgeInvoices" style="display:none">0</span></button>
+      <button class="nav-item" data-view="invoices" type="button"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"> <path d="M6 3.8h12v16.4l-2-1.2-2 1.2-2-1.2-2 1.2-2-1.2-2 1.2V3.8Z"/> <path d="M9 8h6M9 11.5h6M9 15h3.8"/> <circle cx="15.6" cy="15" r=".3"/> </svg><span class="nav-label">Recibos</span><span class="nav-badge green" id="badgeInvoices" style="display:none">0</span></button>
       <button class="nav-item" data-view="birthdays" type="button"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"> <path d="M7 12h10a2 2 0 0 1 2 2v5H5v-5a2 2 0 0 1 2-2Z"/> <path d="M5 16h14"/> <path d="M9 12V9.2M12 12V9.2M15 12V9.2"/> <path d="M9 7.3c.7-.7.7-1.5 0-2.3-.7.8-.7 1.6 0 2.3ZM12 7.3c.7-.7.7-1.5 0-2.3-.7.8-.7 1.6 0 2.3ZM15 7.3c.7-.7.7-1.5 0-2.3-.7.8-.7 1.6 0 2.3Z"/> </svg><span class="nav-label">Cumpleaños</span></button>
       <div class="nav-group-label">Sistema</div>
       <button class="nav-item" data-view="backup" type="button"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"> <ellipse cx="12" cy="6" rx="5.5" ry="2.5"/> <path d="M6.5 6v4.5c0 1.4 2.5 2.5 5.5 2.5s5.5-1.1 5.5-2.5V6"/> <path d="M6.5 10.5v4.5c0 1.4 2.5 2.5 5.5 2.5.8 0 1.5-.1 2.2-.2"/> <path d="M17 14v4h4"/> <path d="M21 18c-.7 1.7-2.1 2.8-4 2.8-1.5 0-2.8-.8-3.6-2"/> </svg><span class="nav-label">Respaldo</span></button>
     </nav>
     <div class="sidebar-footer">
-      <button class="theme-toggle" onclick="toggleTheme()">
-        <span id="themeIcon">☾</span> <span id="themeLabel">Modo Oscuro</span>
-      </button>
+      <button class="footer-btn" onclick="openSettings()" type="button"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"> <circle cx="12" cy="12" r="3.2"/> <path d="M12 3.5v2.2M12 18.3v2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M3.5 12h2.2M18.3 12h2.2M5.2 18.8l1.6-1.6M17.2 6.8l1.6-1.6"/> </svg><span class="nav-label">Opciones</span></button>
+      <button class="footer-btn" onclick="logout()" type="button"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"> <path d="M14.5 7.5V5.5a1.5 1.5 0 0 0-1.5-1.5H6a1.5 1.5 0 0 0-1.5 1.5v13A1.5 1.5 0 0 0 6 20h7a1.5 1.5 0 0 0 1.5-1.5v-2"/> <path d="M9.5 12h10M16.5 8.5l3.5 3.5-3.5 3.5"/> </svg><span class="nav-label">Salir</span></button>
     </div>
   </aside>
   <div class="content-col">
@@ -105,7 +104,6 @@ if('serviceWorker'in navigator){
 
 <!-- Modals injected here -->
 <div id="modalContainer"></div>
-<button id="logoutBtn" onclick="logout()" title="Cerrar sesion" style="display:none;position:fixed;bottom:16px;right:16px;z-index:9000;background:var(--navy,#6F2DBD);color:#fff;border:none;border-radius:24px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.2);">Salir</button>
 
 
 <!-- Lightbox -->
@@ -128,19 +126,20 @@ if('serviceWorker'in navigator){
 </div>
 
 <!-- Modulos VetCare. Orden importante: definiciones primero, arranque (auth.js) al final. -->
-<script src="js/api.js"></script>
-<script src="js/app-core.js"></script>
-<script src="js/dashboard.js"></script>
-<script src="js/pets.js"></script>
-<script src="js/owners.js"></script>
-<script src="js/appointments.js"></script>
-<script src="js/reminders.js"></script>
-<script src="js/inventory.js"></script>
-<script src="js/invoices.js"></script>
-<script src="js/backup.js"></script>
-<script src="js/ui.js"></script>
-<script src="js/app-shell.js"></script>
-<script src="js/camera.js"></script>
-<script src="js/auth.js"></script>
+<script src="js/api.js?v=5.0"></script>
+<script src="js/app-core.js?v=5.0"></script>
+<script src="js/dashboard.js?v=5.0"></script>
+<script src="js/pets.js?v=5.0"></script>
+<script src="js/owners.js?v=5.0"></script>
+<script src="js/appointments.js?v=5.0"></script>
+<script src="js/reminders.js?v=5.0"></script>
+<script src="js/inventory.js?v=5.0"></script>
+<script src="js/invoices.js?v=5.0"></script>
+<script src="js/backup.js?v=5.0"></script>
+<script src="js/ui.js?v=5.0"></script>
+<script src="js/settings.js?v=5.0"></script>
+<script src="js/app-shell.js?v=5.0"></script>
+<script src="js/camera.js?v=5.0"></script>
+<script src="js/auth.js?v=5.0"></script>
 </body>
 </html>

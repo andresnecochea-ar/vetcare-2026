@@ -55,8 +55,10 @@ function exportVetcare(type) {
 // ========================================
 function applyTheme() {
   document.documentElement.setAttribute('data-theme', db.settings.theme);
-  document.getElementById('themeIcon').textContent = db.settings.theme === 'dark' ? '☀' : '☾';
-  document.getElementById('themeLabel').textContent = db.settings.theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro';
+  var ic = document.getElementById('themeIcon');
+  var lb = document.getElementById('themeLabel');
+  if (ic) ic.textContent = db.settings.theme === 'dark' ? '☀' : '☾';
+  if (lb) lb.textContent = db.settings.theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro';
 }
 function toggleTheme() {
   db.settings.theme = db.settings.theme === 'dark' ? 'light' : 'dark';

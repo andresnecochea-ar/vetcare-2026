@@ -1410,3 +1410,27 @@
 .cam-shutter:active{transform:scale(.92);}
 .cam-btn{width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);}
 .cam-btn:active{background:rgba(255,255,255,.32);}
+
+/* ===== Footer del menu lateral: Opciones + Salir ===== */
+.sidebar-footer { display:flex; flex-direction:column; gap:6px; }
+.footer-btn {
+  display:flex; align-items:center; gap:14px; width:100%; text-align:left;
+  padding:12px 14px; border-radius:var(--radius-sm); cursor:pointer;
+  color:var(--text-soft); font-size:1.18rem; font-weight:var(--fw-medium);
+  background:transparent; border:none; font-family:inherit;
+}
+.footer-btn:hover { background:var(--bg-alt); color:var(--text); }
+.footer-btn .ico { width:26px; height:26px; flex-shrink:0; }
+
+/* ===== Menu lateral mas grande (aprox +50%) ===== */
+.sidebar .nav-item { font-size:1.18rem; padding:12px 14px; gap:14px; }
+.sidebar .nav-item .ico { width:26px; height:26px; }
+.sidebar .nav-group-label { font-size:0.92rem; padding:16px 14px 5px; }
+
+/* ===== Ventana Opciones ===== */
+.settings-section { margin-bottom:20px; }
+.settings-section:last-child { margin-bottom:0; }
+.settings-label { font-size:var(--fs-2xs); font-weight:var(--fw-bold); text-transform:uppercase; letter-spacing:.08em; color:var(--text-mute); margin-bottom:8px; }
+.settings-version-row { font-size:1.05rem; font-weight:var(--fw-medium); color:var(--text); }
+.input { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg); color:var(--text); font-size:var(--fs-sm); font-family:inherit; box-sizing:border-box; }
+.input:focus { outline:none; border-color:var(--accent); }
