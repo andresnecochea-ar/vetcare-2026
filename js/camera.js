@@ -16,14 +16,14 @@ function isMobileDevice(){
 
 function choosePhotoSource(petId){
   var camOption = isMobileDevice()
-    ? '<button class="btn btn-primary" style="width:100%;margin-bottom:10px" onclick="openCamera(\'' + petId + '\')">\U0001F4F7 Tomar foto</button>'
+    ? '<button class="btn btn-primary" style="width:100%;margin-bottom:10px" onclick="openCamera(\'' + petId + '\')">📷 Tomar foto</button>'
     : '';
   showModal(
     '<div class="modal-header"><h3>Foto del paciente</h3>'
     + '<button class="close-btn" onclick="closeModal()">&times;</button></div>'
     + '<div class="modal-body" style="text-align:center">'
     + camOption
-    + '<label class="btn btn-secondary" style="width:100%;cursor:pointer;display:block">\U0001F5BC️ Subir desde archivo'
+    + '<label class="btn btn-secondary" style="width:100%;cursor:pointer;display:block">🖼️ Subir desde archivo'
     + '<input type="file" accept="image/*" style="display:none" onchange="uploadPetPhoto(\'' + petId + '\', this); closeModal();"></label>'
     + '</div>'
   );
