@@ -83,9 +83,14 @@ Comprobaciones posteriores:
 - Frontend generado en `dist/`.
 - Auditoría npm: 0 vulnerabilidades.
 
-## Pendiente de publicación en GitHub
+## GitHub y frontend público
 
-El Worker y D1 ya están actualizados. El frontend público todavía coincide con
-`origin/main` y seguirá funcionando con la API nueva. Para publicar las mejoras
-del frontend y versionar toda esta actualización falta autenticar escritura en
-GitHub, crear el commit y hacer push a `main`.
+- Actualización publicada inicialmente en `main` mediante el commit `044b19e`.
+- CI: correcto.
+- Workflow de despliegue: correcto.
+- GitHub Pages: correcto.
+- `index.html`, `js/api.js` y `js/config.js` públicos fueron comparados por hash
+  con el commit y coinciden exactamente.
+
+El frontend y el Worker usan la misma URL de API y quedaron sincronizados sin
+requerir una acción de los usuarios.
