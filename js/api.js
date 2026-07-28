@@ -57,7 +57,7 @@ const PALETTE = { navy:'#6F2DBD', lilac:'#A663CC', mint:'#F4B860', coral:'#e5484
 // ========================================
 // [03-API] BACKEND — Cloudflare Worker + D1 (fuente de verdad central)
 // ========================================
-const API_BASE = 'https://vetcare-api.vetcare-neco.workers.dev';
+const API_BASE = String(window.VETCARE_CONFIG?.apiBase || '').replace(/\/+$/, '');
 let authToken = null;
 let currentUser = null;
 try { authToken = localStorage.getItem('vetcare_token') || null; } catch(e){}
@@ -77,7 +77,13 @@ function clearSession(){ authToken = null; currentUser = null; try { localStorag
 async function apiLogin(email, password){ const d = await api('/api/login', { method:'POST', body:{ email, password } }); setSession(d.token, d.user); return d.user; }
 async function apiRegister(email, password, name, inviteCode){ return api('/api/register', { method:'POST', body:{ email, password, name, inviteCode } }); }
 async function apiLogout(){ try { await api('/api/logout', { method:'POST' }); } catch(e){} clearSession(); }
-async function loadFromAPI(){ const d = await api('/api/data'); db = Object.assign(JSON.parse(JSON.stringify(defaultData)), d); if (!db.invoices) db.invoices = []; return true; }
+async function loadFromAPI(){
+  const d = await api('/api/data');
+  db = Object.assign(JSON.parse(JSON.stringify(defaultData)), d);
+  if (!db.invoices) db.invoices = [];
+  _lastSnapshot = _snap();
+  return true;
+}
 // ========================================
 // [03] PERSISTENCIA — IndexedDB (respaldo offline local)
 // ========================================
@@ -102,7 +108,7 @@ async function idbAll(s){return new Promise(res=>{
 
 let _syncTimer=null,_syncing=false,_syncAgain=false,_lastSnapshot={};
 const _ENTITY_TABLES=['owners','pets','appointments','groomingAppointments','reminders','inventory','invoices'];
-function _snap(){return JSON.parse(JSON.stringify({owners:db.owners,pets:db.pets,appointments:db.appointments,groomingAppointments:db.groomingAppointments,reminders:db.reminders,inventory:db.inventory,invoices:db.invoices}));}
+function _snap(){return JSON.parse(JSON.stringify({owners:db.owners,pets:db.pets,appointments:db.appointments,groomingAppointments:db.groomingAppointments,reminders:db.reminders,inventory:db.inventory,invoices:db.invoices,clinicName:db.clinicName,settings:db.settings}));}
 async function syncToAPI(){
   if(!apiConfigured()||!authToken)return;
   if(_syncing){_syncAgain=true;return;}
@@ -113,6 +119,7 @@ async function syncToAPI(){
       for(const item of cur){ if(item&&item.id) await api('/api/'+t,{method:'POST',body:item}); }
       for(const old of prev){ if(old&&old.id&&!curIds.has(old.id)) await api('/api/'+t+'/'+old.id,{method:'DELETE'}); }
     }
+    await api('/api/settings',{method:'POST',body:{clinicName:db.clinicName||'VetCare',settings:db.settings||{}}});
     _lastSnapshot=_snap();
   }catch(e){ console.warn('Sync API fallo:',e); toast('⚠ No se pudo guardar en el servidor'); }
   finally{ _syncing=false; if(_syncAgain){_syncAgain=false;syncToAPI();} }
@@ -200,4 +207,3 @@ async function createNewDB() {
   startApp();
   toast('Nueva base de datos creada ✓');
 }
-

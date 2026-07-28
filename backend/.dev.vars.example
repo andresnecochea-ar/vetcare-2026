@@ -1,0 +1,2 @@
+# Copiá este archivo como backend/.dev.vars y elegí una clave solo para desarrollo.
+INVITE_CODE=clave-local-de-ejemplo

@@ -1,0 +1,32 @@
+{
+  "name": "vetcare",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@11.16.0",
+  "description": "Sistema de gestión veterinaria con frontend estático y API en Cloudflare Workers + D1.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node scripts/build-static.mjs",
+    "check:syntax": "node scripts/check-syntax.mjs",
+    "check": "npm run check:syntax && npm run typecheck && npm run worker:types:check && npm run worker:dry-run",
+    "test": "node scripts/vitest.mjs run",
+    "typecheck": "tsc --project backend/tsconfig.json",
+    "worker:dev": "node scripts/wrangler.mjs dev --config backend/wrangler.jsonc",
+    "worker:types": "node scripts/wrangler.mjs types backend/worker-configuration.d.ts --config backend/wrangler.jsonc",
+    "worker:types:check": "node scripts/wrangler.mjs types backend/worker-configuration.d.ts --config backend/wrangler.jsonc --check",
+    "worker:dry-run": "node scripts/wrangler.mjs deploy --dry-run --config backend/wrangler.jsonc --outdir .wrangler-dist",
+    "worker:deploy": "node scripts/wrangler.mjs deploy --config backend/wrangler.jsonc",
+    "db:migrate:local": "node scripts/wrangler.mjs d1 migrations apply vetcare --local --config backend/wrangler.jsonc",
+    "db:migrate:remote": "node scripts/wrangler.mjs d1 migrations apply vetcare --remote --config backend/wrangler.jsonc"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.18.8",
+    "@types/node": "26.1.2",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10",
+    "wrangler": "4.114.0"
+  }
+}
