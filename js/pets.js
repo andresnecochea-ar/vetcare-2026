@@ -149,6 +149,7 @@ function attachPetListeners() {}
 function openPetModal(id) {
   const pet = id ? db.pets.find(p => p.id === id) : { id: uid(), ownerIds: [] };
   const isNew = !id;
+  const clinicalDisabled = canEditClinical() ? '' : ' disabled';
   const ownerItems = db.owners.map(o => ({ id:o.id, label:o.name + (o.dni?' · DNI '+o.dni:''), search:(o.name||'')+' '+(o.dni||'') }));
   const speciesCommon = ['Perro','Gato','Conejo','Ave','Tortuga','Roedor','Pez','Caballo','Otro'];
   const curSp = pet.species||'';
@@ -172,19 +173,20 @@ function openPetModal(id) {
       </div>
       <div class="form-row-3">
         <div class="form-group"><label>Fecha nacimiento</label><input type="date" id="pBirth" value="${pet.birthdate||''}"></div>
-        <div class="form-group"><label>Peso (kg)</label><input type="number" step="0.1" id="pWeight" value="${pet.weight||''}"></div>
+        <div class="form-group"><label>Peso (kg)</label><input type="number" step="0.1" id="pWeight" value="${pet.weight||''}"${clinicalDisabled}></div>
         <div class="form-group"><label>Microchip</label><input type="text" id="pChip" value="${escapeAttr(pet.microchip||'')}"></div>
       </div>
       <div class="form-group">
         <label>Tutores asociados</label>
         ${db.owners.length ? assocPicker('petOwnersPicker', ownerItems, pet.ownerIds||[]) : '<small style="color:var(--text-mute)">No hay tutores todavía. Creá uno en la sección Tutores.</small>'}
       </div>
-      <div class="form-group"><label>Alergias conocidas</label><textarea id="pAllergies">${escapeHtml(pet.allergies||'')}</textarea></div>
-      <div class="form-group"><label>Condiciones crónicas</label><textarea id="pChronic">${escapeHtml(pet.chronicConditions||'')}</textarea></div>
-      <div class="form-group"><label>Notas generales</label><textarea id="pNotes">${escapeHtml(pet.notes||'')}</textarea></div>
+      ${canEditClinical() ? '' : '<small style="display:block;color:var(--text-mute);margin-bottom:8px">Los datos clínicos son de solo lectura para Recepción.</small>'}
+      <div class="form-group"><label>Alergias conocidas</label><textarea id="pAllergies"${clinicalDisabled}>${escapeHtml(pet.allergies||'')}</textarea></div>
+      <div class="form-group"><label>Condiciones crónicas</label><textarea id="pChronic"${clinicalDisabled}>${escapeHtml(pet.chronicConditions||'')}</textarea></div>
+      <div class="form-group"><label>Notas generales</label><textarea id="pNotes"${clinicalDisabled}>${escapeHtml(pet.notes||'')}</textarea></div>
     </div>
     <div class="modal-footer">
-      ${!isNew ? `<button class="btn btn-danger" onclick="deletePet('${pet.id}')">Eliminar</button>` : ''}
+      ${!isNew && canDeleteEntity('pets') ? `<button class="btn btn-danger" onclick="deletePet('${pet.id}')">Eliminar</button>` : ''}
       <button class="btn" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-primary" onclick="savePet('${pet.id}', ${isNew})">Guardar</button>
     </div>
@@ -226,6 +228,7 @@ function savePet(id, isNew) {
 }
 
 function deletePet(id) {
+  if(!canDeleteEntity('pets')){ toast('Tu rol no permite eliminar pacientes'); return; }
   showConfirm('¿Eliminar este paciente y toda su historia clínica? Esta acción no se puede deshacer.', () => {
     db.pets = db.pets.filter(p => p.id !== id);
     db.appointments = db.appointments.filter(a => a.petId !== id);
@@ -272,12 +275,12 @@ function openPetDetail(id) {
       <div id="tab-history" class="tab-content active">
         <div class="section-title">
           <h3>Registros clínicos</h3>
-          <button class="btn btn-sm btn-primary" onclick="addHistoryEntry('${pet.id}')">+ Nuevo registro</button>
+          ${canEditClinical() ? `<button class="btn btn-sm btn-primary" onclick="addHistoryEntry('${pet.id}')">+ Nuevo registro</button>` : '<span class="tag">Solo lectura</span>'}
         </div>
         ${(pet.history||[]).length === 0 ? '<div class="empty-state">Sin registros aún</div>' :
           [...pet.history].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(h => `
             <div class="history-entry">
-              <button class="close-btn delete-x" onclick="deleteHistory('${pet.id}','${h.id}')">&times;</button>
+              ${canEditClinical() ? `<button class="close-btn delete-x" onclick="deleteHistory('${pet.id}','${h.id}')">&times;</button>` : ''}
               <div class="date">${formatDate(h.date)} · ${escapeHtml(h.type||'Consulta')}</div>
               <div class="title">${escapeHtml(h.title||'')}</div>
               <div class="desc">${escapeHtml(h.description||'').replace(/\n/g,'<br>')}</div>
@@ -298,12 +301,12 @@ function openPetDetail(id) {
       <div id="tab-images" class="tab-content">
         <div class="section-title">
           <h3>Estudios clínicos (links a Drive)</h3>
-          <button class="btn btn-sm btn-primary" onclick="addStudyLink('${pet.id}')">+ Agregar estudio</button>
+          ${canEditClinical() ? `<button class="btn btn-sm btn-primary" onclick="addStudyLink('${pet.id}')">+ Agregar estudio</button>` : '<span class="tag">Solo lectura</span>'}
         </div>
         <small style="color:var(--text-mute)">Pegá el link de Google Drive de cada estudio: radiografías, ecografías, análisis, recetas, etc.</small>
         <div class="study-list">
           ${(pet.studies||[]).length === 0
-            ? `<div class="empty-state">Sin estudios cargados. <a href="#" onclick="addStudyLink('${pet.id}');return false">+ Agregar el primero</a></div>`
+            ? `<div class="empty-state">Sin estudios cargados.${canEditClinical() ? ` <a href="#" onclick="addStudyLink('${pet.id}');return false">+ Agregar el primero</a>` : ''}</div>`
             : pet.studies.map(s => `
             <div class="study-item">
               <div class="study-icon">${studyIcon(s.type)}</div>
@@ -311,22 +314,22 @@ function openPetDetail(id) {
                 <a href="${escapeAttr(s.url)}" target="_blank" rel="noopener" class="study-title">${escapeHtml(s.title || s.type || 'Estudio')}</a>
                 <div class="study-meta">${escapeHtml(s.type || 'Estudio')}${s.date ? ' · ' + formatDate(s.date) : ''}</div>
               </div>
-              <button class="btn btn-sm" onclick="editStudyLink('${pet.id}','${s.id}')">Editar</button>
-              <button class="img-x study-x" onclick="deleteStudyLink('${pet.id}','${s.id}')">×</button>
+              ${canEditClinical() ? `<button class="btn btn-sm" onclick="editStudyLink('${pet.id}','${s.id}')">Editar</button>
+              <button class="img-x study-x" onclick="deleteStudyLink('${pet.id}','${s.id}')">×</button>` : ''}
             </div>
           `).join('')}
         </div>
 
         <div class="section-title" style="margin-top:18px">
           <h3>Fotos del paciente</h3>
-          <label class="btn btn-sm btn-primary" style="cursor:pointer">+ Subir foto<input type="file" accept="image/*" multiple onchange="uploadPetImages('${pet.id}', this)" style="display:none"></label>
+          ${canEditClinical() ? `<label class="btn btn-sm btn-primary" style="cursor:pointer">+ Subir foto<input type="file" accept="image/*" multiple onchange="uploadPetImages('${pet.id}', this)" style="display:none"></label>` : '<span class="tag">Solo lectura</span>'}
         </div>
         <small style="color:var(--text-mute)">Evolución física, heridas, pelaje. Se guardan en el dispositivo.</small>
         <div class="image-gallery">
           ${(pet.images||[]).length === 0 ? '<div class="empty-state" style="grid-column:1/-1">Sin fotos adjuntas</div>' : pet.images.map(img => `
             <div class="img-item">
               <img src="${img.data}" onclick="openLightbox('${img.data}')">
-              <button class="img-x" onclick="deletePetImage('${pet.id}','${img.id}')">×</button>
+              ${canEditClinical() ? `<button class="img-x" onclick="deletePetImage('${pet.id}','${img.id}')">×</button>` : ''}
               <div class="img-label">${escapeHtml(img.label||img.name||'Imagen')}</div>
             </div>
           `).join('')}
@@ -336,11 +339,11 @@ function openPetDetail(id) {
       <div id="tab-vacc" class="tab-content">
         <div class="section-title">
           <h3>Vacunas aplicadas</h3>
-          <button class="btn btn-sm btn-primary" onclick="addVaccine('${pet.id}')">+ Vacuna</button>
+          ${canEditClinical() ? `<button class="btn btn-sm btn-primary" onclick="addVaccine('${pet.id}')">+ Vacuna</button>` : '<span class="tag">Solo lectura</span>'}
         </div>
         ${(pet.vaccines||[]).length === 0 ? '<div class="empty-state">Sin vacunas registradas</div>' : pet.vaccines.map(v => `
           <div class="history-entry">
-            <button class="close-btn delete-x" onclick="deleteVaccine('${pet.id}','${v.id}')">&times;</button>
+            ${canEditClinical() ? `<button class="close-btn delete-x" onclick="deleteVaccine('${pet.id}','${v.id}')">&times;</button>` : ''}
             <div class="date">${formatDate(v.date)}</div>
             <div class="title">${escapeHtml(v.name)}</div>
             ${v.nextDose ? `<div class="desc">Próxima dosis: ${formatDate(v.nextDose)}</div>` : ''}
@@ -420,6 +423,7 @@ function uploadPetPhoto(petId, input) {
 }
 
 function uploadPetImages(petId, input) {
+  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
   const files = Array.from(input.files);
   if (!files.length) return;
   const pet = db.pets.find(p => p.id === petId);
@@ -450,6 +454,7 @@ function uploadPetImages(petId, input) {
 }
 
 function deletePetImage(petId, imgId) {
+  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
   showConfirm('¿Eliminar esta imagen?', () => {
   const pet = db.pets.find(p => p.id === petId);
   pet.images = pet.images.filter(i => i.id !== imgId);
@@ -494,10 +499,12 @@ function studyModal(petId, study, studyId) {
 }
 
 function addStudyLink(petId) {
+  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
   studyModal(petId, {});
 }
 
 function editStudyLink(petId, studyId) {
+  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
   const pet = db.pets.find(p => p.id === petId);
   const study = (pet.studies||[]).find(s => s.id === studyId);
   if (!study) return;
@@ -505,6 +512,7 @@ function editStudyLink(petId, studyId) {
 }
 
 function saveStudyLink(petId, studyId) {
+  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
   const url = normalizeUrl(document.getElementById('studyUrl').value);
   if (!url) { toast('Pegá un link válido'); return; }
   const pet = db.pets.find(p => p.id === petId);
@@ -528,6 +536,7 @@ function saveStudyLink(petId, studyId) {
 }
 
 function deleteStudyLink(petId, studyId) {
+  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
   const pet = db.pets.find(p => p.id === petId);
   const study = (pet.studies||[]).find(s => s.id === studyId);
   const name = study ? (study.title || study.type || 'estudio') : 'estudio';
@@ -546,6 +555,7 @@ function openLightbox(src) {
 }
 
 function addHistoryEntry(petId, editId) {
+  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
   const pet = db.pets.find(p => p.id === petId);
   const ex = editId ? (pet.history||[]).find(h => h.id === editId) : null;
   const today = localDateKey();
@@ -600,6 +610,7 @@ function addHistoryEntry(petId, editId) {
 }
 
 function saveHistory(petId, editId) {
+  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
   const date = document.getElementById('hDate').value;
   const title = document.getElementById('hTitle').value.trim();
   if (!date || !title) { toast('Completá fecha y motivo', 'error'); return; }
@@ -669,6 +680,7 @@ function printHistEntry(petId, hId) {
 }
 
 function deleteHistory(petId, hId) {
+  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
   showConfirm('¿Eliminar este registro clínico?', () => {
   const pet = db.pets.find(p => p.id === petId);
   pet.history = pet.history.filter(h => h.id !== hId);
@@ -680,6 +692,7 @@ function deleteHistory(petId, hId) {
 }
 
 function addVaccine(petId) {
+  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
   showModal(`
     <div class="modal-header"><h2>Registrar vacuna</h2><button class="close-btn" onclick="closeModal()">&times;</button></div>
     <div class="modal-body">
@@ -697,6 +710,7 @@ function addVaccine(petId) {
 }
 
 function saveVaccine(petId) {
+  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
   const pet = db.pets.find(p => p.id === petId);
   pet.vaccines = pet.vaccines || [];
   const next = document.getElementById('vNext').value;
@@ -725,6 +739,7 @@ function saveVaccine(petId) {
 }
 
 function deleteVaccine(petId, vId) {
+  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
   showConfirm('¿Eliminar este registro de vacuna?', () => {
   const pet = db.pets.find(p => p.id === petId);
   pet.vaccines = pet.vaccines.filter(v => v.id !== vId);

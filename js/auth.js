@@ -78,7 +78,7 @@ async function doAuth(){
   var btn=document.getElementById('authBtn'); btn.disabled=true; var orig=btn.textContent; btn.textContent='...';
   try {
     if(_authMode==='register'){
-      if(pass.length<6){ authErr('La contraseña debe tener al menos 6 caracteres.'); btn.disabled=false; btn.textContent=orig; return; }
+      if(pass.length<8){ authErr('La contraseña debe tener al menos 8 caracteres.'); btn.disabled=false; btn.textContent=orig; return; }
       await apiRegister(email, pass, name, invite);
       await apiLogin(email, pass);
       toast('Cuenta creada ✓');

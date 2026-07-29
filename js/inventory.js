@@ -37,8 +37,10 @@ function renderInventory() {
               <td class="col-sec">${i.price?_fmtMoney(i.price):'—'}</td>
               <td class="col-sec">${venc}</td>
               <td><div class="actions" style="white-space:nowrap">
+                ${canWriteEntity('inventory') ? `
                 <button class="btn btn-sm btn-primary" onclick="openAddLotModal('${i.id}')" title="Cargar stock">+</button>
                 <button class="btn btn-sm" onclick="openUseStockModal('${i.id}')" title="Usar/bajar stock">−</button>
+                ` : '<span class="tag">Solo lectura</span>'}
               </div></td>
             </tr>`;
           }).join('')}
@@ -50,6 +52,7 @@ function renderInventory() {
 
 // ---- CATALOGO (gestion de productos) ----
 function openCatalog() {
+  if(!canWriteEntity('inventory')){ toast('Tu rol no permite modificar el inventario'); return; }
   const rows = db.inventory.length === 0
     ? '<div class="empty-state">Sin productos. Creá el primero.</div>'
     : `<div class="table-wrap"><table>
@@ -62,7 +65,7 @@ function openCatalog() {
             <td class="col-sec">${i.price?_fmtMoney(i.price):'—'}</td>
             <td><div class="actions" style="white-space:nowrap">
               <button class="btn btn-sm" onclick="openInvModal('${i.id}')">Editar</button>
-              <button class="btn btn-sm btn-danger" onclick="deleteInv('${i.id}')" title="Eliminar">${iconX()}</button>
+              ${canDeleteEntity('inventory') ? `<button class="btn btn-sm btn-danger" onclick="deleteInv('${i.id}')" title="Eliminar">${iconX()}</button>` : ''}
             </div></td>
           </tr>`).join('')}</tbody></table></div>`;
   showModal(`
@@ -95,7 +98,7 @@ function openInvModal(id) {
       ${isNew ? '<small style="color:var(--text-mute)">Luego cargá el stock desde la sección Inventario con el botón +.</small>' : `<small style="color:var(--text-mute)">Stock actual: ${invTotalStock(i)} u en ${(i.lots||[]).length} lote(s).</small>`}
     </div>
     <div class="modal-footer">
-      ${!isNew ? `<button class="btn btn-danger" onclick="deleteInv('${i.id}')">Eliminar</button>` : ''}
+      ${!isNew && canDeleteEntity('inventory') ? `<button class="btn btn-danger" onclick="deleteInv('${i.id}')">Eliminar</button>` : ''}
       <button class="btn" onclick="openCatalog()">Volver</button>
       <button class="btn btn-primary" onclick="saveInv('${i.id}', ${isNew})">Guardar</button>
     </div>
@@ -103,6 +106,7 @@ function openInvModal(id) {
 }
 
 function saveInv(id, isNew) {
+  if(!canWriteEntity('inventory')){ toast('Tu rol no permite modificar el inventario'); return; }
   const name = document.getElementById('iName').value.trim();
   if (!validateField('iName', !!name, 'El nombre es obligatorio')) return;
   if (isNew) {
@@ -119,6 +123,7 @@ function saveInv(id, isNew) {
 
 // ---- Cargar stock (agregar lote) ----
 function openAddLotModal(id) {
+  if(!canWriteEntity('inventory')){ toast('Tu rol no permite modificar el inventario'); return; }
   const it = db.inventory.find(x=>x.id===id);
   if(!it) return;
   showModal(`
@@ -138,6 +143,7 @@ function openAddLotModal(id) {
 }
 
 function saveLot(id) {
+  if(!canWriteEntity('inventory')){ toast('Tu rol no permite modificar el inventario'); return; }
   const it = db.inventory.find(x=>x.id===id);
   if(!it) return;
   const qty = parseInt(document.getElementById('lotQty').value)||0;
@@ -150,6 +156,7 @@ function saveLot(id) {
 
 // ---- Usar / bajar stock ----
 function openUseStockModal(id) {
+  if(!canWriteEntity('inventory')){ toast('Tu rol no permite modificar el inventario'); return; }
   const it = db.inventory.find(x=>x.id===id);
   if(!it) return;
   const lots = (it.lots||[]).slice().sort((a,b)=> (a.expiry||'9999').localeCompare(b.expiry||'9999'));
@@ -174,6 +181,7 @@ function openUseStockModal(id) {
 }
 
 function useStock(id) {
+  if(!canWriteEntity('inventory')){ toast('Tu rol no permite modificar el inventario'); return; }
   const it = db.inventory.find(x=>x.id===id);
   if(!it) return;
   const sel = document.querySelector('input[name="useLot"]:checked');
@@ -189,6 +197,7 @@ function useStock(id) {
 }
 
 function deleteInv(id) {
+  if(!canDeleteEntity('inventory')){ toast('Tu rol no permite eliminar productos'); return; }
   showConfirm('¿Eliminar este producto del catálogo? Se pierde su stock.', () => {
     db.inventory = db.inventory.filter(i=>i.id!==id);
     saveDB(); closeModal(); render();

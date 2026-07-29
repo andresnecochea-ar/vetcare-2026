@@ -2,6 +2,7 @@
 
 type JsonObject = Record<string, unknown>;
 type DbValue = string | number | null | ArrayBuffer;
+type UserRole = 'admin' | 'veterinarian' | 'reception';
 
 type EntityConfig = {
   columns: readonly string[];
@@ -54,6 +55,20 @@ const TABLES: Record<string, EntityConfig> = {
   },
 };
 
+const USER_ROLES = new Set<UserRole>(['admin', 'veterinarian', 'reception']);
+const VETERINARIAN_WRITE = new Set([
+  'owners', 'pets', 'appointments', 'groomingAppointments', 'reminders',
+  'inventory', 'invoices',
+]);
+const RECEPTION_WRITE = new Set([
+  'owners', 'pets', 'appointments', 'groomingAppointments', 'reminders', 'invoices',
+]);
+const OPERATIONAL_DELETE = new Set(['appointments', 'groomingAppointments', 'reminders']);
+const RECEPTION_CLINICAL_FIELDS = [
+  'weight', 'allergies', 'chronicConditions', 'notes',
+  'history', 'vaccines', 'images', 'studies',
+] as const;
+
 function uid(): string {
   return crypto.randomUUID();
 }
@@ -85,6 +100,83 @@ function arrayOfStrings(value: unknown): string[] {
 
 function revisionValue(value: unknown): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
+function userRole(user: JsonObject): UserRole {
+  const role = stringValue(user.role) as UserRole;
+  return USER_ROLES.has(role) ? role : 'reception';
+}
+
+function requireAdmin(user: JsonObject): void {
+  if (userRole(user) !== 'admin') throw new HttpError('Acceso reservado a administradores', 403);
+}
+
+function requireMutationPermission(
+  user: JsonObject,
+  entity: string,
+  action: 'write' | 'delete',
+): void {
+  const role = userRole(user);
+  if (role === 'admin') return;
+  if (action === 'delete') {
+    if (OPERATIONAL_DELETE.has(entity)) return;
+    throw new HttpError('Tu rol no permite eliminar este registro', 403);
+  }
+  const allowed = role === 'veterinarian' ? VETERINARIAN_WRITE : RECEPTION_WRITE;
+  if (!allowed.has(entity)) throw new HttpError('Tu rol no permite modificar este módulo', 403);
+}
+
+function comparableJson(value: unknown): string {
+  return JSON.stringify(value ?? null);
+}
+
+async function ensureReceptionPetUpdateAllowed(env: Env, body: JsonObject): Promise<void> {
+  const id = optionalString(body.id);
+  const existing = id
+    ? (await getPetsFull(env)).find((pet) => pet.id === id)
+    : undefined;
+  for (const field of RECEPTION_CLINICAL_FIELDS) {
+    if (!Object.hasOwn(body, field)) continue;
+    const nextValue = body[field];
+    const previousValue = existing?.[field];
+    const emptyNewValue = nextValue === null
+      || nextValue === undefined
+      || nextValue === ''
+      || (Array.isArray(nextValue) && nextValue.length === 0);
+    if (!existing && emptyNewValue) continue;
+    if (existing && comparableJson(nextValue) === comparableJson(previousValue)) continue;
+    throw new HttpError('Recepción no puede modificar información clínica', 403);
+  }
+}
+
+function auditFields(body: JsonObject): string[] {
+  const ignored = new Set(['id', 'revision', 'syncToken', 'vitals']);
+  return Object.keys(body).filter((field) => !ignored.has(field)).sort();
+}
+
+async function writeAudit(
+  env: Env,
+  user: JsonObject,
+  action: string,
+  entityType: string,
+  entityId: string,
+  fields: string[] = [],
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO audit_log (
+       id,user_id,user_email,user_name,action,entity_type,entity_id,fields,created_at
+     ) VALUES (?,?,?,?,?,?,?,?,?)`,
+  ).bind(
+    uid(),
+    stringValue(user.id),
+    stringValue(user.email),
+    stringValue(user.name),
+    action,
+    entityType,
+    entityId,
+    JSON.stringify([...new Set(fields)]),
+    new Date().toISOString(),
+  ).run();
 }
 
 function configuredOrigins(env: Env): Set<string> {
@@ -247,6 +339,52 @@ async function listEntity(env: Env, table: string): Promise<JsonObject[]> {
   const config = tableConfig(table);
   const { results } = await env.DB.prepare(`SELECT * FROM ${table}`).all<JsonObject>();
   return (results ?? []).map((row) => deserializeRow(row, config));
+}
+
+async function listUsers(env: Env): Promise<JsonObject[]> {
+  const { results } = await env.DB.prepare(
+    'SELECT id,email,name,role,created_at FROM users ORDER BY name,email',
+  ).all<JsonObject>();
+  return results ?? [];
+}
+
+async function changeUserRole(
+  env: Env,
+  actor: JsonObject,
+  targetId: string,
+  body: JsonObject,
+): Promise<JsonObject> {
+  requireAdmin(actor);
+  const role = stringValue(body.role) as UserRole;
+  if (!USER_ROLES.has(role)) throw new HttpError('Rol inválido');
+  const target = await env.DB.prepare(
+    'SELECT id,email,name,role,created_at FROM users WHERE id = ?',
+  ).bind(targetId).first<JsonObject>();
+  if (!target) throw new HttpError('Usuario no encontrado', 404);
+  if (stringValue(target.role) === 'admin' && role !== 'admin') {
+    const admins = await env.DB.prepare(
+      "SELECT COUNT(*) AS total FROM users WHERE role = 'admin'",
+    ).first<{ total: number }>();
+    if ((admins?.total ?? 0) <= 1) {
+      throw new HttpError('Debe quedar al menos un administrador', 409);
+    }
+  }
+  await env.DB.prepare('UPDATE users SET role = ? WHERE id = ?').bind(role, targetId).run();
+  await writeAudit(env, actor, 'role_change', 'users', targetId, ['role']);
+  return { ...target, role };
+}
+
+async function listAudit(env: Env, limit: number): Promise<JsonObject[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id,user_id,user_email,user_name,action,entity_type,entity_id,fields,created_at
+     FROM audit_log
+     ORDER BY created_at DESC
+     LIMIT ?`,
+  ).bind(limit).all<JsonObject>();
+  return (results ?? []).map((row) => ({
+    ...row,
+    fields: parseJson(row.fields, []),
+  }));
 }
 
 async function upsertEntity(env: Env, table: string, body: JsonObject): Promise<JsonObject> {
@@ -583,9 +721,10 @@ async function health(env: Env): Promise<{
              'users', 'sessions', 'owners', 'pets', 'pet_owners',
              'pet_history', 'pet_vaccines', 'pet_images', 'pet_studies',
              'appointments', 'groomingAppointments', 'reminders',
-             'inventory', 'invoices', 'app_settings', 'invoice_sequence'
+             'inventory', 'invoices', 'app_settings', 'invoice_sequence',
+             'audit_log'
            )
-       ) = 16
+       ) = 17
        AND (SELECT COUNT(*) FROM pragma_table_info('owners') WHERE name IN ('dni', 'notes')) = 2
        AND (
          SELECT COUNT(*)
@@ -603,6 +742,14 @@ async function health(env: Env): Promise<{
          FROM pragma_table_info('pets')
          WHERE name IN ('revision', 'syncToken')
        ) = 2
+       AND (
+         SELECT COUNT(*)
+         FROM pragma_table_info('audit_log')
+         WHERE name IN (
+           'user_id', 'user_email', 'user_name', 'action',
+           'entity_type', 'entity_id', 'fields', 'created_at'
+         )
+       ) = 8
        AS ready`,
   ).first<{ ready: number }>();
   const ready = schema?.ready === 1;
@@ -611,7 +758,7 @@ async function health(env: Env): Promise<{
     status: ready ? 'ok' : 'degraded',
     version: stringValue(env.APP_VERSION, 'unknown'),
     database: ready ? 'ready' : 'migrations-pending',
-    schemaVersion: ready ? 5 : 0,
+    schemaVersion: ready ? 6 : 0,
   };
 }
 
@@ -649,12 +796,17 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     if (exists) throw new HttpError('Ese email ya está registrado', 409);
 
     const { hash, salt } = await hashPassword(password);
+    const userCount = await env.DB.prepare('SELECT COUNT(*) AS total FROM users')
+      .first<{ total: number }>();
+    const role: UserRole = (userCount?.total ?? 0) === 0 ? 'admin' : 'reception';
     const id = uid();
     await env.DB.prepare(
       `INSERT INTO users (id,email,name,pass_hash,pass_salt,role,created_at)
        VALUES (?,?,?,?,?,?,?)`,
-    ).bind(id, email, name, hash, salt, 'staff', new Date().toISOString()).run();
-    return json({ ok: true, id }, 201, origin, env);
+    ).bind(id, email, name, hash, salt, role, new Date().toISOString()).run();
+    const registeredUser = { id, email, name, role };
+    await writeAudit(env, registeredUser, 'register', 'users', id, ['email', 'name', 'role']);
+    return json({ ok: true, id, role }, 201, origin, env);
   }
 
   if (path === '/api/login' && request.method === 'POST') {
@@ -675,6 +827,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     await env.DB.prepare(
       'INSERT INTO sessions (token,user_id,created_at,expires_at) VALUES (?,?,?,?)',
     ).bind(token, stringValue(user.id), now.toISOString(), expiresAt.toISOString()).run();
+    await writeAudit(env, user, 'login', 'sessions', stringValue(user.id));
 
     return json({
       token,
@@ -693,6 +846,30 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
   if (path === '/api/me' && request.method === 'GET') {
     return json({ user }, 200, origin, env);
+  }
+
+  if (path === '/api/users' && request.method === 'GET') {
+    requireAdmin(user);
+    return json({ users: await listUsers(env) }, 200, origin, env);
+  }
+
+  const userRoleMatch = path.match(/^\/api\/users\/([^/]+)\/role$/);
+  if (userRoleMatch && (request.method === 'PUT' || request.method === 'POST')) {
+    return json(
+      await changeUserRole(env, user, userRoleMatch[1], asObject(await request.json<unknown>())),
+      200,
+      origin,
+      env,
+    );
+  }
+
+  if (path === '/api/audit' && request.method === 'GET') {
+    requireAdmin(user);
+    const requestedLimit = Number.parseInt(url.searchParams.get('limit') ?? '100', 10);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(Math.max(requestedLimit, 1), 200)
+      : 100;
+    return json({ entries: await listAudit(env, limit) }, 200, origin, env);
   }
 
   if (path === '/api/data' && request.method === 'GET') {
@@ -723,7 +900,11 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   if (path === '/api/settings') {
     if (request.method === 'GET') return json(await getAppSettings(env), 200, origin, env);
     if (request.method === 'POST' || request.method === 'PUT') {
-      return json(await saveAppSettings(env, asObject(await request.json<unknown>())), 200, origin, env);
+      requireAdmin(user);
+      const body = asObject(await request.json<unknown>());
+      const result = await saveAppSettings(env, body);
+      await writeAudit(env, user, 'update', 'settings', 'singleton', auditFields(body));
+      return json(result, 200, origin, env);
     }
   }
 
@@ -733,26 +914,57 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     if (table === 'pets') {
       if (request.method === 'GET') return json(await getPetsFull(env), 200, origin, env);
       if (request.method === 'POST' || request.method === 'PUT') {
-        return json(await savePetFull(env, asObject(await request.json<unknown>())), 200, origin, env);
+        requireMutationPermission(user, 'pets', 'write');
+        const body = asObject(await request.json<unknown>());
+        if (userRole(user) === 'reception') await ensureReceptionPetUpdateAllowed(env, body);
+        const existed = optionalString(body.id)
+          ? await env.DB.prepare('SELECT id FROM pets WHERE id = ?').bind(body.id).first()
+          : null;
+        const result = await savePetFull(env, body);
+        await writeAudit(
+          env,
+          user,
+          existed ? 'update' : 'create',
+          'pets',
+          stringValue(result.id),
+          auditFields(body),
+        );
+        return json(result, 200, origin, env);
       }
       if (request.method === 'DELETE' && id) {
+        requireMutationPermission(user, 'pets', 'delete');
         const deleteBody = asObject(await request.json<unknown>().catch(() => ({})));
-        return json(await deletePetFull(env, id, revisionValue(deleteBody.revision)), 200, origin, env);
+        const result = await deletePetFull(env, id, revisionValue(deleteBody.revision));
+        await writeAudit(env, user, 'delete', 'pets', id);
+        return json(result, 200, origin, env);
       }
     } else if (Object.hasOwn(TABLES, table)) {
       if (request.method === 'GET') return json(await listEntity(env, table), 200, origin, env);
       if (request.method === 'POST' || request.method === 'PUT') {
+        requireMutationPermission(user, table, 'write');
         const body = asObject(await request.json<unknown>());
-        return json(
-          table === 'invoices'
-            ? await saveInvoice(env, body)
-            : await upsertEntity(env, table, body),
-          200,
-          origin,
+        const existed = optionalString(body.id)
+          ? await env.DB.prepare(`SELECT id FROM ${table} WHERE id = ?`).bind(body.id).first()
+          : null;
+        const result = table === 'invoices'
+          ? await saveInvoice(env, body)
+          : await upsertEntity(env, table, body);
+        await writeAudit(
           env,
+          user,
+          existed ? 'update' : 'create',
+          table,
+          stringValue(result.id),
+          auditFields(body),
         );
+        return json(result, 200, origin, env);
       }
-      if (request.method === 'DELETE' && id) return json(await deleteEntity(env, table, id), 200, origin, env);
+      if (request.method === 'DELETE' && id) {
+        requireMutationPermission(user, table, 'delete');
+        const result = await deleteEntity(env, table, id);
+        await writeAudit(env, user, 'delete', table, id);
+        return json(result, 200, origin, env);
+      }
     }
   }
 

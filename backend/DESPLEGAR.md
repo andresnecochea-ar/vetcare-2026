@@ -78,7 +78,12 @@ Verificá:
 https://vetcare-api.vetcare-neco.workers.dev/api/health
 ```
 
-El resultado esperado contiene `"ok": true` y `"database": "ready"`.
+El resultado esperado contiene `"status": "ok"`, `"database": "ready"` y
+`"schemaVersion": 6`.
+
+La migración `0006_roles_and_audit.sql` convierte las cuentas existentes con
+el rol anterior `staff` en administradoras. Esto evita bloquear el acceso al
+publicar la matriz de permisos; luego los roles se ajustan desde la aplicación.
 
 ## 5. Configurar el frontend
 

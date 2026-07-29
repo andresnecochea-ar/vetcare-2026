@@ -60,6 +60,25 @@ vacunas, estudios, imágenes, turnos, peluquería, recordatorios, inventario,
 facturas y configuración de la clínica. Los campos estructurados como lotes e
 ítems de factura se guardan como JSON y vuelven a entregarse como arreglos.
 
+## Roles y auditoría
+
+La primera cuenta de una instalación nueva se crea como administradora. Las
+siguientes cuentas comienzan en Recepción y una persona administradora puede
+cambiarles el rol desde **Opciones → Accesos y auditoría**.
+
+| Capacidad | Administración | Veterinaria | Recepción |
+| --- | --- | --- | --- |
+| Configuración, usuarios y roles | Sí | No | No |
+| Historia clínica, vacunas y estudios | Sí | Sí | Solo lectura |
+| Tutores, pacientes, agenda y recibos | Sí | Sí | Sí |
+| Inventario | Sí | Sí | Solo lectura |
+| Eliminar pacientes, tutores, productos o recibos | Sí | No | No |
+| Consultar auditoría | Sí | No | No |
+
+La auditoría conserva quién realizó la operación, la acción, el tipo e
+identificador del registro, los nombres de los campos modificados y la fecha.
+No guarda contraseñas ni el contenido clínico o administrativo de esos campos.
+
 ## Configuración y secretos
 
 - `backend/wrangler.jsonc`: nombre del Worker, binding D1, orígenes CORS y

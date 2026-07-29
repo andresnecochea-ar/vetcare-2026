@@ -33,7 +33,7 @@ function renderInvoices() {
                 <td style="white-space:nowrap">
                   <button class="btn btn-sm" onclick="printInvoice('${inv.id}')" title="Imprimir">🖨</button>
                   <button class="btn btn-sm" onclick="openInvoiceModal('${inv.id}')" title="Editar">✏</button>
-                  <button class="btn btn-sm btn-danger" onclick="deleteInvoice('${inv.id}')" title="Eliminar">${iconX()}</button>
+                  ${canDeleteEntity('invoices') ? `<button class="btn btn-sm btn-danger" onclick="deleteInvoice('${inv.id}')" title="Eliminar">${iconX()}</button>` : ''}
                 </td></tr>`;}).join('')}
         </tbody>
       </table>
@@ -182,6 +182,7 @@ function saveInvoice(id,isNew){
 }
 
 function deleteInvoice(id){
+  if(!canDeleteEntity('invoices')){ toast('Tu rol no permite eliminar recibos'); return; }
   showConfirm('¿Eliminar este recibo?',()=>{
     db.invoices=(db.invoices||[]).filter(i=>i.id!==id);
     saveDB();render();toast('Recibo eliminado');
