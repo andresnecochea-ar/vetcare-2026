@@ -69,7 +69,12 @@ async function api(path, opts){
   const res = await fetch(API_BASE + path, { method: opts.method || 'GET', headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
   let data = null; try { data = await res.json(); } catch(e){}
   if (res.status === 401) { clearSession(); showLogin(); throw new Error('Sesion expirada'); }
-  if (!res.ok) throw new Error((data && data.error) || ('Error ' + res.status));
+  if (!res.ok) {
+    const error = new Error((data && data.error) || ('Error ' + res.status));
+    error.status = res.status;
+    error.details = data;
+    throw error;
+  }
   return data;
 }
 function setSession(token, user){ authToken = token; currentUser = user; try { localStorage.setItem('vetcare_token', token); } catch(e){} }
@@ -77,10 +82,24 @@ function clearSession(){ authToken = null; currentUser = null; try { localStorag
 async function apiLogin(email, password){ const d = await api('/api/login', { method:'POST', body:{ email, password } }); setSession(d.token, d.user); return d.user; }
 async function apiRegister(email, password, name, inviteCode){ return api('/api/register', { method:'POST', body:{ email, password, name, inviteCode } }); }
 async function apiLogout(){ try { await api('/api/logout', { method:'POST' }); } catch(e){} clearSession(); }
+function restoreDerivedVitals(pet) {
+  const byDate = new Map();
+  for (const entry of pet.history || []) {
+    if (!entry.date || (!entry.weight && !entry.temp)) continue;
+    const current = byDate.get(entry.date) || { date: entry.date, weight: null, temp: null };
+    const weight = Number.parseFloat(entry.weight);
+    const temp = Number.parseFloat(entry.temp);
+    if (Number.isFinite(weight)) current.weight = weight;
+    if (Number.isFinite(temp)) current.temp = temp;
+    byDate.set(entry.date, current);
+  }
+  pet.vitals = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
 async function loadFromAPI(){
   const d = await api('/api/data');
   db = Object.assign(JSON.parse(JSON.stringify(defaultData)), d);
   if (!db.invoices) db.invoices = [];
+  for (const pet of db.pets || []) restoreDerivedVitals(pet);
   _lastSnapshot = _snap();
   return true;
 }
@@ -109,19 +128,48 @@ async function idbAll(s){return new Promise(res=>{
 let _syncTimer=null,_syncing=false,_syncAgain=false,_lastSnapshot={};
 const _ENTITY_TABLES=['owners','pets','appointments','groomingAppointments','reminders','inventory','invoices'];
 function _snap(){return JSON.parse(JSON.stringify({owners:db.owners,pets:db.pets,appointments:db.appointments,groomingAppointments:db.groomingAppointments,reminders:db.reminders,inventory:db.inventory,invoices:db.invoices,clinicName:db.clinicName,settings:db.settings}));}
+function _sameSnapshotValue(a,b){return JSON.stringify(a)===JSON.stringify(b);}
 async function syncToAPI(){
   if(!apiConfigured()||!authToken)return;
   if(_syncing){_syncAgain=true;return;}
   _syncing=true;
+  let canonicalDataChanged=false;
   try{
     for(const t of _ENTITY_TABLES){
       const cur=db[t]||[]; const prev=_lastSnapshot[t]||[]; const curIds=new Set(cur.map(x=>x.id));
-      for(const item of cur){ if(item&&item.id) await api('/api/'+t,{method:'POST',body:item}); }
-      for(const old of prev){ if(old&&old.id&&!curIds.has(old.id)) await api('/api/'+t+'/'+old.id,{method:'DELETE'}); }
+      const prevById=new Map(prev.filter(x=>x&&x.id).map(x=>[x.id,x]));
+      for(const item of cur){
+        if(!item||!item.id||_sameSnapshotValue(item,prevById.get(item.id)))continue;
+        const saved=await api('/api/'+t,{method:'POST',body:item});
+        if(t==='pets'&&saved&&Number.isInteger(saved.revision))item.revision=saved.revision;
+        if(t==='invoices'&&saved&&saved.number&&item.number!==saved.number){
+          item.number=saved.number;
+          canonicalDataChanged=true;
+        }
+      }
+      for(const old of prev){
+        if(!old||!old.id||curIds.has(old.id))continue;
+        await api('/api/'+t+'/'+old.id,{
+          method:'DELETE',
+          body:t==='pets'?{revision:Number.isInteger(old.revision)?old.revision:0}:undefined
+        });
+      }
+      _lastSnapshot[t]=JSON.parse(JSON.stringify(cur));
     }
-    await api('/api/settings',{method:'POST',body:{clinicName:db.clinicName||'VetCare',settings:db.settings||{}}});
-    _lastSnapshot=_snap();
-  }catch(e){ console.warn('Sync API fallo:',e); toast('⚠ No se pudo guardar en el servidor'); }
+    const nextSettings={clinicName:db.clinicName||'VetCare',settings:db.settings||{}};
+    const prevSettings={clinicName:_lastSnapshot.clinicName||'VetCare',settings:_lastSnapshot.settings||{}};
+    if(!_sameSnapshotValue(nextSettings,prevSettings)){
+      await api('/api/settings',{method:'POST',body:nextSettings});
+      _lastSnapshot.clinicName=nextSettings.clinicName;
+      _lastSnapshot.settings=JSON.parse(JSON.stringify(nextSettings.settings));
+    }
+    if(canonicalDataChanged)await saveIDB();
+  }catch(e){
+    console.warn('Sync API fallo:',e);
+    toast(e&&e.status===409
+      ? '⚠ La ficha cambió en otro equipo. Recargá antes de guardar.'
+      : '⚠ No se pudo guardar en el servidor');
+  }
   finally{ _syncing=false; if(_syncAgain){_syncAgain=false;syncToAPI();} }
 }
 async function saveDB(){

@@ -1,17 +1,15 @@
 function renderInvoices() {
   const invs = db.invoices||[];
-  const total = invs.reduce((s,i)=>s+(parseFloat(i.total)||0),0);
-  const pendTotal = invs.filter(i=>i.status==='pending').reduce((s,i)=>s+(parseFloat(i.total)||0),0);
-  const paid = invs.filter(i=>i.status==='paid').length;
+  const summary = VetCareFinance.summarize(invs);
   return `
     <div class="page-header">
       <div class="title"><small>Administración</small><h1>Recibos</h1></div>
       <button class="btn btn-primary" onclick="openInvoiceModal()">+ Nuevo recibo</button>
     </div>
     <div class="grid-stats">
-      <div class="stat-card"><div class="stat-label">💰 Total cobrado</div><div class="stat-val" style="color:var(--color-navy)">$${total.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
-      <div class="stat-card"><div class="stat-label">⏳ Pendiente cobro</div><div class="stat-val" style="color:var(--warning)">$${pendTotal.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
-      <div class="stat-card"><div class="stat-label">✅ Cobrados</div><div class="stat-val" style="color:var(--color-mint-hover)">${paid}</div></div>
+      <div class="stat-card"><div class="stat-label">💰 Total cobrado</div><div class="stat-val" style="color:var(--color-navy)">$${summary.paidTotal.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
+      <div class="stat-card"><div class="stat-label">⏳ Pendiente cobro</div><div class="stat-val" style="color:var(--warning)">$${summary.pendingTotal.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
+      <div class="stat-card"><div class="stat-label">✅ Cobrados</div><div class="stat-val" style="color:var(--color-mint-hover)">${summary.paidCount}</div></div>
       <div class="stat-card"><div class="stat-label">🧾 Comprobantes</div><div class="stat-val">${invs.length}</div></div>
     </div>
     <div class="card" style="overflow-x:auto">
@@ -44,12 +42,12 @@ function renderInvoices() {
 }
 
 function openInvoiceModal(id) {
-  const isNew=!id, today=new Date().toISOString().split('T')[0];
+  const isNew=!id, today=localDateKey();
   const inv=isNew
     ?{id:uid(),date:today,items:[{desc:'',qty:1,price:0}],status:'pending',ownerId:'',petId:'',notes:''}
     :((db.invoices||[]).find(i=>i.id===id)||{id:uid(),date:today,items:[{desc:'',qty:1,price:0}],status:'pending',ownerId:'',petId:'',notes:''});
   const ownerOpts=db.owners.map(o=>`<option value="${o.id}" ${inv.ownerId===o.id?'selected':''} >${escapeHtml(o.name)}</option>`).join('');
-  const petOpts=db.pets.map(p=>`<option value="${p.id}" ${inv.petId===p.id?'selected':''} >${escapeHtml(p.name)}</option>`).join('');
+  const petOpts=invoicePetOptions(inv.ownerId,inv.petId,true);
   showModal(`
     <div class="modal-header">
       <h2>${isNew?'Nuevo recibo':'Editar recibo #'+(inv.number||'')}</h2>
@@ -58,9 +56,9 @@ function openInvoiceModal(id) {
     <div class="modal-body">
       <div class="form-row">
         <div class="form-group"><label>Tutor</label>
-          <select id="invOwner"><option value="">— Sin tutor —</option>${ownerOpts}</select></div>
+          <select id="invOwner" onchange="syncInvoiceRelations('owner')"><option value="">— Sin tutor —</option>${ownerOpts}</select></div>
         <div class="form-group"><label>Paciente</label>
-          <select id="invPet"><option value="">— Sin paciente —</option>${petOpts}</select></div>
+          <select id="invPet" onchange="syncInvoiceRelations('pet')"><option value="">— Sin paciente —</option>${petOpts}</select></div>
       </div>
       <div class="form-row">
         <div class="form-group"><label>Fecha</label><input type="date" id="invDate" value="${inv.date}"></div>
@@ -95,6 +93,37 @@ function openInvoiceModal(id) {
   updateInvTotal();
 }
 
+function invoicePetOptions(ownerId,selectedPetId,includeLegacyMismatch){
+  let pets=ownerId
+    ?db.pets.filter(p=>(p.ownerIds||[]).includes(ownerId))
+    :db.pets.slice();
+  if(includeLegacyMismatch&&selectedPetId&&!pets.some(p=>p.id===selectedPetId)){
+    const legacyPet=db.pets.find(p=>p.id===selectedPetId);
+    if(legacyPet)pets.unshift({...legacyPet,_relationWarning:true});
+  }
+  return pets.map(p=>`<option value="${p.id}" ${selectedPetId===p.id?'selected':''}>${p._relationWarning?'⚠ ':''}${escapeHtml(p.name)}${p._relationWarning?' — no asociado':''}</option>`).join('');
+}
+
+function syncInvoiceRelations(source){
+  const ownerSelect=document.getElementById('invOwner');
+  const petSelect=document.getElementById('invPet');
+  if(!ownerSelect||!petSelect)return;
+  let ownerId=ownerSelect.value;
+  let petId=petSelect.value;
+  if(source==='pet'&&petId){
+    const pet=db.pets.find(p=>p.id===petId);
+    if(pet&&ownerId&&!(pet.ownerIds||[]).includes(ownerId))ownerId='';
+    if(pet&&!ownerId)ownerId=(pet.ownerIds||[])[0]||'';
+    ownerSelect.value=ownerId;
+  }
+  if(source==='owner'&&petId){
+    const pet=db.pets.find(p=>p.id===petId);
+    if(ownerId&&pet&&!(pet.ownerIds||[]).includes(ownerId))petId='';
+  }
+  petSelect.innerHTML='<option value="">— Sin paciente —</option>'+invoicePetOptions(ownerId,petId,false);
+  petSelect.value=petId;
+}
+
 function addInvItem(){
   const c=document.getElementById('invItems');if(!c)return;
   const d=document.createElement('div');d.className='form-row inv-item';d.style.cssText='margin-bottom:6px;align-items:center';
@@ -113,6 +142,14 @@ function updateInvTotal(){
   return t;
 }
 
+function nextLocalInvoiceNumber(){
+  const highest=(db.invoices||[]).reduce((max,invoice)=>{
+    const value=/^\d+$/.test(invoice.number||'')?parseInt(invoice.number,10):0;
+    return Math.max(max,value);
+  },0);
+  return String(highest+1).padStart(4,'0');
+}
+
 function saveInvoice(id,isNew){
   const items=[];let total=0;
   document.querySelectorAll('.inv-item').forEach(row=>{
@@ -121,15 +158,22 @@ function saveInvoice(id,isNew){
     const price=parseFloat(row.querySelector('.inv-price')?.value||0);
     if(desc.trim()){items.push({desc,qty,price});total+=qty*price;}});
   db.invoices=db.invoices||[];
+  const ownerId=document.getElementById('invOwner')?.value||'';
+  const petId=document.getElementById('invPet')?.value||'';
+  const selectedPet=petId?db.pets.find(p=>p.id===petId):null;
+  if(ownerId&&petId&&(!selectedPet||!(selectedPet.ownerIds||[]).includes(ownerId))){
+    toast('El paciente no está asociado al tutor seleccionado','error');
+    return;
+  }
   const inv={
     id:id||uid(),
-    ownerId:document.getElementById('invOwner')?.value||'',
-    petId:document.getElementById('invPet')?.value||'',
-    date:document.getElementById('invDate')?.value||new Date().toISOString().split('T')[0],
+    ownerId,
+    petId,
+    date:document.getElementById('invDate')?.value||localDateKey(),
     status:document.getElementById('invStatus')?.value||'pending',
     items,total,
     notes:document.getElementById('invNotes')?.value||'',
-    number:isNew?String(db.invoices.length+1).padStart(4,'0'):((db.invoices.find(i=>i.id===id)||{}).number||String(db.invoices.length+1).padStart(4,'0'))
+    number:isNew?nextLocalInvoiceNumber():((db.invoices.find(i=>i.id===id)||{}).number||nextLocalInvoiceNumber())
   };
   if(isNew){db.invoices.push(inv);}
   else{const idx=db.invoices.findIndex(i=>i.id===id);if(idx>-1)db.invoices[idx]=inv;else db.invoices.push(inv);}

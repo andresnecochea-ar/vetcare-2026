@@ -64,7 +64,7 @@ function exportBackup(type) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `vetcare-${type}-${new Date().toISOString().split('T')[0]}.json`;
+  a.download = `vetcare-${type}-${localDateKey()}.json`;
   a.click();
   URL.revokeObjectURL(url);
   toast('Respaldo descargado');

@@ -102,7 +102,7 @@ function birthdayTemplate(){
 }
 // Reemplaza los placeholders por los datos reales de la mascota.
 function fillBirthdayMsg(pet){
-  var fecha = formatDate(pet.nextBirthday.toISOString().split('T')[0]);
+  var fecha = formatDate(localDateKey(pet.nextBirthday));
   return birthdayTemplate()
     .replace(/\[nombre\]/gi, pet.name)
     .replace(/\[edad\]/gi, pet.age)
@@ -134,7 +134,7 @@ function renderBirthdays() {
             <div class="pet-card-body">
               <h3>${escapeHtml(pet.name)}</h3>
               <div class="meta">${pet.daysUntil === 0 ? '🎂 ¡HOY cumple ' + pet.age + '!' : `Cumple ${pet.age} años en ${pet.daysUntil} día${pet.daysUntil>1?'s':''}`}</div>
-              <div class="meta">${formatDate(pet.nextBirthday.toISOString().split('T')[0])}</div>
+              <div class="meta">${formatDate(localDateKey(pet.nextBirthday))}</div>
               <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
                 ${owners.map(o => o.phone ? `<a class="contact-btn wa" href="https://wa.me/${cleanPhone(o.phone)}?text=${promoMsg}" target="_blank">WhatsApp ${escapeHtml(o.name.split(' ')[0])}</a>` : '').join('')}
                 ${owners.map(o => o.email ? `<a class="contact-btn mail" href="mailto:${o.email}?subject=${encodeURIComponent('¡Feliz cumpleaños '+pet.name+'!')}&body=${promoMsg}">Email</a>` : '').join('')}

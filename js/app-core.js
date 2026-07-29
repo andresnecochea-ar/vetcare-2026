@@ -13,6 +13,16 @@ function startApp() {
 // (formatDate, calcAge, cleanPhone, escapeHtml, escapeAttr están en su bloque más abajo)
 // ========================================
 function uid(){try{return crypto.randomUUID();}catch(e){return Date.now().toString(36)+Math.random().toString(36).substr(2,9);}}
+// Devuelve YYYY-MM-DD usando el calendario local. Los campos date de la app
+// representan días de la clínica, no instantes UTC.
+function localDateKey(value) {
+  const date = value === undefined ? new Date() : value;
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 // Icono X (cerrar/eliminar/limpiar) del pack de iconos VetCare.
 function iconX(em){ em = em || 1; return '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:'+em+'em;height:'+em+'em;vertical-align:-.12em"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>'; }
 
@@ -47,7 +57,7 @@ function exportVetcare(type) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = (db.clinicName || 'vetcare').toLowerCase().replace(/\s+/g, '-') + '-' + new Date().toISOString().slice(0, 10) + '.vetcare';
+  a.download = (db.clinicName || 'vetcare').toLowerCase().replace(/\s+/g, '-') + '-' + localDateKey() + '.vetcare';
   a.click(); URL.revokeObjectURL(url);
   toast('Archivo .vetcare exportado');
 }

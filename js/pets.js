@@ -548,7 +548,7 @@ function openLightbox(src) {
 function addHistoryEntry(petId, editId) {
   const pet = db.pets.find(p => p.id === petId);
   const ex = editId ? (pet.history||[]).find(h => h.id === editId) : null;
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateKey();
   const ev = (f) => ex ? escapeHtml(ex[f]||''): '';
   const types = ['Consulta general','Control','Urgencia','Cirugía','Vacunación','Laboratorio','Otro'];
   showModal(`
@@ -685,7 +685,7 @@ function addVaccine(petId) {
     <div class="modal-body">
       <div class="form-group"><label>Vacuna</label><input type="text" id="vName" placeholder="Ej: Antirrábica"></div>
       <div class="form-row">
-        <div class="form-group"><label>Fecha aplicación</label><input type="date" id="vDate" value="${new Date().toISOString().split('T')[0]}"></div>
+        <div class="form-group"><label>Fecha aplicación</label><input type="date" id="vDate" value="${localDateKey()}"></div>
         <div class="form-group"><label>Próxima dosis</label><input type="date" id="vNext"></div>
       </div>
     </div>

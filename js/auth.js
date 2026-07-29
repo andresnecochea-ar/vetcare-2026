@@ -3,13 +3,17 @@ function seedDemo() {
   const o1 = { id: uid(), name: 'María González', phone: '5491145678901', email: 'maria.g@email.com', address: 'Av. Siempreviva 742', relationship: 'Tutor principal' };
   const o2 = { id: uid(), name: 'Carlos Pérez', phone: '5491134567890', email: 'carlos.p@email.com', relationship: 'Familiar' };
   db.owners.push(o1, o2);
-  const p1 = { id: uid(), name: 'Luna', species: 'Perro', breed: 'Golden Retriever', sex: 'Hembra', color: 'Dorado', birthdate: new Date(Date.now() - 3*365*24*60*60*1000).toISOString().split('T')[0], weight: '28', microchip: '982000123456789', ownerIds: [o1.id, o2.id], allergies: 'Pollo', chronicConditions: '', notes: 'Muy sociable, le encanta jugar con pelota.', history: [{ id: uid(), date: new Date(Date.now()-30*24*60*60*1000).toISOString().split('T')[0], type: 'Consulta', title: 'Control anual', description: 'Examen físico completo. Todo dentro de parámetros normales.', treatment: 'Continuar con plan vacunal', vet: 'Dra. Rodríguez' }], vaccines: [{ id: uid(), name: 'Antirrábica', date: new Date(Date.now()-60*24*60*60*1000).toISOString().split('T')[0], nextDose: new Date(Date.now()+305*24*60*60*1000).toISOString().split('T')[0] }], images: [], photo: '' };
-  const p2 = { id: uid(), name: 'Whiskers', species: 'Gato', breed: 'Persa', sex: 'Macho', color: 'Blanco y gris', birthdate: new Date(Date.now() - 5*365*24*60*60*1000 + 10*24*60*60*1000).toISOString().split('T')[0], weight: '5.2', ownerIds: [o1.id], history: [], vaccines: [], images: [], photo: '' };
+  const p1 = { id: uid(), name: 'Luna', species: 'Perro', breed: 'Golden Retriever', sex: 'Hembra', color: 'Dorado', birthdate: localDateKey(new Date(Date.now() - 3*365*24*60*60*1000)), weight: '28', microchip: '982000123456789', ownerIds: [o1.id, o2.id], allergies: 'Pollo', chronicConditions: '', notes: 'Muy sociable, le encanta jugar con pelota.', history: [{ id: uid(), date: localDateKey(new Date(Date.now()-30*24*60*60*1000)), type: 'Consulta', title: 'Control anual', description: 'Examen físico completo. Todo dentro de parámetros normales.', treatment: 'Continuar con plan vacunal', vet: 'Dra. Rodríguez' }], vaccines: [{ id: uid(), name: 'Antirrábica', date: localDateKey(new Date(Date.now()-60*24*60*60*1000)), nextDose: localDateKey(new Date(Date.now()+305*24*60*60*1000)) }], images: [], photo: '' };
+  const p2 = { id: uid(), name: 'Whiskers', species: 'Gato', breed: 'Persa', sex: 'Macho', color: 'Blanco y gris', birthdate: localDateKey(new Date(Date.now() - 5*365*24*60*60*1000 + 10*24*60*60*1000)), weight: '5.2', ownerIds: [o1.id], history: [], vaccines: [], images: [], photo: '' };
   db.pets.push(p1, p2);
-  const tomorrow = new Date(Date.now() + 24*60*60*1000).toISOString().split('T')[0];
+  const tomorrowDate = new Date();
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrow = localDateKey(tomorrowDate);
   db.appointments.push({ id: uid(), petId: p1.id, date: tomorrow, time: '10:30', type: 'Control', vet: 'Dra. Rodríguez', notes: 'Control post-vacunación' });
   db.groomingAppointments.push({ id: uid(), petId: p2.id, date: tomorrow, time: '15:00', service: 'Baño + corte', groomer: 'Pablo', price: '4500', status: 'Pendiente' });
-  db.reminders.push({ id: uid(), title: 'Llamar para confirmar cirugía', petId: p1.id, date: new Date(Date.now()+2*24*60*60*1000).toISOString().split('T')[0], notes: 'Confirmar ayuno previo', completed: false });
+  const reminderDate = new Date();
+  reminderDate.setDate(reminderDate.getDate() + 2);
+  db.reminders.push({ id: uid(), title: 'Llamar para confirmar cirugía', petId: p1.id, date: localDateKey(reminderDate), notes: 'Confirmar ayuno previo', completed: false });
   saveDB();
 }
 
