@@ -228,6 +228,10 @@ function savePet(id, isNew) {
 
 function deletePet(id) {
   if(!canDeleteEntity('pets')){ toast('Tu rol no permite eliminar pacientes'); return; }
+  if ((db.invoices || []).some(invoice => invoice.petId === id && invoice.encounterId)) {
+    toast('No podés eliminar un paciente con consultas vinculadas a recibos', 'error');
+    return;
+  }
   showConfirm('¿Eliminar este paciente y toda su historia clínica? Esta acción no se puede deshacer.', () => {
     db.pets = db.pets.filter(p => p.id !== id);
     db.appointments = db.appointments.filter(a => a.petId !== id);
@@ -380,7 +384,7 @@ function renderPetDetailLegacy(id) {
           [...pet.history].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(h => `
             <div class="history-entry">
               ${canEditClinical() ? `<button class="close-btn delete-x" onclick="deleteHistory('${pet.id}','${h.id}')">&times;</button>` : ''}
-              <div class="history-entry-toolbar"><span class="encounter-status ${encounterStatusClass(h.status)}">${encounterStatusLabel(h.status)}</span>${canEditClinical() ? `<button class="btn btn-sm" onclick="addHistoryEntry('${pet.id}','${h.id}')">Abrir consulta</button>` : ''}</div>
+              <div class="history-entry-toolbar"><span class="encounter-status ${encounterStatusClass(h.status)}">${encounterStatusLabel(h.status)}</span><div class="history-entry-actions">${encounterInvoiceActionHTML(h.id)}${canEditClinical() ? `<button class="btn btn-sm" onclick="addHistoryEntry('${pet.id}','${h.id}')">Abrir consulta</button>` : ''}</div></div>
               <div class="date">${formatDate(h.date)} · ${escapeHtml(h.type||'Consulta')}</div>
               <div class="title">${escapeHtml(h.title||'')}</div>
               ${(h.weight||h.temp||h.hr) ? `<div class="history-vitals">${h.weight?`<span>${escapeHtml(h.weight)} kg</span>`:''}${h.temp?`<span>${escapeHtml(h.temp)} &deg;C</span>`:''}${h.hr?`<span>${escapeHtml(h.hr)} lpm</span>`:''}</div>` : ''}
@@ -800,13 +804,173 @@ function renderEncounter() {
         <aside class="encounter-sidebar">
           <div class="encounter-side-card"><h3>Estado de la consulta</h3><label class="sr-only" for="hStatus">Estado</label><select id="hStatus" onchange="toggleEncounterReopenField(this.value)">${statusOptions}</select><p>El estado permite continuar el trabajo sin cerrar una atenci&oacute;n incompleta.</p><div class="encounter-reopen-field ${status==='reopened'?'is-visible':''}"><label for="hReopen">Motivo de reapertura</label><textarea id="hReopen" rows="2" placeholder="Completar al reabrir una consulta cerrada">${textValue('reopenedReason')}</textarea></div></div>
           <div class="encounter-side-card encounter-patient-card"><h3>Paciente</h3><strong>${escapeHtml(pet.name)}</strong><span>${escapeHtml(pet.species || '')} ${pet.breed ? '&middot; ' + escapeHtml(pet.breed) : ''}</span>${pet.allergies?`<div class="encounter-alert"><b>Alergias</b>${escapeHtml(pet.allergies)}</div>`:''}${pet.chronicConditions?`<div class="encounter-alert"><b>Condici&oacute;n cr&oacute;nica</b>${escapeHtml(pet.chronicConditions)}</div>`:''}${owner?`<div class="encounter-owner"><b>${escapeHtml(owner.name)}</b><span>${escapeHtml(owner.phone || 'Sin tel&eacute;fono')}</span></div>`:''}</div>
-          <div class="encounter-actions"><button class="btn" onclick="closeEncounter()">Cancelar</button><button class="btn btn-secondary" onclick="saveHistory('${pet.id}','${ex?ex.id:''}','draft')">Guardar borrador</button><button class="btn btn-primary" onclick="saveHistory('${pet.id}','${ex?ex.id:''}')">Guardar estado</button><button class="btn btn-success" onclick="saveHistory('${pet.id}','${ex?ex.id:''}','closed')">Cerrar consulta</button></div>
+          <div class="encounter-actions"><button class="btn" onclick="closeEncounter()">Cancelar</button><button class="btn btn-secondary" onclick="saveHistory('${pet.id}','${ex?ex.id:''}','draft')">Guardar borrador</button><button class="btn btn-primary" onclick="saveHistory('${pet.id}','${ex?ex.id:''}')">Guardar estado</button><button class="btn btn-success" onclick="openEncounterCloseReview('${pet.id}','${ex?ex.id:''}')">Revisar y cerrar</button></div>
         </aside>
       </div>
     </div>`;
 }
 
-function saveHistory(petId, editId, forcedStatus) {
+function encounterInvoice(encounterId) {
+  return (db.invoices || []).find(invoice => invoice.encounterId === encounterId);
+}
+
+function encounterInvoiceActionHTML(encounterId) {
+  const invoice = encounterInvoice(encounterId);
+  if (!invoice) return '';
+  const number = invoice.number || invoice.id.slice(-4).toUpperCase();
+  return `<button class="btn btn-sm encounter-receipt-link" onclick="openInvoiceModal('${invoice.id}')">Recibo #${escapeHtml(number)}</button>`;
+}
+
+function encounterChargeRowHTML(item) {
+  return `
+    <div class="encounter-charge-row">
+      <input class="close-charge-desc" type="text" value="${escapeAttr(item.desc || '')}" placeholder="Servicio o producto">
+      <input class="close-charge-qty" type="number" min="0.01" step="0.01" value="${escapeAttr(item.qty || 1)}" aria-label="Cantidad" oninput="updateEncounterCloseTotal()">
+      <input class="close-charge-price" type="number" min="0" step="0.01" value="${escapeAttr(item.price || 0)}" aria-label="Precio unitario" oninput="updateEncounterCloseTotal()">
+      <button class="btn btn-sm btn-danger" type="button" onclick="this.closest('.encounter-charge-row').remove();updateEncounterCloseTotal()" title="Quitar cargo">${iconX()}</button>
+    </div>`;
+}
+
+function openEncounterCloseReview(petId, editId) {
+  if (!canEditClinical()) { toast('Tu rol no permite modificar información clínica'); return; }
+  const pet = db.pets.find(item => item.id === petId);
+  if (!pet) return;
+  const date = document.getElementById('hDate')?.value || '';
+  const title = document.getElementById('hTitle')?.value.trim() || '';
+  if (!date || !title) { toast('Completá fecha y motivo antes de cerrar', 'error'); return; }
+
+  const encounterId = editId || uid();
+  const existingInvoice = encounterInvoice(encounterId);
+  const owners = (pet.ownerIds || []).map(id => db.owners.find(owner => owner.id === id)).filter(Boolean);
+  const type = document.getElementById('hType')?.value || 'Consulta';
+  const clinicalItems = [
+    { label: 'Motivo', value: title },
+    { label: 'Examen físico', value: document.getElementById('hExam')?.value.trim() || '' },
+    { label: 'Diagnóstico', value: document.getElementById('hDiag')?.value.trim() || '' },
+    { label: 'Tratamiento e indicaciones', value: document.getElementById('hTreat')?.value.trim() || '' },
+  ];
+  const incomplete = clinicalItems.filter(item => !item.value);
+  const ownerOptions = owners.map((owner, index) =>
+    `<option value="${owner.id}" ${index === 0 ? 'selected' : ''}>${escapeHtml(owner.name)}</option>`
+  ).join('');
+  const invoiceStatus = existingInvoice
+    ? (existingInvoice.status === 'paid' ? 'Cobrado' : existingInvoice.status === 'cancelled' ? 'Cancelado' : 'Pendiente')
+    : '';
+
+  showModal(`
+    <div class="modal-header">
+      <div><div class="page-eyebrow">Cierre de consulta</div><h2>Revisar antes de cerrar</h2></div>
+      <button class="close-btn" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body encounter-close-review">
+      <div class="close-review-grid">
+        <section class="close-review-card">
+          <div class="close-review-heading"><div><small>Información clínica</small><h3>${escapeHtml(pet.name)} · ${escapeHtml(type)}</h3></div><span class="encounter-status encounter-status-closed">Por cerrar</span></div>
+          <div class="clinical-review-list">
+            ${clinicalItems.map(item => `
+              <div class="${item.value ? 'is-complete' : 'is-missing'}">
+                <span aria-hidden="true">${item.value ? '✓' : '!'}</span>
+                <div><strong>${escapeHtml(item.label)}</strong><p>${item.value ? escapeHtml(item.value) : 'Sin completar'}</p></div>
+              </div>`).join('')}
+          </div>
+          <div class="close-review-note ${incomplete.length ? 'is-warning' : 'is-success'}">
+            ${incomplete.length
+              ? `${incomplete.length} campo${incomplete.length === 1 ? '' : 's'} clínico${incomplete.length === 1 ? '' : 's'} sin completar. Podés cerrar igualmente, pero quedará visible en la historia.`
+              : 'La información clínica principal está completa.'}
+          </div>
+          <div class="close-review-meta"><span>Fecha <strong>${formatDate(date)}</strong></span><span>Profesional <strong>${escapeHtml(document.getElementById('hVet')?.value || 'Sin indicar')}</strong></span></div>
+        </section>
+
+        <section class="close-review-card close-review-billing">
+          <div class="close-review-heading"><div><small>Cobro</small><h3>Recibo de la consulta</h3></div></div>
+          ${existingInvoice ? `
+            <div class="linked-receipt-card">
+              <div><strong>Recibo #${escapeHtml(existingInvoice.number || existingInvoice.id.slice(-4).toUpperCase())}</strong><span>${invoiceStatus} · $${Number(existingInvoice.total || 0).toLocaleString('es-AR')}</span></div>
+              <button class="btn btn-sm" onclick="openInvoiceModal('${existingInvoice.id}')">Ver recibo</button>
+            </div>
+            <p class="close-review-help">Esta consulta ya tiene un recibo vinculado. El cierre no creará otro.</p>
+          ` : `
+            <label class="billing-toggle">
+              <input type="checkbox" id="closeCreateInvoice" ${owners.length ? 'checked' : 'disabled'}>
+              <span><strong>Generar recibo pendiente</strong><small>${owners.length ? 'Quedará listo para cobrar desde Recibos.' : 'Primero asociá un tutor al paciente para emitirlo.'}</small></span>
+            </label>
+            <div id="encounterBillingFields">
+              <div class="form-group"><label for="closeInvoiceOwner">Tutor responsable</label><select id="closeInvoiceOwner">${ownerOptions}</select></div>
+              <div class="encounter-charge-labels"><span>Descripción</span><span>Cant.</span><span>Precio</span><span></span></div>
+              <div id="encounterChargeRows">${encounterChargeRowHTML({ desc: `Consulta - ${type}`, qty: 1, price: 0 })}</div>
+              <button class="btn btn-sm" type="button" onclick="addEncounterCharge()">+ Agregar cargo</button>
+              <div class="close-review-total"><span>Total del recibo</span><strong id="encounterCloseTotal">$0</strong></div>
+            </div>
+          `}
+        </section>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Volver a editar</button>
+      <button class="btn btn-success" id="finalizeEncounterCloseButton" onclick="finalizeEncounterClose('${petId}','${editId}','${encounterId}')">${existingInvoice ? 'Cerrar consulta' : (owners.length ? 'Cerrar consulta y crear recibo' : 'Cerrar consulta sin cargo')}</button>
+    </div>
+  `, true);
+  if (!existingInvoice) {
+    document.getElementById('closeCreateInvoice')?.addEventListener('change', toggleEncounterBilling);
+    toggleEncounterBilling();
+    updateEncounterCloseTotal();
+  }
+}
+
+function toggleEncounterBilling() {
+  const enabled = Boolean(document.getElementById('closeCreateInvoice')?.checked);
+  const fields = document.getElementById('encounterBillingFields');
+  if (!fields) return;
+  fields.classList.toggle('is-disabled', !enabled);
+  fields.querySelectorAll('input,select,button').forEach(element => { element.disabled = !enabled; });
+  const closeButton = document.getElementById('finalizeEncounterCloseButton');
+  if (closeButton) closeButton.textContent = enabled ? 'Cerrar consulta y crear recibo' : 'Cerrar consulta sin cargo';
+}
+
+function addEncounterCharge() {
+  const container = document.getElementById('encounterChargeRows');
+  if (!container) return;
+  container.insertAdjacentHTML('beforeend', encounterChargeRowHTML({ desc: '', qty: 1, price: 0 }));
+}
+
+function updateEncounterCloseTotal() {
+  let total = 0;
+  document.querySelectorAll('.encounter-charge-row').forEach(row => {
+    const qty = Number.parseFloat(row.querySelector('.close-charge-qty')?.value || '0');
+    const price = Number.parseFloat(row.querySelector('.close-charge-price')?.value || '0');
+    if (Number.isFinite(qty) && Number.isFinite(price)) total += qty * price;
+  });
+  const display = document.getElementById('encounterCloseTotal');
+  if (display) display.textContent = '$' + total.toLocaleString('es-AR', { maximumFractionDigits: 2 });
+  return total;
+}
+
+function finalizeEncounterClose(petId, editId, encounterId) {
+  const createInvoice = Boolean(document.getElementById('closeCreateInvoice')?.checked);
+  let invoice = null;
+  if (createInvoice) {
+    const ownerId = document.getElementById('closeInvoiceOwner')?.value || '';
+    if (!ownerId) { toast('Seleccioná un tutor para generar el recibo', 'error'); return; }
+    const items = [];
+    document.querySelectorAll('.encounter-charge-row').forEach(row => {
+      const desc = row.querySelector('.close-charge-desc')?.value.trim() || '';
+      const qty = Number.parseFloat(row.querySelector('.close-charge-qty')?.value || '0');
+      const price = Number.parseFloat(row.querySelector('.close-charge-price')?.value || '0');
+      if (desc && Number.isFinite(qty) && qty > 0 && Number.isFinite(price) && price >= 0) {
+        items.push({ desc, qty, price });
+      }
+    });
+    const total = items.reduce((sum, item) => sum + item.qty * item.price, 0);
+    if (!items.length || total <= 0) {
+      toast('Agregá al menos un cargo con importe mayor a cero', 'error');
+      return;
+    }
+    invoice = { ownerId, items, total };
+  }
+  saveHistory(petId, editId, 'closed', { encounterId, invoice });
+}
+
+function saveHistory(petId, editId, forcedStatus, closeBundle) {
   if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
   const date = document.getElementById('hDate').value;
   const title = document.getElementById('hTitle').value.trim();
@@ -819,13 +983,17 @@ function saveHistory(petId, editId, forcedStatus) {
   if (status === 'reopened' && !reopenedReason) { toast('Completa el motivo de reapertura', 'error'); return; }
   if (existing && (existing.status || 'closed') === 'closed' && !['closed','reopened'].includes(status)) { toast('Una consulta cerrada debe pasar a Reabierta', 'error'); return; }
   if (!date || !title) { toast('Completá fecha y motivo', 'error'); return; }
+  if (status === 'closed' && !closeBundle) {
+    openEncounterCloseReview(petId, editId);
+    return;
+  }
   const pet = db.pets.find(p => p.id === petId);
   if (!pet) return;
   pet.history = pet.history || [];
   const weight = document.getElementById('hWeight').value;
   const temp = document.getElementById('hTemp').value;
   const entry = {
-    id: editId || uid(), date,
+    id: closeBundle?.encounterId || editId || uid(), date,
     type: document.getElementById('hType').value,
     vet: document.getElementById('hVet').value,
     weight, temp, hr: document.getElementById('hHR').value,
@@ -853,7 +1021,7 @@ function saveHistory(petId, editId, forcedStatus) {
   }
   const latestWeight = [...pet.history].sort((a,b) => String(b.date||'').localeCompare(String(a.date||''))).find(h => h.weight);
   if (latestWeight) pet.weight = latestWeight.weight;
-  if (entry.nextControl && status === 'closed' && !editId) {
+  if (entry.nextControl && status === 'closed' && (!existing || existing.status !== 'closed')) {
     db.reminders.push({id:uid(),title:'Control: '+title,petId,date:entry.nextControl,type:'control',completed:false});
   }
   if (linkedAppointmentId) {
@@ -864,7 +1032,32 @@ function saveHistory(petId, editId, forcedStatus) {
       appointment.completedAt = status === 'closed' ? (appointment.completedAt || now) : '';
     }
   }
-  saveDB(editId ? 'Consulta actualizada' : 'Consulta registrada'); closeEncounter();
+  let receiptCreated = false;
+  if (closeBundle?.invoice && !encounterInvoice(entry.id)) {
+    const invoiceData = closeBundle.invoice;
+    db.invoices = db.invoices || [];
+    db.invoices.push({
+      id: uid(),
+      number: nextLocalInvoiceNumber(),
+      date,
+      ownerId: invoiceData.ownerId,
+      petId,
+      items: invoiceData.items,
+      total: invoiceData.total,
+      status: 'pending',
+      notes: 'Generado desde consulta: ' + title,
+      encounterId: entry.id,
+    });
+    receiptCreated = true;
+  }
+  const message = receiptCreated
+    ? 'Consulta cerrada y recibo pendiente generado'
+    : (status === 'closed' && closeBundle
+      ? (encounterInvoice(entry.id) ? 'Consulta cerrada' : 'Consulta cerrada sin recibo')
+      : (editId ? 'Consulta actualizada' : 'Consulta registrada'));
+  saveDB(message);
+  closeModal();
+  closeEncounter();
 }
 
 function printHistEntry(petId, hId) {
@@ -900,6 +1093,10 @@ function printHistEntry(petId, hId) {
 
 function deleteHistory(petId, hId) {
   if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
+  if (encounterInvoice(hId)) {
+    toast('No podés eliminar una consulta vinculada a un recibo', 'error');
+    return;
+  }
   showConfirm('¿Eliminar este registro clínico?', () => {
   const pet = db.pets.find(p => p.id === petId);
   pet.history = pet.history.filter(h => h.id !== hId);

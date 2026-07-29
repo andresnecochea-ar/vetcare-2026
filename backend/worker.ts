@@ -53,7 +53,10 @@ const TABLES: Record<string, EntityConfig> = {
     jsonFields: ['lots'],
   },
   invoices: {
-    columns: ['id', 'number', 'date', 'ownerId', 'petId', 'items', 'total', 'status', 'notes'],
+    columns: [
+      'id', 'number', 'date', 'ownerId', 'petId', 'items', 'total', 'status',
+      'notes', 'encounterId',
+    ],
     jsonFields: ['items'],
   },
 };
@@ -564,9 +567,29 @@ function gatedPetChildren(
   return statements;
 }
 
+async function ensureBilledHistoryPreserved(
+  env: Env,
+  petId: string,
+  body: JsonObject,
+): Promise<void> {
+  const submittedIds = new Set(
+    arrayOfObjects(body.history)
+      .map((entry) => optionalString(entry.id))
+      .filter((id): id is string => Boolean(id)),
+  );
+  const { results } = await env.DB.prepare(
+    "SELECT encounterId FROM invoices WHERE petId = ? AND encounterId <> ''",
+  ).bind(petId).all<{ encounterId: string }>();
+  const removed = (results ?? []).find((row) => !submittedIds.has(row.encounterId));
+  if (removed) {
+    throw new HttpError('No se puede eliminar una consulta vinculada a un recibo', 409);
+  }
+}
+
 async function savePetFull(env: Env, body: JsonObject): Promise<JsonObject> {
   const config = tableConfig('pets');
   const id = optionalString(body.id) ?? uid();
+  await ensureBilledHistoryPreserved(env, id, body);
   const row: JsonObject = { ...body, id };
   const fields = config.columns.filter((column) => Object.hasOwn(row, column));
   const placeholders = fields.map(() => '?').join(',');
@@ -604,6 +627,19 @@ async function deletePetFull(
   id: string,
   expectedRevision: number,
 ): Promise<{ ok: true }> {
+  const currentPet = await env.DB.prepare('SELECT revision FROM pets WHERE id = ?')
+    .bind(id)
+    .first<{ revision: number }>();
+  if (!currentPet || currentPet.revision !== expectedRevision) {
+    throw new HttpError(
+      'La ficha fue modificada en otro equipo. Recargá los datos antes de eliminarla.',
+      409,
+    );
+  }
+  const linkedReceipt = await env.DB.prepare(
+    "SELECT id FROM invoices WHERE petId = ? AND encounterId <> '' LIMIT 1",
+  ).bind(id).first();
+  if (linkedReceipt) throw new HttpError('No se puede eliminar un paciente con consultas facturadas', 409);
   const gatedDelete = (table: string, foreignKey: string): D1PreparedStatement =>
     env.DB.prepare(
       `DELETE FROM ${table}
@@ -672,6 +708,28 @@ async function validateInvoiceRelations(env: Env, row: JsonObject): Promise<void
   }
 }
 
+async function validateInvoiceEncounterLink(env: Env, row: JsonObject): Promise<void> {
+  const encounterId = stringValue(row.encounterId);
+  if (!encounterId) return;
+  const invoiceId = stringValue(row.id);
+  const petId = stringValue(row.petId);
+  if (!petId) throw new HttpError('Un recibo de consulta debe tener paciente');
+
+  const [encounter, duplicate] = await Promise.all([
+    env.DB.prepare('SELECT pet_id FROM pet_history WHERE id = ?')
+      .bind(encounterId)
+      .first<{ pet_id: string }>(),
+    env.DB.prepare('SELECT id FROM invoices WHERE encounterId = ? AND id <> ?')
+      .bind(encounterId, invoiceId)
+      .first<{ id: string }>(),
+  ]);
+  if (!encounter) throw new HttpError('La consulta vinculada no existe');
+  if (encounter.pet_id !== petId) {
+    throw new HttpError('La consulta no pertenece al paciente del recibo');
+  }
+  if (duplicate) throw new HttpError('La consulta ya tiene un recibo vinculado', 409);
+}
+
 async function saveInvoice(env: Env, body: JsonObject): Promise<JsonObject> {
   const id = optionalString(body.id) ?? uid();
   const existing = await env.DB.prepare(
@@ -679,6 +737,7 @@ async function saveInvoice(env: Env, body: JsonObject): Promise<JsonObject> {
   ).bind(id).first<JsonObject>();
   const row: JsonObject = { ...(existing ?? {}), ...body, id };
   await validateInvoiceRelations(env, row);
+  await validateInvoiceEncounterLink(env, row);
   row.number = stringValue(existing?.number) || await allocateInvoiceNumber(env);
   const config = tableConfig('invoices');
   const fields = config.columns.filter((column) => Object.hasOwn(row, column));
@@ -769,6 +828,16 @@ async function health(env: Env): Promise<{
          FROM pragma_table_info('pets')
          WHERE name IN ('revision', 'syncToken')
        ) = 2
+        AND (
+          SELECT COUNT(*)
+          FROM pragma_table_info('invoices')
+          WHERE name = 'encounterId'
+        ) = 1
+        AND (
+          SELECT COUNT(*)
+          FROM sqlite_master
+          WHERE type = 'index' AND name = 'idx_invoices_encounter'
+        ) = 1
        AND (
          SELECT COUNT(*)
          FROM pragma_table_info('audit_log')
@@ -785,7 +854,7 @@ async function health(env: Env): Promise<{
     status: ready ? 'ok' : 'degraded',
     version: stringValue(env.APP_VERSION, 'unknown'),
     database: ready ? 'ready' : 'migrations-pending',
-    schemaVersion: ready ? 8 : 0,
+    schemaVersion: ready ? 9 : 0,
   };
 }
 

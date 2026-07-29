@@ -46,7 +46,9 @@ function openInvoiceModal(id) {
   const inv=isNew
     ?{id:uid(),date:today,items:[{desc:'',qty:1,price:0}],status:'pending',ownerId:'',petId:'',notes:''}
     :((db.invoices||[]).find(i=>i.id===id)||{id:uid(),date:today,items:[{desc:'',qty:1,price:0}],status:'pending',ownerId:'',petId:'',notes:''});
-  const ownerOpts=db.owners.map(o=>`<option value="${o.id}" ${inv.ownerId===o.id?'selected':''} >${escapeHtml(o.name)}</option>`).join('');
+  const linkedPet=inv.encounterId?db.pets.find(p=>p.id===inv.petId):null;
+  const availableOwners=linkedPet?db.owners.filter(o=>(linkedPet.ownerIds||[]).includes(o.id)):db.owners;
+  const ownerOpts=availableOwners.map(o=>`<option value="${o.id}" ${inv.ownerId===o.id?'selected':''} >${escapeHtml(o.name)}</option>`).join('');
   const petOpts=invoicePetOptions(inv.ownerId,inv.petId,true);
   showModal(`
     <div class="modal-header">
@@ -54,11 +56,12 @@ function openInvoiceModal(id) {
       <button class="close-btn" onclick="closeModal()">&times;</button>
     </div>
     <div class="modal-body">
+      ${inv.encounterId ? `<div class="linked-receipt-context"><strong>Vinculado a una consulta clínica</strong><span>El paciente ${escapeHtml(linkedPet?.name || '')} queda protegido para conservar la trazabilidad.</span></div>` : ''}
       <div class="form-row">
         <div class="form-group"><label>Tutor</label>
           <select id="invOwner" onchange="syncInvoiceRelations('owner')"><option value="">— Sin tutor —</option>${ownerOpts}</select></div>
-        <div class="form-group"><label>Paciente</label>
-          <select id="invPet" onchange="syncInvoiceRelations('pet')"><option value="">— Sin paciente —</option>${petOpts}</select></div>
+        <div class="form-group"><label>Paciente${inv.encounterId?' vinculado':''}</label>
+          <select id="invPet" onchange="syncInvoiceRelations('pet')" ${inv.encounterId?'disabled':''}><option value="">— Sin paciente —</option>${petOpts}</select></div>
       </div>
       <div class="form-row">
         <div class="form-group"><label>Fecha</label><input type="date" id="invDate" value="${inv.date}"></div>
@@ -161,6 +164,7 @@ function saveInvoice(id,isNew){
   const ownerId=document.getElementById('invOwner')?.value||'';
   const petId=document.getElementById('invPet')?.value||'';
   const selectedPet=petId?db.pets.find(p=>p.id===petId):null;
+  const existingInvoice=id?db.invoices.find(i=>i.id===id):null;
   if(ownerId&&petId&&(!selectedPet||!(selectedPet.ownerIds||[]).includes(ownerId))){
     toast('El paciente no está asociado al tutor seleccionado','error');
     return;
@@ -173,7 +177,8 @@ function saveInvoice(id,isNew){
     status:document.getElementById('invStatus')?.value||'pending',
     items,total,
     notes:document.getElementById('invNotes')?.value||'',
-    number:isNew?nextLocalInvoiceNumber():((db.invoices.find(i=>i.id===id)||{}).number||nextLocalInvoiceNumber())
+    encounterId:existingInvoice?.encounterId||'',
+    number:isNew?nextLocalInvoiceNumber():(existingInvoice?.number||nextLocalInvoiceNumber())
   };
   if(isNew){db.invoices.push(inv);}
   else{const idx=db.invoices.findIndex(i=>i.id===id);if(idx>-1)db.invoices[idx]=inv;else db.invoices.push(inv);}

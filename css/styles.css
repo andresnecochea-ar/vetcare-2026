@@ -1872,3 +1872,174 @@ html, body { max-width:100%; overflow-x:hidden; }
   .encounter-actions .btn-success { grid-column: auto; }
   .history-entry-toolbar { align-items: flex-start; }
 }
+
+.history-entry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+.encounter-receipt-link { border-color: #8cc8b0; background: #edf8f3; color: #246b4d; }
+.encounter-close-review { background: var(--bg-soft); }
+.close-review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+}
+.close-review-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-alt);
+}
+.close-review-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.close-review-heading small {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-mute);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.close-review-heading h3 { margin: 0; font-size: var(--fs-md); }
+.clinical-review-list { display: grid; gap: 8px; }
+.clinical-review-list > div {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.clinical-review-list > div > span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+}
+.clinical-review-list .is-complete > span { background: #e5f6ef; color: #246b4d; }
+.clinical-review-list .is-missing > span { background: #fff4d8; color: #8a5b13; }
+.clinical-review-list strong { font-size: var(--fs-xs); }
+.clinical-review-list p {
+  overflow: hidden;
+  margin: 2px 0 0;
+  color: var(--text-soft);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clinical-review-list .is-missing p { color: var(--warning); font-style: italic; }
+.close-review-note {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-left: 3px solid;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+}
+.close-review-note.is-warning { border-color: var(--warning); background: #fff4d8; color: #7a4f0a; }
+.close-review-note.is-success { border-color: #247a52; background: #edf8f3; color: #246b4d; }
+.close-review-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 14px;
+  color: var(--text-soft);
+  font-size: var(--fs-xs);
+}
+.close-review-meta strong { color: var(--text); }
+.billing-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid #8cc8b0;
+  border-radius: var(--radius-sm);
+  background: #edf8f3;
+  cursor: pointer;
+}
+.billing-toggle input { flex: 0 0 auto; width: 18px; height: 18px; margin-top: 2px; }
+.billing-toggle span { display: grid; gap: 3px; }
+.billing-toggle small { color: var(--text-soft); line-height: 1.4; }
+#encounterBillingFields { transition: opacity .15s ease; }
+#encounterBillingFields.is-disabled { opacity: .45; }
+.encounter-charge-labels,
+.encounter-charge-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) 70px 110px 36px;
+  gap: 7px;
+  align-items: center;
+}
+.encounter-charge-labels {
+  margin-bottom: 5px;
+  color: var(--text-mute);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+}
+.encounter-charge-row { margin-bottom: 7px; }
+.encounter-charge-row input { width: 100%; min-width: 0; }
+.encounter-charge-row .btn { width: 36px; height: 36px; padding: 0; justify-content: center; }
+.close-review-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+}
+.close-review-total span { color: var(--text-soft); font-size: var(--fs-sm); }
+.close-review-total strong { font-family: var(--font-display); font-size: var(--fs-lg); }
+.linked-receipt-card,
+.linked-receipt-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid #8cc8b0;
+  border-radius: var(--radius-sm);
+  background: #edf8f3;
+}
+.linked-receipt-card > div,
+.linked-receipt-context { color: #246b4d; }
+.linked-receipt-card > div { display: grid; gap: 3px; }
+.linked-receipt-card span,
+.linked-receipt-context span { color: var(--text-soft); font-size: var(--fs-xs); }
+.linked-receipt-context { justify-content: flex-start; margin-bottom: 16px; }
+.linked-receipt-context strong { white-space: nowrap; }
+.close-review-help { margin: 12px 0 0; color: var(--text-soft); font-size: var(--fs-xs); line-height: 1.5; }
+.modal-footer .btn-success { border-color: #247a52; background: #247a52; color: #fff; }
+.modal-footer .btn-success:hover { background: #1d6845; }
+
+@media (max-width: 720px) {
+  .close-review-grid { grid-template-columns: 1fr; }
+  .encounter-charge-labels { display: none; }
+  .encounter-charge-row {
+    grid-template-columns: minmax(0, 1fr) 74px 36px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .encounter-charge-row .close-charge-desc { grid-column: 1 / -1; }
+  .encounter-charge-row .close-charge-price { grid-column: 1; grid-row: 2; }
+  .encounter-charge-row .close-charge-qty { grid-column: 2; grid-row: 2; }
+  .encounter-charge-row .btn { grid-column: 3; grid-row: 2; }
+  .linked-receipt-card,
+  .linked-receipt-context { align-items: flex-start; flex-direction: column; }
+  .linked-receipt-context strong { white-space: normal; }
+}

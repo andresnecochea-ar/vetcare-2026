@@ -67,8 +67,8 @@ describe('VetCare Worker', () => {
     expect(body).toMatchObject({
       status: 'ok',
       database: 'ready',
-      version: '2.4.0',
-      schemaVersion: 8,
+      version: '2.5.0',
+      schemaVersion: 9,
     });
   });
 
@@ -233,6 +233,7 @@ describe('VetCare Worker', () => {
       date: '2026-07-28',
       ownerId: owner.id,
       petId: pet.id,
+      encounterId: pet.history[0].id,
       items: [{ desc: 'Consulta', qty: 1, price: 15000 }],
       total: 15000,
       status: 'paid',
@@ -245,6 +246,13 @@ describe('VetCare Worker', () => {
     });
     expect(savedInvoice.response.status).toBe(200);
     expect(savedInvoice.body.number).toBe('0001');
+    const duplicateEncounter = await jsonResponse('/api/invoices', {
+      method: 'POST',
+      headers: authenticated,
+      body: { ...invoice, id: crypto.randomUUID(), number: '9999' },
+    });
+    expect(duplicateEncounter.response.status).toBe(409);
+    expect(duplicateEncounter.body.error).toContain('ya tiene un recibo');
 
     const unrelatedOwner = {
       id: crypto.randomUUID(),
@@ -295,15 +303,17 @@ describe('VetCare Worker', () => {
     });
     expect(snapshot.body.inventory[0].lots).toEqual(inventory.lots);
     expect(snapshot.body.invoices[0].items).toEqual(invoice.items);
+    expect(snapshot.body.invoices[0].encounterId).toBe(pet.history[0].id);
     expect(snapshot.body).toMatchObject({
       clinicName: 'VetCare Test',
       settings: { theme: 'dark', receiptTaxId: '20-12345678-9' },
     });
 
-    const databaseInvoice = await env.DB.prepare('SELECT items FROM invoices WHERE id = ?')
+    const databaseInvoice = await env.DB.prepare('SELECT items, encounterId FROM invoices WHERE id = ?')
       .bind(invoice.id)
       .first();
     expect(typeof databaseInvoice.items).toBe('string');
+    expect(databaseInvoice.encounterId).toBe(pet.history[0].id);
 
     const databaseHistory = await env.DB.prepare(
       `SELECT weight, temp, hr, exam, diagnosis, nextControl,
@@ -333,6 +343,22 @@ describe('VetCare Worker', () => {
     });
     expect(firstUpdate.response.status).toBe(200);
     expect(firstUpdate.body.revision).toBe(2);
+    const withoutBilledHistory = structuredClone(firstUpdate.body);
+    withoutBilledHistory.history = [];
+    const billedHistoryRemoval = await jsonResponse('/api/pets', {
+      method: 'POST',
+      headers: authenticated,
+      body: withoutBilledHistory,
+    });
+    expect(billedHistoryRemoval.response.status).toBe(409);
+    expect(billedHistoryRemoval.body.error).toContain('vinculada a un recibo');
+    const billedPetRemoval = await jsonResponse(`/api/pets/${pet.id}`, {
+      method: 'DELETE',
+      headers: authenticated,
+      body: { revision: firstUpdate.body.revision },
+    });
+    expect(billedPetRemoval.response.status).toBe(409);
+    expect(billedPetRemoval.body.error).toContain('consultas facturadas');
 
     staleEditor.history[0].diagnosis = 'Cambio basado en una ficha desactualizada';
     const staleUpdate = await jsonResponse('/api/pets', {
