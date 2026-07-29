@@ -62,6 +62,23 @@ let authToken = null;
 let currentUser = null;
 try { authToken = localStorage.getItem('vetcare_token') || null; } catch(e){}
 function apiConfigured(){ return API_BASE && !API_BASE.startsWith('PEGAR_AQUI'); }
+const ROLE_LABELS = { admin:'Administrador', veterinarian:'Veterinario/a', reception:'Recepción' };
+function currentRole(){ return currentUser&&currentUser.role ? currentUser.role : (apiConfigured()?'reception':'admin'); }
+function roleLabel(role){ return ROLE_LABELS[role] || 'Recepción'; }
+function isAdmin(){ return !apiConfigured() || currentRole()==='admin'; }
+function canWriteEntity(entity){
+  if(!apiConfigured()||currentRole()==='admin')return true;
+  const allowed=currentRole()==='veterinarian'
+    ?['owners','pets','appointments','groomingAppointments','reminders','inventory','invoices']
+    :['owners','pets','appointments','groomingAppointments','reminders','invoices'];
+  return allowed.includes(entity);
+}
+function canDeleteEntity(entity){
+  return !apiConfigured()||currentRole()==='admin'
+    ||['appointments','groomingAppointments','reminders'].includes(entity);
+}
+function canEditClinical(){ return !apiConfigured()||currentRole()==='admin'||currentRole()==='veterinarian'; }
+function canManageSettings(){ return !apiConfigured()||currentRole()==='admin'; }
 async function api(path, opts){
   opts = opts || {};
   const headers = { 'Content-Type':'application/json' };
@@ -158,7 +175,7 @@ async function syncToAPI(){
     }
     const nextSettings={clinicName:db.clinicName||'VetCare',settings:db.settings||{}};
     const prevSettings={clinicName:_lastSnapshot.clinicName||'VetCare',settings:_lastSnapshot.settings||{}};
-    if(!_sameSnapshotValue(nextSettings,prevSettings)){
+    if(canManageSettings()&&!_sameSnapshotValue(nextSettings,prevSettings)){
       await api('/api/settings',{method:'POST',body:nextSettings});
       _lastSnapshot.clinicName=nextSettings.clinicName;
       _lastSnapshot.settings=JSON.parse(JSON.stringify(nextSettings.settings));

@@ -83,7 +83,7 @@ function openOwnerModal(id) {
       <div class="form-group"><label>Notas</label><textarea id="oNotes">${escapeHtml(owner.notes||'')}</textarea></div>
     </div>
     <div class="modal-footer">
-      ${!isNew ? `<button class="btn btn-danger" onclick="deleteOwner('${owner.id}')">Eliminar</button>` : ''}
+      ${!isNew && canDeleteEntity('owners') ? `<button class="btn btn-danger" onclick="deleteOwner('${owner.id}')">Eliminar</button>` : ''}
       <button class="btn" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-primary" onclick="saveOwner('${owner.id}', ${isNew})">Guardar</button>
     </div>
@@ -121,6 +121,7 @@ function saveOwner(id, isNew) {
 }
 
 function deleteOwner(id) {
+  if(!canDeleteEntity('owners')){ toast('Tu rol no permite eliminar tutores'); return; }
   showConfirm('¿Eliminar este tutor? Quedará desvinculado de sus mascotas.', () => {
   db.owners = db.owners.filter(o=>o.id!==id);
   db.pets.forEach(p => { if (p.ownerIds) p.ownerIds = p.ownerIds.filter(oid => oid !== id); });

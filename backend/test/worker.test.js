@@ -41,8 +41,8 @@ describe('VetCare Worker', () => {
     expect(body).toMatchObject({
       status: 'ok',
       database: 'ready',
-      version: '2.1.0',
-      schemaVersion: 5,
+      version: '2.2.0',
+      schemaVersion: 6,
     });
   });
 
@@ -83,6 +83,7 @@ describe('VetCare Worker', () => {
       body: { email, password },
     });
     expect(login.response.status).toBe(200);
+    expect(login.body.user.role).toBe('admin');
     const authorization = `Bearer ${login.body.token}`;
     const authenticated = { Authorization: authorization };
 
@@ -348,5 +349,136 @@ describe('VetCare Worker', () => {
       'SELECT ownerId FROM invoices WHERE id = ?',
     ).bind(ownerOnlyInvoice.body.id).first();
     expect(invoiceAfterOwnerDelete.ownerId).toBe('');
+
+    const receptionEmail = `recepcion-${crypto.randomUUID()}@example.com`;
+    const receptionPassword = 'otra-clave-segura';
+    const receptionRegistration = await jsonResponse('/api/register', {
+      method: 'POST',
+      body: {
+        email: receptionEmail,
+        password: receptionPassword,
+        name: 'Recepción Test',
+        inviteCode: 'test-invite-code',
+      },
+    });
+    expect(receptionRegistration.response.status).toBe(201);
+    expect(receptionRegistration.body.role).toBe('reception');
+
+    const receptionLogin = await jsonResponse('/api/login', {
+      method: 'POST',
+      body: { email: receptionEmail, password: receptionPassword },
+    });
+    const receptionAuth = { Authorization: `Bearer ${receptionLogin.body.token}` };
+    expect(receptionLogin.body.user.role).toBe('reception');
+
+    expect((await request('/api/audit', { headers: receptionAuth })).status).toBe(403);
+    expect((await request('/api/settings', {
+      method: 'POST',
+      headers: receptionAuth,
+      body: { clinicName: 'No autorizado', settings: {} },
+    })).status).toBe(403);
+    expect((await request('/api/inventory', {
+      method: 'POST',
+      headers: receptionAuth,
+      body: { id: crypto.randomUUID(), name: 'No autorizado', lots: [] },
+    })).status).toBe(403);
+
+    const receptionOwner = { id: crypto.randomUUID(), name: 'Tutor Recepción' };
+    expect((await request('/api/owners', {
+      method: 'POST',
+      headers: receptionAuth,
+      body: receptionOwner,
+    })).status).toBe(200);
+    expect((await request(`/api/owners/${receptionOwner.id}`, {
+      method: 'DELETE',
+      headers: receptionAuth,
+    })).status).toBe(403);
+
+    const receptionPet = {
+      id: crypto.randomUUID(),
+      name: 'Paciente Recepción',
+      species: 'Gato',
+      ownerIds: [receptionOwner.id],
+    };
+    const receptionPetCreate = await jsonResponse('/api/pets', {
+      method: 'POST',
+      headers: receptionAuth,
+      body: receptionPet,
+    });
+    expect(receptionPetCreate.response.status).toBe(200);
+    expect(receptionPetCreate.body.revision).toBe(1);
+
+    const forbiddenClinicalUpdate = await jsonResponse('/api/pets', {
+      method: 'POST',
+      headers: receptionAuth,
+      body: {
+        ...receptionPet,
+        revision: 1,
+        history: [{
+          id: crypto.randomUUID(),
+          date: '2026-07-28',
+          title: 'Dato clínico secreto',
+          diagnosis: 'No debe aparecer en auditoría',
+        }],
+      },
+    });
+    expect(forbiddenClinicalUpdate.response.status).toBe(403);
+    expect(forbiddenClinicalUpdate.body.error).toContain('información clínica');
+
+    const users = await jsonResponse('/api/users', { headers: authenticated });
+    expect(users.response.status).toBe(200);
+    expect(users.body.users).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: receptionRegistration.body.id, role: 'reception' }),
+    ]));
+
+    const promoted = await jsonResponse(`/api/users/${receptionRegistration.body.id}/role`, {
+      method: 'PUT',
+      headers: authenticated,
+      body: { role: 'veterinarian' },
+    });
+    expect(promoted.response.status).toBe(200);
+    expect(promoted.body.role).toBe('veterinarian');
+
+    const veterinarianUpdate = await jsonResponse('/api/pets', {
+      method: 'POST',
+      headers: receptionAuth,
+      body: {
+        ...receptionPet,
+        revision: 1,
+        history: [{
+          id: crypto.randomUUID(),
+          date: '2026-07-28',
+          title: 'Control veterinario',
+          diagnosis: 'Paciente estable',
+        }],
+      },
+    });
+    expect(veterinarianUpdate.response.status).toBe(200);
+    expect(veterinarianUpdate.body.revision).toBe(2);
+
+    const lastAdminDemotion = await jsonResponse(`/api/users/${login.body.user.id}/role`, {
+      method: 'PUT',
+      headers: authenticated,
+      body: { role: 'reception' },
+    });
+    expect(lastAdminDemotion.response.status).toBe(409);
+    expect(lastAdminDemotion.body.error).toContain('al menos un administrador');
+
+    const audit = await jsonResponse('/api/audit?limit=200', { headers: authenticated });
+    expect(audit.response.status).toBe(200);
+    expect(audit.body.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        action: 'role_change',
+        entity_type: 'users',
+        entity_id: receptionRegistration.body.id,
+        fields: ['role'],
+      }),
+      expect.objectContaining({
+        action: 'update',
+        entity_type: 'pets',
+        entity_id: receptionPet.id,
+      }),
+    ]));
+    expect(JSON.stringify(audit.body.entries)).not.toContain('Paciente estable');
   });
 });

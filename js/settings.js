@@ -4,7 +4,7 @@
    y de los recibos, y acceso al respaldo.
    ===================================================================== */
 
-var APP_VERSION = '5.9';
+var APP_VERSION = '2.2.0';
 
 function _ensureSettings(){
   if(!db.settings) db.settings = {};
@@ -19,10 +19,20 @@ function openSettings(){
   _ensureSettings();
   var s = db.settings;
   var dark = s.theme === 'dark';
+  var admin = canManageSettings();
+  var userSummary = currentUser
+    ? escapeHtml(currentUser.name||currentUser.email||'Usuario') + ' · ' + escapeHtml(roleLabel(currentUser.role))
+    : 'Modo local · Administrador';
   showModal(
     '<div class="modal-header"><h3>Opciones</h3>'
     + '<button class="close-btn" onclick="closeModal()">&times;</button></div>'
     + '<div class="modal-body">'
+
+    + '<div class="settings-section">'
+    + '  <div class="settings-label">Sesión actual</div>'
+    + '  <div style="font-weight:600">' + userSummary + '</div>'
+    + (currentUser&&currentUser.email ? '  <small style="color:var(--text-mute)">' + escapeHtml(currentUser.email) + '</small>' : '')
+    + '</div>'
 
     + '<div class="settings-section">'
     + '  <div class="settings-label">Apariencia</div>'
@@ -32,22 +42,30 @@ function openSettings(){
 
     + '<div class="settings-section">'
     + '  <div class="settings-label">Datos de la clinica</div>'
-    + '  <input class="input" id="setClinicName" placeholder="Nombre de la clinica" value="' + escapeAttr(s.clinicName) + '">'
+    + '  <input class="input" id="setClinicName" placeholder="Nombre de la clinica" value="' + escapeAttr(s.clinicName) + '"' + (admin?'':' disabled') + '>'
     + '</div>'
 
     + '<div class="settings-section">'
     + '  <div class="settings-label">Datos para recibos</div>'
-    + '  <input class="input" id="setRecAddr" placeholder="Direccion" value="' + escapeAttr(s.receiptAddress) + '" style="margin-bottom:8px">'
-    + '  <input class="input" id="setRecPhone" placeholder="Telefono" value="' + escapeAttr(s.receiptPhone) + '" style="margin-bottom:8px">'
-    + '  <input class="input" id="setRecTax" placeholder="CUIT" value="' + escapeAttr(s.receiptTaxId) + '">'
-    + '  <button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="saveSettings()">Guardar datos</button>'
+    + '  <input class="input" id="setRecAddr" placeholder="Direccion" value="' + escapeAttr(s.receiptAddress) + '" style="margin-bottom:8px"' + (admin?'':' disabled') + '>'
+    + '  <input class="input" id="setRecPhone" placeholder="Telefono" value="' + escapeAttr(s.receiptPhone) + '" style="margin-bottom:8px"' + (admin?'':' disabled') + '>'
+    + '  <input class="input" id="setRecTax" placeholder="CUIT" value="' + escapeAttr(s.receiptTaxId) + '"' + (admin?'':' disabled') + '>'
+    + (admin
+      ? '  <button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="saveSettings()">Guardar datos</button>'
+      : '  <small style="color:var(--text-mute);display:block;margin-top:8px">Solo una persona administradora puede modificar estos datos.</small>')
     + '</div>'
 
-    + '<div class="settings-section">'
+    + (canWriteEntity('inventory') ? '<div class="settings-section">'
     + '  <div class="settings-label">Catálogo de productos</div>'
     + '  <button class="btn btn-secondary" style="width:100%" onclick="openCatalog()">Gestionar productos</button>'
     + '  <small style="color:var(--text-mute);display:block;margin-top:6px">Definí acá la lista de productos. El stock se carga desde la sección Inventario.</small>'
-    + '</div>'
+    + '</div>' : '')
+
+    + (admin&&apiConfigured() ? '<div class="settings-section">'
+    + '  <div class="settings-label">Accesos y auditoría</div>'
+    + '  <button class="btn btn-secondary" style="width:100%" onclick="openAccessManagement()">Gestionar usuarios y actividad</button>'
+    + '  <small style="color:var(--text-mute);display:block;margin-top:6px">Asigná roles y revisá las operaciones realizadas.</small>'
+    + '</div>' : '')
 
     + '<div class="settings-section">'
     + '  <div class="settings-label">Respaldo</div>'
@@ -65,6 +83,7 @@ function openSettings(){
 }
 
 function saveSettings(){
+  if(!canManageSettings()){ toast('Solo una persona administradora puede modificar estos datos'); return; }
   _ensureSettings();
   var byId = function(id){ return document.getElementById(id); };
   if(byId('setClinicName')) db.settings.clinicName = byId('setClinicName').value.trim();
@@ -73,6 +92,54 @@ function saveSettings(){
   if(byId('setRecTax')) db.settings.receiptTaxId = byId('setRecTax').value.trim();
   saveDB();
   toast('Datos guardados');
+}
+
+function _auditLabel(action){
+  return ({register:'Alta de usuario',login:'Inicio de sesión',create:'Creación',update:'Modificación',delete:'Eliminación',role_change:'Cambio de rol'})[action] || action;
+}
+
+async function openAccessManagement(){
+  if(!isAdmin()){ toast('Acceso reservado a administradores'); return; }
+  showModal('<div class="modal-header"><h3>Accesos y auditoría</h3><button class="close-btn" onclick="closeModal()">&times;</button></div><div class="modal-body"><div class="empty-state">Cargando…</div></div>',true);
+  try{
+    var results=await Promise.all([api('/api/users'),api('/api/audit?limit=100')]);
+    var users=results[0].users||[];
+    var entries=results[1].entries||[];
+    var userRows=users.map(function(user){
+      var own=currentUser&&currentUser.id===user.id;
+      return '<tr><td><strong>'+escapeHtml(user.name||'Sin nombre')+'</strong><br><small>'+escapeHtml(user.email||'')+(own?' · Vos':'')+'</small></td>'
+        +'<td><select class="input" aria-label="Rol de '+escapeAttr(user.name||user.email||'usuario')+'" onchange="changeUserRole(\''+user.id+'\',this.value)">'
+        +['admin','veterinarian','reception'].map(function(role){return '<option value="'+role+'" '+(user.role===role?'selected':'')+'>'+escapeHtml(roleLabel(role))+'</option>';}).join('')
+        +'</select></td></tr>';
+    }).join('');
+    var auditRows=entries.map(function(entry){
+      var fields=(entry.fields||[]).length?' · Campos: '+escapeHtml((entry.fields||[]).join(', ')):'';
+      return '<div style="padding:10px 0;border-bottom:1px solid var(--border)">'
+        +'<strong>'+escapeHtml(_auditLabel(entry.action))+'</strong> · '+escapeHtml(entry.entity_type||'')
+        +'<div style="font-size:var(--fs-xs);color:var(--text-mute)">'+escapeHtml(entry.user_name||entry.user_email||'Sistema')
+        +' · '+escapeHtml(new Date(entry.created_at).toLocaleString('es-AR'))+fields+'</div></div>';
+    }).join('');
+    showModal('<div class="modal-header"><h3>Accesos y auditoría</h3><button class="close-btn" onclick="closeModal()">&times;</button></div>'
+      +'<div class="modal-body"><div class="settings-section"><div class="settings-label">Usuarios</div>'
+      +(users.length?'<div class="table-wrap"><table><thead><tr><th>Persona</th><th>Rol</th></tr></thead><tbody>'+userRows+'</tbody></table></div>':'<div class="empty-state">Sin usuarios</div>')
+      +'</div><div class="settings-section"><div class="settings-label">Última actividad</div>'
+      +(entries.length?auditRows:'<div class="empty-state">Sin actividad registrada</div>')+'</div></div>',true);
+  }catch(e){
+    toast(e.message||'No se pudieron cargar los accesos');
+    openSettings();
+  }
+}
+
+async function changeUserRole(userId,role){
+  try{
+    var updated=await api('/api/users/'+encodeURIComponent(userId)+'/role',{method:'PUT',body:{role:role}});
+    if(currentUser&&currentUser.id===updated.id)currentUser.role=updated.role;
+    toast('Rol actualizado');
+    await openAccessManagement();
+  }catch(e){
+    toast(e.message||'No se pudo cambiar el rol');
+    await openAccessManagement();
+  }
 }
 
 async function forceUpdate(){
