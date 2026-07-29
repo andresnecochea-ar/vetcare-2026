@@ -83,6 +83,10 @@ function arrayOfStrings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
+function revisionValue(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
 function configuredOrigins(env: Env): Set<string> {
   return new Set(
     stringValue(env.ALLOWED_ORIGINS)
@@ -256,6 +260,7 @@ async function deleteEntity(env: Env, table: string, id: string): Promise<{ ok: 
   if (table === 'owners') {
     await env.DB.batch([
       env.DB.prepare('DELETE FROM pet_owners WHERE owner_id = ?').bind(id),
+      env.DB.prepare("UPDATE invoices SET ownerId = '' WHERE ownerId = ?").bind(id),
       env.DB.prepare('DELETE FROM owners WHERE id = ?').bind(id),
     ]);
   } else {
@@ -292,9 +297,10 @@ async function getPetsFull(env: Env): Promise<JsonObject[]> {
 
   const withoutPetId = ({ pet_id: _petId, ...row }: JsonObject): JsonObject => row;
   return pets.map((pet) => {
-    const id = stringValue(pet.id);
+    const { syncToken: _syncToken, ...publicPet } = pet;
+    const id = stringValue(publicPet.id);
     return {
-      ...pet,
+      ...publicPet,
       history: (history[id] ?? []).map(withoutPetId),
       vaccines: (vaccines[id] ?? []).map(withoutPetId),
       images: (images[id] ?? []).map(withoutPetId),
@@ -304,107 +310,240 @@ async function getPetsFull(env: Env): Promise<JsonObject[]> {
   });
 }
 
-function insertPetChildren(env: Env, id: string, body: JsonObject): D1PreparedStatement[] {
+type PetChildConfig = {
+  bodyKey: string;
+  table: string;
+  columns: readonly string[];
+};
+
+const PET_CHILDREN: readonly PetChildConfig[] = [
+  {
+    bodyKey: 'history',
+    table: 'pet_history',
+    columns: [
+      'date', 'type', 'title', 'description', 'treatment', 'vet',
+      'weight', 'temp', 'hr', 'exam', 'diagnosis', 'nextControl',
+    ],
+  },
+  {
+    bodyKey: 'vaccines',
+    table: 'pet_vaccines',
+    columns: ['name', 'date', 'nextDose'],
+  },
+  {
+    bodyKey: 'images',
+    table: 'pet_images',
+    columns: ['data', 'caption'],
+  },
+  {
+    bodyKey: 'studies',
+    table: 'pet_studies',
+    columns: ['type', 'title', 'date', 'url'],
+  },
+];
+
+function gatedPetChildren(
+  env: Env,
+  petId: string,
+  syncToken: string,
+  body: JsonObject,
+): D1PreparedStatement[] {
   const statements: D1PreparedStatement[] = [];
 
-  for (const history of arrayOfObjects(body.history)) {
+  for (const config of PET_CHILDREN) {
+    const rows = arrayOfObjects(body[config.bodyKey]);
+    const ids: string[] = [];
+    const dbColumns = ['id', 'pet_id', ...config.columns];
+    const placeholders = dbColumns.map(() => '?').join(',');
+    const updates = dbColumns
+      .filter((column) => column !== 'id')
+      .map((column) => `${column}=excluded.${column}`)
+      .join(',');
+
+    for (const row of rows) {
+      const rowId = optionalString(row.id) ?? uid();
+      ids.push(rowId);
+      const values = [rowId, petId, ...config.columns.map((column) => stringValue(row[column]))];
+      statements.push(
+        env.DB.prepare(
+          `INSERT INTO ${config.table} (${dbColumns.join(',')})
+           SELECT ${placeholders}
+           WHERE EXISTS (SELECT 1 FROM pets WHERE id = ? AND syncToken = ?)
+           ON CONFLICT(id) DO UPDATE SET ${updates}`,
+        ).bind(...values, petId, syncToken),
+      );
+    }
+
+    const omittedIds = ids.length ? `AND id NOT IN (${ids.map(() => '?').join(',')})` : '';
     statements.push(
       env.DB.prepare(
-        `INSERT INTO pet_history (id,pet_id,date,type,title,description,treatment,vet)
-         VALUES (?,?,?,?,?,?,?,?)`,
-      ).bind(
-        optionalString(history.id) ?? uid(),
-        id,
-        stringValue(history.date),
-        stringValue(history.type),
-        stringValue(history.title),
-        stringValue(history.description),
-        stringValue(history.treatment),
-        stringValue(history.vet),
-      ),
+        `DELETE FROM ${config.table}
+         WHERE pet_id = ? ${omittedIds}
+           AND EXISTS (SELECT 1 FROM pets WHERE id = ? AND syncToken = ?)`,
+      ).bind(petId, ...ids, petId, syncToken),
     );
   }
 
-  for (const vaccine of arrayOfObjects(body.vaccines)) {
+  const ownerIds = arrayOfStrings(body.ownerIds);
+  for (const ownerId of ownerIds) {
     statements.push(
       env.DB.prepare(
-        'INSERT INTO pet_vaccines (id,pet_id,name,date,nextDose) VALUES (?,?,?,?,?)',
-      ).bind(
-        optionalString(vaccine.id) ?? uid(),
-        id,
-        stringValue(vaccine.name),
-        stringValue(vaccine.date),
-        stringValue(vaccine.nextDose),
-      ),
+        `INSERT INTO pet_owners (pet_id,owner_id)
+         SELECT ?,?
+         WHERE EXISTS (SELECT 1 FROM pets WHERE id = ? AND syncToken = ?)
+         ON CONFLICT(pet_id,owner_id) DO NOTHING`,
+      ).bind(petId, ownerId, petId, syncToken),
     );
   }
-
-  for (const image of arrayOfObjects(body.images)) {
-    statements.push(
-      env.DB.prepare(
-        'INSERT INTO pet_images (id,pet_id,data,caption) VALUES (?,?,?,?)',
-      ).bind(
-        optionalString(image.id) ?? uid(),
-        id,
-        stringValue(image.data),
-        stringValue(image.caption),
-      ),
-    );
-  }
-
-  for (const study of arrayOfObjects(body.studies)) {
-    statements.push(
-      env.DB.prepare(
-        'INSERT INTO pet_studies (id,pet_id,type,title,date,url) VALUES (?,?,?,?,?,?)',
-      ).bind(
-        optionalString(study.id) ?? uid(),
-        id,
-        stringValue(study.type),
-        stringValue(study.title),
-        stringValue(study.date),
-        stringValue(study.url),
-      ),
-    );
-  }
-
-  for (const ownerId of arrayOfStrings(body.ownerIds)) {
-    statements.push(
-      env.DB.prepare('INSERT INTO pet_owners (pet_id,owner_id) VALUES (?,?)').bind(id, ownerId),
-    );
-  }
+  const omittedOwnerIds = ownerIds.length
+    ? `AND owner_id NOT IN (${ownerIds.map(() => '?').join(',')})`
+    : '';
+  statements.push(
+    env.DB.prepare(
+      `DELETE FROM pet_owners
+       WHERE pet_id = ? ${omittedOwnerIds}
+         AND EXISTS (SELECT 1 FROM pets WHERE id = ? AND syncToken = ?)`,
+    ).bind(petId, ...ownerIds, petId, syncToken),
+  );
 
   return statements;
 }
 
 async function savePetFull(env: Env, body: JsonObject): Promise<JsonObject> {
-  const { id, statement } = buildUpsertStatement(env, 'pets', body);
+  const config = tableConfig('pets');
+  const id = optionalString(body.id) ?? uid();
+  const row: JsonObject = { ...body, id };
+  const fields = config.columns.filter((column) => Object.hasOwn(row, column));
+  const placeholders = fields.map(() => '?').join(',');
+  const updates = [
+    ...fields
+      .filter((field) => field !== 'id')
+      .map((field) => `${field}=excluded.${field}`),
+    'revision=pets.revision+1',
+    'syncToken=excluded.syncToken',
+  ].join(',');
+  const expectedRevision = revisionValue(body.revision);
+  const syncToken = uid();
+  const parentStatement = env.DB.prepare(
+    `INSERT INTO pets (${fields.join(',')},revision,syncToken)
+     VALUES (${placeholders},1,?)
+     ON CONFLICT(id) DO UPDATE SET ${updates}
+     WHERE pets.revision = ?`,
+  ).bind(...fields.map((field) => serializeValue(row[field])), syncToken, expectedRevision);
   const statements = [
-    statement,
-    env.DB.prepare('DELETE FROM pet_history WHERE pet_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM pet_vaccines WHERE pet_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM pet_images WHERE pet_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM pet_studies WHERE pet_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM pet_owners WHERE pet_id = ?').bind(id),
-    ...insertPetChildren(env, id, body),
+    parentStatement,
+    ...gatedPetChildren(env, id, syncToken, body),
   ];
-  await env.DB.batch(statements);
-  return { ...body, id };
+  const results = await env.DB.batch(statements);
+  if (results[0]?.meta.changes !== 1) {
+    throw new HttpError(
+      'La ficha fue modificada en otro equipo. Recargá los datos antes de volver a guardar.',
+      409,
+    );
+  }
+  return { ...body, id, revision: expectedRevision + 1 };
 }
 
-async function deletePetFull(env: Env, id: string): Promise<{ ok: true }> {
-  await env.DB.batch([
-    env.DB.prepare('DELETE FROM pet_history WHERE pet_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM pet_vaccines WHERE pet_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM pet_images WHERE pet_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM pet_studies WHERE pet_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM pet_owners WHERE pet_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM appointments WHERE petId = ?').bind(id),
-    env.DB.prepare('DELETE FROM groomingAppointments WHERE petId = ?').bind(id),
-    env.DB.prepare('DELETE FROM reminders WHERE petId = ?').bind(id),
-    env.DB.prepare("UPDATE invoices SET petId = '' WHERE petId = ?").bind(id),
-    env.DB.prepare('DELETE FROM pets WHERE id = ?').bind(id),
+async function deletePetFull(
+  env: Env,
+  id: string,
+  expectedRevision: number,
+): Promise<{ ok: true }> {
+  const gatedDelete = (table: string, foreignKey: string): D1PreparedStatement =>
+    env.DB.prepare(
+      `DELETE FROM ${table}
+       WHERE ${foreignKey} = ?
+         AND EXISTS (SELECT 1 FROM pets WHERE id = ? AND revision = ?)`,
+    ).bind(id, id, expectedRevision);
+  const results = await env.DB.batch([
+    gatedDelete('pet_history', 'pet_id'),
+    gatedDelete('pet_vaccines', 'pet_id'),
+    gatedDelete('pet_images', 'pet_id'),
+    gatedDelete('pet_studies', 'pet_id'),
+    gatedDelete('pet_owners', 'pet_id'),
+    gatedDelete('appointments', 'petId'),
+    gatedDelete('groomingAppointments', 'petId'),
+    gatedDelete('reminders', 'petId'),
+    env.DB.prepare(
+      `UPDATE invoices SET petId = ''
+       WHERE petId = ?
+         AND EXISTS (SELECT 1 FROM pets WHERE id = ? AND revision = ?)`,
+    ).bind(id, id, expectedRevision),
+    env.DB.prepare('DELETE FROM pets WHERE id = ? AND revision = ?').bind(id, expectedRevision),
   ]);
+  if (results.at(-1)?.meta.changes !== 1) {
+    throw new HttpError(
+      'La ficha fue modificada en otro equipo. Recargá los datos antes de eliminarla.',
+      409,
+    );
+  }
   return { ok: true };
+}
+
+async function allocateInvoiceNumber(env: Env): Promise<string> {
+  const sequence = await env.DB.prepare(
+    `UPDATE invoice_sequence
+     SET lastNumber = lastNumber + 1
+     WHERE id = 'singleton'
+     RETURNING lastNumber`,
+  ).first<{ lastNumber: number }>();
+  const value = sequence?.lastNumber;
+  if (!Number.isInteger(value) || Number(value) < 1) {
+    throw new Error('No se pudo asignar el número de comprobante');
+  }
+  return String(value).padStart(4, '0');
+}
+
+async function validateInvoiceRelations(env: Env, row: JsonObject): Promise<void> {
+  const ownerId = stringValue(row.ownerId);
+  const petId = stringValue(row.petId);
+  const [owner, pet] = await Promise.all([
+    ownerId
+      ? env.DB.prepare('SELECT id FROM owners WHERE id = ?').bind(ownerId).first()
+      : Promise.resolve(null),
+    petId
+      ? env.DB.prepare('SELECT id FROM pets WHERE id = ?').bind(petId).first()
+      : Promise.resolve(null),
+  ]);
+  if (ownerId && !owner) throw new HttpError('El tutor seleccionado no existe');
+  if (petId && !pet) throw new HttpError('El paciente seleccionado no existe');
+  if (ownerId && petId) {
+    const association = await env.DB.prepare(
+      'SELECT 1 AS linked FROM pet_owners WHERE owner_id = ? AND pet_id = ?',
+    ).bind(ownerId, petId).first();
+    if (!association) {
+      throw new HttpError('El paciente no está asociado al tutor seleccionado');
+    }
+  }
+}
+
+async function saveInvoice(env: Env, body: JsonObject): Promise<JsonObject> {
+  const id = optionalString(body.id) ?? uid();
+  const existing = await env.DB.prepare(
+    'SELECT * FROM invoices WHERE id = ?',
+  ).bind(id).first<JsonObject>();
+  const row: JsonObject = { ...(existing ?? {}), ...body, id };
+  await validateInvoiceRelations(env, row);
+  row.number = stringValue(existing?.number) || await allocateInvoiceNumber(env);
+  const config = tableConfig('invoices');
+  const fields = config.columns.filter((column) => Object.hasOwn(row, column));
+  const placeholders = fields.map(() => '?').join(',');
+  const updates = [
+    ...fields
+      .filter((field) => field !== 'id' && field !== 'number')
+      .map((field) => `${field}=excluded.${field}`),
+    "number=CASE WHEN invoices.number='' THEN excluded.number ELSE invoices.number END",
+  ].join(',');
+  await env.DB.prepare(
+    `INSERT INTO invoices (${fields.join(',')}) VALUES (${placeholders})
+     ON CONFLICT(id) DO UPDATE SET ${updates}`,
+  ).bind(...fields.map((field) => serializeValue(row[field]))).run();
+
+  const stored = await env.DB.prepare('SELECT * FROM invoices WHERE id = ?')
+    .bind(id)
+    .first<JsonObject>();
+  if (!stored) throw new Error('No se pudo guardar el comprobante');
+  return deserializeRow(stored, config);
 }
 
 async function getAppSettings(env: Env): Promise<{ clinicName: string; settings: JsonObject }> {
@@ -444,9 +583,9 @@ async function health(env: Env): Promise<{
              'users', 'sessions', 'owners', 'pets', 'pet_owners',
              'pet_history', 'pet_vaccines', 'pet_images', 'pet_studies',
              'appointments', 'groomingAppointments', 'reminders',
-             'inventory', 'invoices', 'app_settings'
+             'inventory', 'invoices', 'app_settings', 'invoice_sequence'
            )
-       ) = 15
+       ) = 16
        AND (SELECT COUNT(*) FROM pragma_table_info('owners') WHERE name IN ('dni', 'notes')) = 2
        AND (
          SELECT COUNT(*)
@@ -454,6 +593,16 @@ async function health(env: Env): Promise<{
          WHERE name IN ('reminder', 'notes')
        ) = 2
        AND (SELECT COUNT(*) FROM pragma_table_info('inventory') WHERE name = 'lots') = 1
+       AND (
+         SELECT COUNT(*)
+         FROM pragma_table_info('pet_history')
+         WHERE name IN ('weight', 'temp', 'hr', 'exam', 'diagnosis', 'nextControl')
+       ) = 6
+       AND (
+         SELECT COUNT(*)
+         FROM pragma_table_info('pets')
+         WHERE name IN ('revision', 'syncToken')
+       ) = 2
        AS ready`,
   ).first<{ ready: number }>();
   const ready = schema?.ready === 1;
@@ -462,7 +611,7 @@ async function health(env: Env): Promise<{
     status: ready ? 'ok' : 'degraded',
     version: stringValue(env.APP_VERSION, 'unknown'),
     database: ready ? 'ready' : 'migrations-pending',
-    schemaVersion: ready ? 2 : 0,
+    schemaVersion: ready ? 5 : 0,
   };
 }
 
@@ -586,11 +735,22 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       if (request.method === 'POST' || request.method === 'PUT') {
         return json(await savePetFull(env, asObject(await request.json<unknown>())), 200, origin, env);
       }
-      if (request.method === 'DELETE' && id) return json(await deletePetFull(env, id), 200, origin, env);
+      if (request.method === 'DELETE' && id) {
+        const deleteBody = asObject(await request.json<unknown>().catch(() => ({})));
+        return json(await deletePetFull(env, id, revisionValue(deleteBody.revision)), 200, origin, env);
+      }
     } else if (Object.hasOwn(TABLES, table)) {
       if (request.method === 'GET') return json(await listEntity(env, table), 200, origin, env);
       if (request.method === 'POST' || request.method === 'PUT') {
-        return json(await upsertEntity(env, table, asObject(await request.json<unknown>())), 200, origin, env);
+        const body = asObject(await request.json<unknown>());
+        return json(
+          table === 'invoices'
+            ? await saveInvoice(env, body)
+            : await upsertEntity(env, table, body),
+          200,
+          origin,
+          env,
+        );
       }
       if (request.method === 'DELETE' && id) return json(await deleteEntity(env, table, id), 200, origin, env);
     }

@@ -1,13 +1,13 @@
 function renderDashboard() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateKey();
   const todayAppts = db.appointments.filter(a=>a.date===today).length;
   const todayGroom = db.groomingAppointments.filter(a=>a.date===today).length;
   const invoices = db.invoices||[];
-  const totalBilled = invoices.reduce((s,i)=>s+(parseFloat(i.total)||0),0);
+  const invoiceSummary = VetCareFinance.summarize(invoices);
   const pendingInv = invoices.filter(i=>i.status==='pending').length;
   const lowStock = db.inventory.filter(i=>invTotalStock(i)<=parseInt(i.minStock||0)).length;
   const pendingRem = db.reminders.filter(r=>!r.completed).length;
-  const days7 = Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-6+i);return d.toISOString().split('T')[0];});
+  const days7 = Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-6+i);return localDateKey(d);});
   const apptCounts = days7.map(d=>db.appointments.filter(a=>a.date===d).length+db.groomingAppointments.filter(a=>a.date===d).length);
   const dayLabels = days7.map(d=>new Date(d+'T12:00:00').toLocaleDateString('es-AR',{weekday:'short',day:'numeric'}));
   const speciesCount={};
@@ -38,7 +38,7 @@ function renderDashboard() {
       <div class="stat-card"><div class="stat-label">🐾 Pacientes</div><div class="stat-val" style="color:var(--color-navy)">${db.pets.length}</div></div>
       <div class="stat-card"><div class="stat-label">👥 Tutores</div><div class="stat-val">${db.owners.length}</div></div>
       <div class="stat-card"><div class="stat-label">📅 Turnos hoy</div><div class="stat-val" style="color:var(--color-navy)">${todayAppts+todayGroom}</div></div>
-      <div class="stat-card"><div class="stat-label">💰 Cobrado total</div><div class="stat-val" style="color:var(--color-mint-hover)">$${totalBilled.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
+      <div class="stat-card"><div class="stat-label">💰 Cobrado total</div><div class="stat-val" style="color:var(--color-mint-hover)">$${invoiceSummary.paidTotal.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
       ${pendingRem>0?`<div class="stat-card"><div class="stat-label">🔔 Avisos pendientes</div><div class="stat-val" style="color:var(--color-coral)">${pendingRem}</div></div>`:''}
       ${lowStock>0?`<div class="stat-card"><div class="stat-label">⚠ Stock bajo</div><div class="stat-val" style="color:var(--warning)">${lowStock}</div></div>`:''}
       ${pendingInv>0?`<div class="stat-card"><div class="stat-label">🧾 Recibos pendientes</div><div class="stat-val" style="color:var(--warning)">${pendingInv}</div></div>`:''}

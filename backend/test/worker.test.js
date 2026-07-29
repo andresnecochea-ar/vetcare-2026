@@ -1,5 +1,6 @@
 import { env, exports } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
+import '../../js/finance.js';
 
 const API_ORIGIN = 'https://vetcare-api.test';
 
@@ -19,6 +20,21 @@ async function jsonResponse(path, options) {
 }
 
 describe('VetCare Worker', () => {
+  it('calcula cobrado y pendiente sin incluir comprobantes cancelados', () => {
+    const summary = globalThis.VetCareFinance.summarize([
+      { status: 'paid', total: 15000 },
+      { status: 'pending', total: '7000' },
+      { status: 'cancelled', total: 30000 },
+      { status: 'paid', total: '2500.50' },
+    ]);
+    expect(summary).toEqual({
+      paidTotal: 17500.5,
+      pendingTotal: 7000,
+      paidCount: 2,
+      invoiceCount: 4,
+    });
+  });
+
   it('expone un health check que valida las migraciones', async () => {
     const { response, body } = await jsonResponse('/api/health');
     expect(response.status).toBe(200);
@@ -26,7 +42,7 @@ describe('VetCare Worker', () => {
       status: 'ok',
       database: 'ready',
       version: '2.1.0',
-      schemaVersion: 2,
+      schemaVersion: 5,
     });
   });
 
@@ -87,7 +103,21 @@ describe('VetCare Worker', () => {
       name: 'Luna',
       species: 'Perro',
       ownerIds: [owner.id],
-      history: [{ id: crypto.randomUUID(), date: '2026-07-01', title: 'Control', type: 'Consulta' }],
+      history: [{
+        id: crypto.randomUUID(),
+        date: '2026-07-01',
+        title: 'Control',
+        type: 'Consulta',
+        description: 'Paciente activo',
+        treatment: 'Continuar tratamiento',
+        vet: 'Dra. Test',
+        weight: '28.4',
+        temp: '38.6',
+        hr: '92',
+        exam: 'Mucosas rosadas, abdomen blando',
+        diagnosis: 'Paciente clínicamente estable',
+        nextControl: '2026-08-01',
+      }],
       vaccines: [{ id: crypto.randomUUID(), name: 'Antirrábica', date: '2026-07-02', nextDose: '2027-07-02' }],
       images: [{ id: crypto.randomUUID(), data: 'data:image/png;base64,dGVzdA==', caption: 'Foto' }],
       studies: [{
@@ -98,7 +128,13 @@ describe('VetCare Worker', () => {
         url: 'https://drive.google.com/example',
       }],
     };
-    expect((await request('/api/pets', { method: 'POST', headers: authenticated, body: pet })).status).toBe(200);
+    const savedPet = await jsonResponse('/api/pets', {
+      method: 'POST',
+      headers: authenticated,
+      body: pet,
+    });
+    expect(savedPet.response.status).toBe(200);
+    expect(savedPet.body.revision).toBe(1);
 
     const grooming = {
       id: crypto.randomUUID(),
@@ -135,7 +171,6 @@ describe('VetCare Worker', () => {
 
     const invoice = {
       id: crypto.randomUUID(),
-      number: '0001',
       date: '2026-07-28',
       ownerId: owner.id,
       petId: pet.id,
@@ -144,11 +179,39 @@ describe('VetCare Worker', () => {
       status: 'paid',
       notes: 'Pagado en efectivo',
     };
-    expect((await request('/api/invoices', {
+    const savedInvoice = await jsonResponse('/api/invoices', {
       method: 'POST',
       headers: authenticated,
       body: invoice,
+    });
+    expect(savedInvoice.response.status).toBe(200);
+    expect(savedInvoice.body.number).toBe('0001');
+
+    const unrelatedOwner = {
+      id: crypto.randomUUID(),
+      name: 'Tutor no asociado',
+      phone: '2262000000',
+    };
+    expect((await request('/api/owners', {
+      method: 'POST',
+      headers: authenticated,
+      body: unrelatedOwner,
     })).status).toBe(200);
+    const invalidRelation = await jsonResponse('/api/invoices', {
+      method: 'POST',
+      headers: authenticated,
+      body: {
+        id: crypto.randomUUID(),
+        ownerId: unrelatedOwner.id,
+        petId: pet.id,
+        date: '2026-07-28',
+        items: [{ desc: 'Consulta inválida', qty: 1, price: 1000 }],
+        total: 1000,
+        status: 'paid',
+      },
+    });
+    expect(invalidRelation.response.status).toBe(400);
+    expect(invalidRelation.body.error).toContain('no está asociado');
 
     expect((await request('/api/settings', {
       method: 'POST',
@@ -163,6 +226,7 @@ describe('VetCare Worker', () => {
     expect(snapshot.response.status).toBe(200);
 
     expect(snapshot.body.owners[0]).toMatchObject({ dni: owner.dni, notes: owner.notes });
+    expect(snapshot.body.pets[0].history).toEqual(pet.history);
     expect(snapshot.body.pets[0].studies).toEqual(pet.studies);
     expect(snapshot.body.pets[0].ownerIds).toEqual([owner.id]);
     expect(snapshot.body.groomingAppointments[0]).toMatchObject({
@@ -180,5 +244,109 @@ describe('VetCare Worker', () => {
       .bind(invoice.id)
       .first();
     expect(typeof databaseInvoice.items).toBe('string');
+
+    const databaseHistory = await env.DB.prepare(
+      'SELECT weight, temp, hr, exam, diagnosis, nextControl FROM pet_history WHERE id = ?',
+    ).bind(pet.history[0].id).first();
+    expect(databaseHistory).toMatchObject({
+      weight: '28.4',
+      temp: '38.6',
+      hr: '92',
+      exam: 'Mucosas rosadas, abdomen blando',
+      diagnosis: 'Paciente clínicamente estable',
+      nextControl: '2026-08-01',
+    });
+
+    const firstEditor = structuredClone(snapshot.body.pets[0]);
+    const staleEditor = structuredClone(snapshot.body.pets[0]);
+    firstEditor.history[0].diagnosis = 'Actualizado por el primer equipo';
+    const firstUpdate = await jsonResponse('/api/pets', {
+      method: 'POST',
+      headers: authenticated,
+      body: firstEditor,
+    });
+    expect(firstUpdate.response.status).toBe(200);
+    expect(firstUpdate.body.revision).toBe(2);
+
+    staleEditor.history[0].diagnosis = 'Cambio basado en una ficha desactualizada';
+    const staleUpdate = await jsonResponse('/api/pets', {
+      method: 'POST',
+      headers: authenticated,
+      body: staleEditor,
+    });
+    expect(staleUpdate.response.status).toBe(409);
+    expect(staleUpdate.body.error).toContain('modificada en otro equipo');
+
+    const staleDelete = await jsonResponse(`/api/pets/${pet.id}`, {
+      method: 'DELETE',
+      headers: authenticated,
+      body: { revision: staleEditor.revision },
+    });
+    expect(staleDelete.response.status).toBe(409);
+    expect(staleDelete.body.error).toContain('antes de eliminarla');
+
+    const afterConflict = await jsonResponse('/api/data', { headers: authenticated });
+    const protectedPet = afterConflict.body.pets.find((item) => item.id === pet.id);
+    expect(protectedPet.revision).toBe(2);
+    expect(protectedPet.history[0].diagnosis).toBe('Actualizado por el primer equipo');
+
+    const concurrentInvoices = await Promise.all(
+      ['Consulta A', 'Consulta B'].map((description) => jsonResponse('/api/invoices', {
+        method: 'POST',
+        headers: authenticated,
+        body: {
+          id: crypto.randomUUID(),
+          number: '0001',
+          date: '2026-07-28',
+          items: [{ desc: description, qty: 1, price: 1000 }],
+          total: 1000,
+          status: 'paid',
+        },
+      })),
+    );
+    expect(concurrentInvoices.every(({ response }) => response.status === 200)).toBe(true);
+    expect(concurrentInvoices.map(({ body }) => body.number).sort()).toEqual(['0002', '0003']);
+
+    expect((await request(`/api/invoices/${concurrentInvoices[0].body.id}`, {
+      method: 'DELETE',
+      headers: authenticated,
+    })).status).toBe(200);
+    const afterDelete = await jsonResponse('/api/invoices', {
+      method: 'POST',
+      headers: authenticated,
+      body: {
+        id: crypto.randomUUID(),
+        date: '2026-07-28',
+        items: [{ desc: 'Control', qty: 1, price: 1000 }],
+        total: 1000,
+        status: 'pending',
+      },
+    });
+    expect(afterDelete.response.status).toBe(200);
+    expect(afterDelete.body.number).toBe('0004');
+
+    const ownerOnlyInvoice = await jsonResponse('/api/invoices', {
+      method: 'POST',
+      headers: authenticated,
+      body: {
+        id: crypto.randomUUID(),
+        ownerId: unrelatedOwner.id,
+        petId: '',
+        date: '2026-07-28',
+        items: [{ desc: 'Venta mostrador', qty: 1, price: 500 }],
+        total: 500,
+        status: 'paid',
+      },
+    });
+    expect(ownerOnlyInvoice.response.status).toBe(200);
+    expect(ownerOnlyInvoice.body.number).toBe('0005');
+    expect((await request(`/api/owners/${unrelatedOwner.id}`, {
+      method: 'DELETE',
+      headers: authenticated,
+    })).status).toBe(200);
+    const invoiceAfterOwnerDelete = await env.DB.prepare(
+      'SELECT ownerId FROM invoices WHERE id = ?',
+    ).bind(ownerOnlyInvoice.body.id).first();
+    expect(invoiceAfterOwnerDelete.ownerId).toBe('');
   });
 });

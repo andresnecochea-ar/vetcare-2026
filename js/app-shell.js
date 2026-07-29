@@ -98,7 +98,7 @@ function navigateTo(view) {
 // [10] VISTA: HOY (TODAY)  ·  NOTA: ubicada al final del archivo por historia del proyecto
 // ========================================
 function renderToday() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateKey();
   const now = new Date();
   const dayAppts = db.appointments.filter(a => a.date === today)
     .sort((a,b) => (a.time||'00:00').localeCompare(b.time||'00:00'));
