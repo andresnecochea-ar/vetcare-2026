@@ -461,6 +461,7 @@ const PET_CHILDREN: readonly PetChildConfig[] = [
     columns: [
       'date', 'type', 'title', 'description', 'treatment', 'vet',
       'weight', 'temp', 'hr', 'exam', 'diagnosis', 'nextControl',
+      'status', 'startedAt', 'closedAt', 'reopenedReason',
     ],
   },
   {
@@ -501,7 +502,13 @@ function gatedPetChildren(
     for (const row of rows) {
       const rowId = optionalString(row.id) ?? uid();
       ids.push(rowId);
-      const values = [rowId, petId, ...config.columns.map((column) => stringValue(row[column]))];
+      const values = [
+        rowId,
+        petId,
+        ...config.columns.map((column) => config.table === 'pet_history' && column === 'status'
+          ? stringValue(row[column], 'closed')
+          : stringValue(row[column])),
+      ];
       statements.push(
         env.DB.prepare(
           `INSERT INTO ${config.table} (${dbColumns.join(',')})
@@ -735,8 +742,11 @@ async function health(env: Env): Promise<{
        AND (
          SELECT COUNT(*)
          FROM pragma_table_info('pet_history')
-         WHERE name IN ('weight', 'temp', 'hr', 'exam', 'diagnosis', 'nextControl')
-       ) = 6
+         WHERE name IN (
+           'weight', 'temp', 'hr', 'exam', 'diagnosis', 'nextControl',
+           'status', 'startedAt', 'closedAt', 'reopenedReason'
+         )
+       ) = 10
        AND (
          SELECT COUNT(*)
          FROM pragma_table_info('pets')
@@ -758,7 +768,7 @@ async function health(env: Env): Promise<{
     status: ready ? 'ok' : 'degraded',
     version: stringValue(env.APP_VERSION, 'unknown'),
     database: ready ? 'ready' : 'migrations-pending',
-    schemaVersion: ready ? 6 : 0,
+    schemaVersion: ready ? 7 : 0,
   };
 }
 

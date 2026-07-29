@@ -1,0 +1,4 @@
+ALTER TABLE pet_history ADD COLUMN status TEXT NOT NULL DEFAULT 'closed';
+ALTER TABLE pet_history ADD COLUMN startedAt TEXT NOT NULL DEFAULT '';
+ALTER TABLE pet_history ADD COLUMN closedAt TEXT NOT NULL DEFAULT '';
+ALTER TABLE pet_history ADD COLUMN reopenedReason TEXT NOT NULL DEFAULT '';

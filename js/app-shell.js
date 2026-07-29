@@ -117,7 +117,11 @@ function navigateTo(view) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const el = document.querySelector(`[data-view="${view}"]`);
   if (el) el.classList.add('active');
-  if (view !== 'pet-detail' && typeof currentPetId !== 'undefined') currentPetId = null;
+  if (!['pet-detail', 'encounter'].includes(view) && typeof currentPetId !== 'undefined') currentPetId = null;
+  if (view !== 'encounter' && typeof currentEncounterPetId !== 'undefined') {
+    currentEncounterPetId = null;
+    currentEncounterId = null;
+  }
   currentView = view;
   render();
   if(window.innerWidth<769) closeSidebar();

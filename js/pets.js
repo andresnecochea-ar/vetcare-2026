@@ -247,6 +247,21 @@ let currentPetId = null;
 let petDetailReturnView = 'pets';
 let petDetailReturnScrollY = 0;
 let petDetailActiveTab = 'tab-history';
+let currentEncounterPetId = null;
+let currentEncounterId = null;
+
+const ENCOUNTER_STATUSES = {
+  draft: 'Borrador',
+  in_progress: 'En curso',
+  pending_results: 'Pendiente de resultados',
+  ready_to_bill: 'Lista para cobrar',
+  closed: 'Cerrada',
+  reopened: 'Reabierta'
+};
+function encounterStatusLabel(status) { return ENCOUNTER_STATUSES[status] || ENCOUNTER_STATUSES.closed; }
+function encounterStatusClass(status) { return 'encounter-status-' + (status || 'closed').replace(/_/g, '-'); }
+function toggleEncounterReopenField(status) { const field = document.querySelector('.encounter-reopen-field'); if (field) field.classList.toggle('is-visible', status === 'reopened'); }
+
 
 function openPetDetail(id) {
   const pet = db.pets.find(p => p.id === id);
@@ -358,14 +373,16 @@ function renderPetDetailLegacy(id) {
       <div id="tab-history" class="tab-content active">
         <div class="section-title">
           <h3>Registros clínicos</h3>
-          ${canEditClinical() ? `<button class="btn btn-sm btn-primary" onclick="addHistoryEntry('${pet.id}')">+ Nuevo registro</button>` : '<span class="tag">Solo lectura</span>'}
+          ${canEditClinical() ? `<button class="btn btn-sm btn-primary" onclick="addHistoryEntry('${pet.id}')">+ Nueva consulta</button>` : '<span class="tag">Solo lectura</span>'}
         </div>
         ${(pet.history||[]).length === 0 ? '<div class="empty-state">Sin registros aún</div>' :
           [...pet.history].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(h => `
             <div class="history-entry">
               ${canEditClinical() ? `<button class="close-btn delete-x" onclick="deleteHistory('${pet.id}','${h.id}')">&times;</button>` : ''}
+              <div class="history-entry-toolbar"><span class="encounter-status ${encounterStatusClass(h.status)}">${encounterStatusLabel(h.status)}</span>${canEditClinical() ? `<button class="btn btn-sm" onclick="addHistoryEntry('${pet.id}','${h.id}')">Abrir consulta</button>` : ''}</div>
               <div class="date">${formatDate(h.date)} · ${escapeHtml(h.type||'Consulta')}</div>
               <div class="title">${escapeHtml(h.title||'')}</div>
+              ${(h.weight||h.temp||h.hr) ? `<div class="history-vitals">${h.weight?`<span>${escapeHtml(h.weight)} kg</span>`:''}${h.temp?`<span>${escapeHtml(h.temp)} &deg;C</span>`:''}${h.hr?`<span>${escapeHtml(h.hr)} lpm</span>`:''}</div>` : ''}
               <div class="desc">${escapeHtml(h.description||'').replace(/\n/g,'<br>')}</div>
               ${h.treatment ? `<div class="desc" style="margin-top:6px"><strong>Tratamiento:</strong> ${escapeHtml(h.treatment)}</div>` : ''}
               ${h.vet ? `<div class="desc" style="margin-top:4px;font-size:var(--fs-2xs);color:var(--text-mute)">Profesional: ${escapeHtml(h.vet)}</div>` : ''}
@@ -636,7 +653,7 @@ function openLightbox(src) {
   document.getElementById('lightbox').classList.add('show');
 }
 
-function addHistoryEntry(petId, editId) {
+function addHistoryEntryLegacy(petId, editId) {
   if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
   const pet = db.pets.find(p => p.id === petId);
   const ex = editId ? (pet.history||[]).find(h => h.id === editId) : null;
@@ -691,10 +708,107 @@ function addHistoryEntry(petId, editId) {
   `, false);
 }
 
-function saveHistory(petId, editId) {
+function addHistoryEntry(petId, editId) {
+  openEncounter(petId, editId);
+}
+
+function openEncounter(petId, editId) {
+  if (!canEditClinical()) { toast('Tu rol no permite modificar informacion clinica'); return; }
+  const pet = db.pets.find(p => p.id === petId);
+  if (!pet) return;
+  if (editId && !(pet.history || []).some(h => h.id === editId)) return;
+  currentEncounterPetId = petId;
+  currentEncounterId = editId || null;
+  currentPetId = petId;
+  currentView = 'encounter';
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const petsNav = document.querySelector('[data-view="pets"]');
+  if (petsNav) petsNav.classList.add('active');
+  render();
+  window.scrollTo({ top: 0, behavior: 'auto' });
+  if (window.innerWidth < 769) closeSidebar();
+}
+
+function closeEncounter() {
+  const petId = currentEncounterPetId;
+  currentEncounterPetId = null;
+  currentEncounterId = null;
+  if (!petId) { navigateTo('pets'); return; }
+  currentPetId = petId;
+  petDetailActiveTab = 'tab-history';
+  currentView = 'pet-detail';
+  render();
+  window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+function renderEncounter() {
+  const pet = db.pets.find(p => p.id === currentEncounterPetId);
+  if (!pet) return '<div class="pet-detail-missing"><h1>Paciente no encontrado</h1><button class="btn btn-primary" onclick="navigateTo(\'pets\')">Volver a pacientes</button></div>';
+  const ex = currentEncounterId ? (pet.history || []).find(h => h.id === currentEncounterId) : null;
+  const today = localDateKey();
+  const attrValue = field => escapeAttr(ex ? ex[field] || '' : '');
+  const textValue = field => escapeHtml(ex ? ex[field] || '' : '');
+  const status = ex ? (ex.status || 'closed') : 'draft';
+  const types = ['Consulta general','Control','Urgencia','Cirug' + String.fromCharCode(237) + 'a','Vacunaci' + String.fromCharCode(243) + 'n','Laboratorio','Otro'];
+  const owner = (pet.ownerIds || []).map(id => db.owners.find(o => o.id === id)).find(Boolean);
+  const statusOptions = Object.entries(ENCOUNTER_STATUSES).map(([value,label]) => `<option value="${value}" ${status===value?'selected':''}>${label}</option>`).join('');
+  return `
+    <div class="encounter-page">
+      <div class="pet-detail-topbar">
+        <button class="pet-detail-back" onclick="closeEncounter()" aria-label="Volver a la ficha"><span aria-hidden="true">&larr;</span><span>Volver a la ficha</span></button>
+        <div class="pet-detail-breadcrumb"><span>Pacientes</span><span aria-hidden="true">/</span><span>${escapeHtml(pet.name)}</span><span aria-hidden="true">/</span><strong>Consulta</strong></div>
+      </div>
+      <header class="encounter-header">
+        <div><div class="page-eyebrow">Atenci&oacute;n cl&iacute;nica</div><h1>${ex ? 'Editar consulta' : 'Nueva consulta'}</h1><p>${escapeHtml(pet.name)} &middot; ${escapeHtml(pet.species || 'Paciente')} ${pet.breed ? '&middot; ' + escapeHtml(pet.breed) : ''}</p></div>
+        <span class="encounter-status ${encounterStatusClass(status)}">${encounterStatusLabel(status)}</span>
+      </header>
+      <div class="encounter-layout">
+        <section class="encounter-form-card">
+          <div class="encounter-section">
+            <div class="encounter-section-heading"><span>1</span><div><h2>Contexto de la consulta</h2><p>Fecha, tipo, profesional y motivo de atenci&oacute;n.</p></div></div>
+            <div class="form-row-3">
+              <div class="form-group"><label for="hDate">Fecha *</label><input type="date" id="hDate" value="${ex ? attrValue('date') : today}"></div>
+              <div class="form-group"><label for="hType">Tipo</label><select id="hType">${types.map(type=>`<option ${ex&&ex.type===type?'selected':''} value="${type}">${type}</option>`).join('')}</select></div>
+              <div class="form-group"><label for="hVet">Profesional</label><input type="text" id="hVet" value="${attrValue('vet')}" placeholder="Nombre del profesional"></div>
+            </div>
+            <div class="form-group"><label for="hTitle">Motivo de consulta ${status==='draft'?'':'*'}</label><input type="text" id="hTitle" value="${attrValue('title')}" placeholder="Por que viene hoy"></div>
+          </div>
+          <div class="encounter-section encounter-vitals-section">
+            <div class="encounter-section-heading"><span>2</span><div><h2>Signos vitales</h2><p>Quedan disponibles para ver la evoluci&oacute;n del paciente.</p></div></div>
+            <div class="form-row-3">
+              <div class="form-group"><label for="hWeight">Peso (kg)</label><input type="number" id="hWeight" step="0.1" value="${attrValue('weight')}" placeholder="4.5"></div>
+              <div class="form-group"><label for="hTemp">Temperatura (&deg;C)</label><input type="number" id="hTemp" step="0.1" value="${attrValue('temp')}" placeholder="38.5"></div>
+              <div class="form-group"><label for="hHR">FC (lpm)</label><input type="number" id="hHR" value="${attrValue('hr')}" placeholder="80"></div>
+            </div>
+          </div>
+          <div class="encounter-section">
+            <div class="encounter-section-heading"><span>3</span><div><h2>Evaluaci&oacute;n y plan</h2><p>Hallazgos, diagn&oacute;stico, tratamiento e indicaciones.</p></div></div>
+            <div class="form-group"><label for="hExam">Examen f&iacute;sico</label><textarea id="hExam" rows="4" placeholder="Hallazgos del examen f&iacute;sico">${textValue('exam')}</textarea></div>
+            <div class="form-group"><label for="hDiag">Diagn&oacute;stico</label><input type="text" id="hDiag" value="${attrValue('diagnosis')}" placeholder="Presuntivo o definitivo"></div>
+            <div class="form-group"><label for="hTreat">Tratamiento e indicaciones</label><textarea id="hTreat" rows="4" placeholder="Medicamentos, dosis, duraci&oacute;n e indicaciones">${textValue('treatment')}</textarea></div>
+            <div class="form-row"><div class="form-group"><label for="hNext">Pr&oacute;ximo control</label><input type="date" id="hNext" value="${attrValue('nextControl')}"></div><div class="form-group"><label for="hDesc">Observaciones</label><input type="text" id="hDesc" value="${attrValue('description')}" placeholder="Notas adicionales"></div></div>
+          </div>
+        </section>
+        <aside class="encounter-sidebar">
+          <div class="encounter-side-card"><h3>Estado de la consulta</h3><label class="sr-only" for="hStatus">Estado</label><select id="hStatus" onchange="toggleEncounterReopenField(this.value)">${statusOptions}</select><p>El estado permite continuar el trabajo sin cerrar una atenci&oacute;n incompleta.</p><div class="encounter-reopen-field ${status==='reopened'?'is-visible':''}"><label for="hReopen">Motivo de reapertura</label><textarea id="hReopen" rows="2" placeholder="Completar al reabrir una consulta cerrada">${textValue('reopenedReason')}</textarea></div></div>
+          <div class="encounter-side-card encounter-patient-card"><h3>Paciente</h3><strong>${escapeHtml(pet.name)}</strong><span>${escapeHtml(pet.species || '')} ${pet.breed ? '&middot; ' + escapeHtml(pet.breed) : ''}</span>${pet.allergies?`<div class="encounter-alert"><b>Alergias</b>${escapeHtml(pet.allergies)}</div>`:''}${pet.chronicConditions?`<div class="encounter-alert"><b>Condici&oacute;n cr&oacute;nica</b>${escapeHtml(pet.chronicConditions)}</div>`:''}${owner?`<div class="encounter-owner"><b>${escapeHtml(owner.name)}</b><span>${escapeHtml(owner.phone || 'Sin tel&eacute;fono')}</span></div>`:''}</div>
+          <div class="encounter-actions"><button class="btn" onclick="closeEncounter()">Cancelar</button><button class="btn btn-secondary" onclick="saveHistory('${pet.id}','${ex?ex.id:''}','draft')">Guardar borrador</button><button class="btn btn-primary" onclick="saveHistory('${pet.id}','${ex?ex.id:''}')">Guardar estado</button><button class="btn btn-success" onclick="saveHistory('${pet.id}','${ex?ex.id:''}','closed')">Cerrar consulta</button></div>
+        </aside>
+      </div>
+    </div>`;
+}
+
+function saveHistory(petId, editId, forcedStatus) {
   if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
   const date = document.getElementById('hDate').value;
   const title = document.getElementById('hTitle').value.trim();
+  const statusField = document.getElementById('hStatus');
+  const status = forcedStatus || (statusField ? statusField.value : 'closed');
+  const existing = editId ? (db.pets.find(p => p.id === petId)?.history || []).find(h => h.id === editId) : null;
+  const now = new Date().toISOString();
+  const reopenedReason = (document.getElementById('hReopen')?.value || '').trim();
+  if (status === 'reopened' && !reopenedReason) { toast('Completa el motivo de reapertura', 'error'); return; }
+  if ((existing?.status || 'closed') === 'closed' && !['closed','reopened'].includes(status)) { toast('Una consulta cerrada debe pasar a Reabierta', 'error'); return; }
   if (!date || !title) { toast('Completá fecha y motivo', 'error'); return; }
   const pet = db.pets.find(p => p.id === petId);
   if (!pet) return;
@@ -710,7 +824,11 @@ function saveHistory(petId, editId) {
     diagnosis: document.getElementById('hDiag').value,
     treatment: document.getElementById('hTreat').value,
     nextControl: document.getElementById('hNext').value,
-    description: document.getElementById('hDesc').value
+    description: document.getElementById('hDesc').value,
+    status,
+    startedAt: existing?.startedAt || now,
+    closedAt: status === 'closed' ? (existing?.closedAt || now) : '',
+    reopenedReason: status === 'reopened' ? reopenedReason : (existing?.reopenedReason || '')
   };
   if (editId) {
     const idx = pet.history.findIndex(h => h.id === editId);
@@ -723,10 +841,12 @@ function saveHistory(petId, editId) {
     else pet.vitals.push({date, weight:weight?parseFloat(weight):null, temp:temp?parseFloat(temp):null});
     pet.vitals.sort((a,b)=>a.date.localeCompare(b.date));
   }
-  if (entry.nextControl) {
+  const latestWeight = [...pet.history].sort((a,b) => String(b.date||'').localeCompare(String(a.date||''))).find(h => h.weight);
+  if (latestWeight) pet.weight = latestWeight.weight;
+  if (entry.nextControl && status === 'closed' && !editId) {
     db.reminders.push({id:uid(),title:'Control: '+title,petId,date:entry.nextControl,type:'control',completed:false});
   }
-  saveDB(editId ? 'Consulta actualizada' : 'Consulta registrada'); closeModal(); openPetDetail(petId);
+  saveDB(editId ? 'Consulta actualizada' : 'Consulta registrada'); closeEncounter();
 }
 
 function printHistEntry(petId, hId) {

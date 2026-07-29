@@ -68,7 +68,7 @@ describe('VetCare Worker', () => {
       status: 'ok',
       database: 'ready',
       version: '2.3.0',
-      schemaVersion: 6,
+      schemaVersion: 7,
     });
   });
 
@@ -144,6 +144,10 @@ describe('VetCare Worker', () => {
         exam: 'Mucosas rosadas, abdomen blando',
         diagnosis: 'Paciente clínicamente estable',
         nextControl: '2026-08-01',
+        status: 'closed',
+        startedAt: '2026-07-01T14:00:00.000Z',
+        closedAt: '2026-07-01T14:30:00.000Z',
+        reopenedReason: '',
       }],
       vaccines: [{ id: crypto.randomUUID(), name: 'Antirrábica', date: '2026-07-02', nextDose: '2027-07-02' }],
       images: [{ id: crypto.randomUUID(), data: 'data:image/png;base64,dGVzdA==', caption: 'Foto' }],
@@ -273,7 +277,8 @@ describe('VetCare Worker', () => {
     expect(typeof databaseInvoice.items).toBe('string');
 
     const databaseHistory = await env.DB.prepare(
-      'SELECT weight, temp, hr, exam, diagnosis, nextControl FROM pet_history WHERE id = ?',
+      `SELECT weight, temp, hr, exam, diagnosis, nextControl,
+              status, startedAt, closedAt, reopenedReason FROM pet_history WHERE id = ?`,
     ).bind(pet.history[0].id).first();
     expect(databaseHistory).toMatchObject({
       weight: '28.4',
@@ -282,6 +287,10 @@ describe('VetCare Worker', () => {
       exam: 'Mucosas rosadas, abdomen blando',
       diagnosis: 'Paciente clínicamente estable',
       nextControl: '2026-08-01',
+      status: 'closed',
+      startedAt: '2026-07-01T14:00:00.000Z',
+      closedAt: '2026-07-01T14:30:00.000Z',
+      reopenedReason: '',
     });
 
     const firstEditor = structuredClone(snapshot.body.pets[0]);
