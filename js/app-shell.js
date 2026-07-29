@@ -10,6 +10,34 @@ function updateBadges() {
 
   const bInv=document.getElementById('badgeInvoices');if(bInv){const pend=(db.invoices||[]).filter(i=>i.status==='pending').length;bInv.style.display=pend>0?'inline':'none';bInv.textContent=pend;}
 }
+function searchInHistory(q) {
+  const query = String(q || '').trim().toLowerCase();
+  if (!query) return [];
+  const results = [];
+  db.pets.forEach(pet => {
+    (pet.history || []).forEach(entry => {
+      const searchable = [
+        entry.type,
+        entry.title,
+        entry.description,
+        entry.treatment,
+        entry.vet,
+        pet.name
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (searchable.includes(query)) {
+        results.push({
+          type: 'history',
+          label: entry.title || entry.type || 'Registro cl\u00ednico',
+          sub: `${pet.name}${entry.date ? ' \u00b7 ' + formatDate(entry.date) : ''}`,
+          id: entry.id,
+          petId: pet.id
+        });
+      }
+    });
+  });
+  return results;
+}
+
 function globalSearchHandler(q) {
   const dd = document.getElementById('gsDropdown');
   if (q.length < 2) { dd.classList.remove('open'); return; }
@@ -49,7 +77,7 @@ function globalSearchHandler(q) {
 function globalSearchGo(type, id) {
   document.getElementById('gsDropdown').classList.remove('open');
   document.getElementById('globalSearch').value = '';
-  if (type === 'pet' || type === 'history') { navigateTo('pets'); setTimeout(()=>openPetDetail(id), 50); }
+  if (type === 'pet' || type === 'history') { openPetDetail(id); }
   else if (type === 'owner') { navigateTo('owners'); }
   else if (type === 'appt') { navigateTo('appointments'); }
 }
@@ -89,6 +117,7 @@ function navigateTo(view) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const el = document.querySelector(`[data-view="${view}"]`);
   if (el) el.classList.add('active');
+  if (view !== 'pet-detail' && typeof currentPetId !== 'undefined') currentPetId = null;
   currentView = view;
   render();
   if(window.innerWidth<769) closeSidebar();

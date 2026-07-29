@@ -233,14 +233,98 @@ function deletePet(id) {
     db.appointments = db.appointments.filter(a => a.petId !== id);
     db.groomingAppointments = db.groomingAppointments.filter(a => a.petId !== id);
     db.reminders = db.reminders.filter(r => r.petId !== id);
-    saveDB('Paciente eliminado'); closeModal(); render();
+    saveDB('Paciente eliminado');
+    closeModal();
+    if (currentView === 'pet-detail') closePetDetail();
+    else render();
   });
 }
 
 // ========================================
 // [11b] FICHA DE PACIENTE (PET DETAIL) — historia, estudios, fotos, vacunas
 // ========================================
+let currentPetId = null;
+let petDetailReturnView = 'pets';
+let petDetailReturnScrollY = 0;
+let petDetailActiveTab = 'tab-history';
+
 function openPetDetail(id) {
+  const pet = db.pets.find(p => p.id === id);
+  if (!pet) return;
+  if (currentView !== 'pet-detail') {
+    petDetailReturnView = currentView || 'pets';
+    petDetailReturnScrollY = window.scrollY || 0;
+  }
+  if (currentPetId !== id) petDetailActiveTab = 'tab-history';
+  currentPetId = id;
+  currentView = 'pet-detail';
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const petsNav = document.querySelector('[data-view="pets"]');
+  if (petsNav) petsNav.classList.add('active');
+  render();
+  window.scrollTo({ top: 0, behavior: 'auto' });
+  if (window.innerWidth < 769) closeSidebar();
+}
+
+function closePetDetail() {
+  const returnView = petDetailReturnView === 'pet-detail' ? 'pets' : petDetailReturnView;
+  const returnScroll = petDetailReturnScrollY;
+  currentPetId = null;
+  petDetailActiveTab = 'tab-history';
+  navigateTo(returnView || 'pets');
+  requestAnimationFrame(() => window.scrollTo({ top: returnScroll, behavior: 'auto' }));
+}
+
+function renderPetDetail(id) {
+  const pet = db.pets.find(p => p.id === id);
+  if (!pet) {
+    return '<div class="pet-detail-missing"><h1>Paciente no encontrado</h1><p>La ficha pudo haber sido eliminada o actualizada en otro equipo.</p><button class="btn btn-primary" onclick="navigateTo(\'pets\')">Volver a pacientes</button></div>';
+  }
+  renderPetDetailLegacy(id);
+  const modal = document.querySelector('#modalContainer .modal');
+  const body = modal && modal.querySelector('.modal-body');
+  if (!body) {
+    closeModal();
+    return '<div class="pet-detail-missing"><h1>No se pudo abrir la ficha</h1><button class="btn btn-primary" onclick="navigateTo(\'pets\')">Volver a pacientes</button></div>';
+  }
+
+  const hero = body.querySelector('.pet-header');
+  if (hero) hero.classList.add('pet-detail-hero');
+  body.querySelectorAll('.tab').forEach(tab => {
+    const active = (tab.getAttribute('onclick') || '').includes("'" + petDetailActiveTab + "'");
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-selected', String(active));
+  });
+  body.querySelectorAll('.tab-content').forEach(panel => panel.classList.toggle('active', panel.id === petDetailActiveTab));
+
+  const history = [...(pet.history || [])].sort((a,b) => new Date(b.date) - new Date(a.date));
+  const owners = (pet.ownerIds || []).map(oid => db.owners.find(o => o.id === oid)).filter(Boolean);
+  const nextAppointment = (db.appointments || [])
+    .filter(a => a.petId === pet.id && a.date >= localDateKey() && a.status !== 'Cancelado')
+    .sort((a,b) => `${a.date} ${a.time || ''}`.localeCompare(`${b.date} ${b.time || ''}`))[0];
+  const summary = document.createElement('div');
+  summary.className = 'pet-detail-summary';
+  summary.setAttribute('aria-label', 'Resumen del paciente');
+  summary.innerHTML = `
+    <div class="pet-summary-item"><span>&Uacute;ltima atenci&oacute;n</span><strong>${history[0]?.date ? formatDate(history[0].date) : 'Sin registros'}</strong><small>${history[0]?.title ? escapeHtml(history[0].title) : 'Todavia no hay historia clinica'}</small></div>
+    <div class="pet-summary-item"><span>Pr&oacute;ximo turno</span><strong>${nextAppointment ? formatDate(nextAppointment.date) : 'Sin turno'}</strong><small>${nextAppointment ? `${escapeHtml(nextAppointment.time || 'Sin hora')} &middot; ${escapeHtml(nextAppointment.type || 'Consulta')}` : 'No hay turnos programados'}</small></div>
+    <div class="pet-summary-item"><span>Tutor principal</span><strong>${owners[0] ? escapeHtml(owners[0].name) : 'Sin asociar'}</strong><small>${owners[0]?.phone ? escapeHtml(owners[0].phone) : `${owners.length} tutor${owners.length === 1 ? '' : 'es'} asociado${owners.length === 1 ? '' : 's'}`}</small></div>`;
+  if (hero) hero.insertAdjacentElement('afterend', summary);
+  else body.prepend(summary);
+
+  const content = body.innerHTML;
+  closeModal();
+  return `
+    <div class="pet-detail-page">
+      <div class="pet-detail-topbar">
+        <button class="pet-detail-back" onclick="closePetDetail()" aria-label="Volver"><span aria-hidden="true">&larr;</span><span>Volver</span></button>
+        <div class="pet-detail-breadcrumb"><span>Pacientes</span><span aria-hidden="true">/</span><strong>Ficha cl&iacute;nica</strong></div>
+      </div>
+      <div class="pet-detail-surface">${content}</div>
+    </div>`;
+}
+
+function renderPetDetailLegacy(id) {
   const pet = db.pets.find(p => p.id === id);
   if (!pet) return;
   const owners = (pet.ownerIds||[]).map(oid => db.owners.find(o => o.id === oid)).filter(Boolean);
@@ -362,10 +446,14 @@ function openPetDetail(id) {
 }
 
 function switchTab(e, id) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  e.target.classList.add('active');
-  document.getElementById(id).classList.add('active');
+  petDetailActiveTab = id;
+  const scope = e.currentTarget.closest('.pet-detail-page') || document;
+  scope.querySelectorAll('.tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
+  scope.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  e.currentTarget.classList.add('active');
+  e.currentTarget.setAttribute('aria-selected', 'true');
+  const panel = scope.querySelector('#' + id);
+  if (panel) panel.classList.add('active');
 }
 
 // Comprime una imagen en el navegador a <100KB (canvas + JPEG con calidad decreciente)

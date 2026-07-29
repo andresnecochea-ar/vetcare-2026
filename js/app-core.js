@@ -92,6 +92,7 @@ function render() {
     case 'today': main.innerHTML = renderToday(); break;
     case 'dashboard': main.innerHTML = renderDashboard(); break;
     case 'pets': main.innerHTML = renderPets(); attachPetListeners(); break;
+    case 'pet-detail': main.innerHTML = renderPetDetail(currentPetId); break;
     case 'owners': main.innerHTML = renderOwners(); break;
     case 'appointments': main.innerHTML = renderAppointments(); break;
     case 'grooming': main.innerHTML = renderGrooming(); break;
