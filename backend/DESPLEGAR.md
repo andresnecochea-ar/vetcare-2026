@@ -105,7 +105,7 @@ En el repositorio de GitHub configurá:
 
 **Settings → Secrets and variables → Actions → Variables**
 
-- `GITHUB_PAGES_DEPLOY_ENABLED=true`
+- `PAGES_DEPLOY_ENABLED=true`
 - `CLOUDFLARE_DEPLOY_ENABLED=true`
 
 En **Settings → Pages**, elegí **GitHub Actions** como origen. El workflow de

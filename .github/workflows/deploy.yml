@@ -30,7 +30,7 @@ jobs:
           npm run check
 
   build-pages:
-    if: ${{ vars.GITHUB_PAGES_DEPLOY_ENABLED == 'true' }}
+    if: ${{ vars.PAGES_DEPLOY_ENABLED == 'true' }}
     needs: verify
     runs-on: ubuntu-latest
     steps:
@@ -58,7 +58,7 @@ jobs:
           path: dist
 
   deploy-pages:
-    if: ${{ vars.GITHUB_PAGES_DEPLOY_ENABLED == 'true' }}
+    if: ${{ vars.PAGES_DEPLOY_ENABLED == 'true' }}
     needs: build-pages
     runs-on: ubuntu-latest
     permissions:

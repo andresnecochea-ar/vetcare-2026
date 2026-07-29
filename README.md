@@ -77,7 +77,7 @@ Cada push y pull request ejecuta las pruebas y validaciones. El despliegue desde
 `main` queda deliberadamente desactivado hasta configurar estas variables del
 repositorio:
 
-- `GITHUB_PAGES_DEPLOY_ENABLED=true`
+- `PAGES_DEPLOY_ENABLED=true`
 - `CLOUDFLARE_DEPLOY_ENABLED=true`
 
 Y estos secretos:
