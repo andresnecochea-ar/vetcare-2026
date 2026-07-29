@@ -1,6 +1,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import '../../js/finance.js';
+import '../../js/sync-state.js';
 
 const API_ORIGIN = 'https://vetcare-api.test';
 
@@ -20,6 +21,31 @@ async function jsonResponse(path, options) {
 }
 
 describe('VetCare Worker', () => {
+  it('describe estados de sincronización y reintentos sin ocultar conflictos', () => {
+    expect(globalThis.VetCareSync.retryDelay(0)).toBe(3000);
+    expect(globalThis.VetCareSync.retryDelay(1)).toBe(10000);
+    expect(globalThis.VetCareSync.retryDelay(8)).toBe(30000);
+    expect(globalThis.VetCareSync.isRetryableStatus(0)).toBe(true);
+    expect(globalThis.VetCareSync.isRetryableStatus(429)).toBe(true);
+    expect(globalThis.VetCareSync.isRetryableStatus(503)).toBe(true);
+    expect(globalThis.VetCareSync.isRetryableStatus(403)).toBe(false);
+
+    expect(globalThis.VetCareSync.view('offline')).toMatchObject({
+      label: 'Sin conexión',
+      retryable: true,
+    });
+    expect(globalThis.VetCareSync.view('error', {
+      context: { table: 'invoices', operation: 'update' },
+      retryDelayMs: 10000,
+    }).detail).toContain('Reintento automático en 10 s');
+
+    const conflict = globalThis.VetCareSync.view('conflict', {
+      context: { table: 'pets', operation: 'update' },
+    });
+    expect(conflict).toMatchObject({ label: 'Conflicto', retryable: false });
+    expect(conflict.detail).toContain('paciente');
+  });
+
   it('calcula cobrado y pendiente sin incluir comprobantes cancelados', () => {
     const summary = globalThis.VetCareFinance.summarize([
       { status: 'paid', total: 15000 },
@@ -41,7 +67,7 @@ describe('VetCare Worker', () => {
     expect(body).toMatchObject({
       status: 'ok',
       database: 'ready',
-      version: '2.2.0',
+      version: '2.3.0',
       schemaVersion: 6,
     });
   });

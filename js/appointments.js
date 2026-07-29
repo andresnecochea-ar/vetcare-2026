@@ -69,13 +69,13 @@ function saveAppt(id, isNew) {
   if (!_v1 || !_v2) return;
   const data = { id, petId, date, time: document.getElementById('aTime').value, type: document.getElementById('aType').value, vet: document.getElementById('aVet').value, notes: document.getElementById('aNotes').value };
   if (isNew) db.appointments.push(data); else { const i = db.appointments.findIndex(a=>a.id===id); db.appointments[i] = data; }
-  saveDB(); closeModal(); render(); toast(isNew?'Turno creado':'Turno actualizado');
+  saveDB(isNew?'Turno creado':'Turno actualizado'); closeModal(); render();
 }
 
 function deleteAppt(id) {
   showConfirm('¿Eliminar este turno?', () => {
     db.appointments = db.appointments.filter(a=>a.id!==id);
-    saveDB(); closeModal(); render();
+    saveDB('Turno eliminado'); closeModal(); render();
   });
 }
 
@@ -159,13 +159,13 @@ function saveGroom(id, isNew) {
   if (!_g1 || !_g2) return;
   const data = { id, petId, date, time: document.getElementById('gTime').value, service: document.getElementById('gService').value, groomer: document.getElementById('gGroomer').value, price: document.getElementById('gPrice').value, status: document.getElementById('gStatus').value, reminder: document.getElementById('gReminder').value.trim(), notes: document.getElementById('gNotes').value };
   if (isNew) db.groomingAppointments.push(data); else { const i = db.groomingAppointments.findIndex(a=>a.id===id); db.groomingAppointments[i] = data; }
-  saveDB(); closeModal(); render(); toast(isNew?'Turno creado':'Turno actualizado');
+  saveDB(isNew?'Turno de peluquería creado':'Turno de peluquería actualizado'); closeModal(); render();
 }
 
 function deleteGroom(id) {
   showConfirm('¿Eliminar este turno de peluquería?', () => {
   db.groomingAppointments = db.groomingAppointments.filter(a=>a.id!==id);
-  saveDB(); closeModal(); render(); toast('Turno eliminado');
+  saveDB('Turno de peluquería eliminado'); closeModal(); render();
 });
 }
 

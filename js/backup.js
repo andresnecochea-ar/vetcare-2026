@@ -1,15 +1,20 @@
 function renderBackup() {
   const sizeKB = (JSON.stringify(db).length / 1024).toFixed(1);
   const turnos = db.appointments.length + db.groomingAppointments.length;
+  const sync = getSyncStatus();
   return `
     <div class="page-header">
       <div class="title"><small>Seguridad de datos</small><h1>Respaldo y restauración</h1></div>
     </div>
     <div class="card">
       <h3>Estado actual</h3>
-      <p style="margin-bottom:12px"><span style="color:var(--color-mint-hover);font-weight:var(--fw-bold)">● Datos guardados en la nube</span> — se sincronizan automáticamente en Cloudflare.</p>
+      <p style="margin-bottom:8px"><span class="sync-summary sync-summary-${sync.state}" id="syncSummary">${escapeHtml(sync.label)}</span></p>
+      <p id="syncSummaryDetail" style="color:var(--text-soft);margin-bottom:6px">${escapeHtml(sync.detail)}</p>
+      <p id="syncSummaryLast" style="color:var(--text-mute);font-size:var(--fs-xs);margin-bottom:12px">${sync.lastSyncAt?'Última sincronización confirmada: '+escapeHtml(new Date(sync.lastSyncAt).toLocaleString('es-AR')):'Todavía no hay una sincronización confirmada.'}</p>
+      ${(sync.state==='error'||sync.state==='offline')?'<button class="btn btn-sm" onclick="retrySync()">Reintentar ahora</button>':''}
+      ${sync.state==='conflict'?'<button class="btn btn-sm btn-danger" onclick="handleSyncStatusAction()">Revisar conflicto</button>':''}
       <p style="color:var(--text-soft);margin-top:6px">${db.pets.length} pacientes · ${db.owners.length} tutores · ${turnos} turnos · ${db.reminders.length} avisos · <strong>${sizeKB} KB</strong></p>
-      <p style="color:var(--text-mute);font-size:var(--fs-xs);margin-top:6px">Tus datos están seguros en el servidor. La copia local es un respaldo adicional opcional que podés guardar en tu computadora.</p>
+      <p style="color:var(--text-mute);font-size:var(--fs-xs);margin-top:6px">La copia local se conserva incluso si se interrumpe Internet. El indicador superior confirma cuándo los cambios llegaron al servidor.</p>
     </div>
 
     <h3 style="margin-top:24px;margin-bottom:8px">Descargar copia local</h3>
@@ -89,9 +94,9 @@ function restoreBackup(mode) {
           });
         }
       });
-      saveDB();
+      saveDB(added>0 ? ('Respaldo fusionado: '+added+' registros nuevos') : '');
       render();
-      toast(added>0 ? ('Respaldo fusionado: '+added+' registros nuevos') : 'No había registros nuevos para agregar');
+      if(added===0)toast('No había registros nuevos para agregar');
     } catch (err) {
       toast('Archivo inválido');
     }
@@ -102,7 +107,7 @@ function restoreBackup(mode) {
 function wipeAllData() {
   showConfirm('¿BORRAR TODOS LOS DATOS? Esta acción es irreversible y no se puede deshacer.', () => {
     db = JSON.parse(JSON.stringify(defaultData));
-    saveDB(); render(); toast('Todos los datos eliminados', 'error');
+    saveDB('Todos los datos eliminados'); render();
   });
 }
 

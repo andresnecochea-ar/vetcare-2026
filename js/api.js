@@ -95,7 +95,13 @@ async function api(path, opts){
   return data;
 }
 function setSession(token, user){ authToken = token; currentUser = user; try { localStorage.setItem('vetcare_token', token); } catch(e){} }
-function clearSession(){ authToken = null; currentUser = null; try { localStorage.removeItem('vetcare_token'); } catch(e){} }
+function clearSession(){
+  authToken = null;
+  currentUser = null;
+  try { localStorage.removeItem('vetcare_token'); } catch(e){}
+  if(typeof _clearRetryTimer==='function')_clearRetryTimer();
+  if(typeof _syncTimer!=='undefined')clearTimeout(_syncTimer);
+}
 async function apiLogin(email, password){ const d = await api('/api/login', { method:'POST', body:{ email, password } }); setSession(d.token, d.user); return d.user; }
 async function apiRegister(email, password, name, inviteCode){ return api('/api/register', { method:'POST', body:{ email, password, name, inviteCode } }); }
 async function apiLogout(){ try { await api('/api/logout', { method:'POST' }); } catch(e){} clearSession(); }
@@ -118,6 +124,7 @@ async function loadFromAPI(){
   if (!db.invoices) db.invoices = [];
   for (const pet of db.pets || []) restoreDerivedVitals(pet);
   _lastSnapshot = _snap();
+  _markSyncConfirmed();
   return true;
 }
 // ========================================
@@ -143,75 +150,268 @@ async function idbAll(s){return new Promise(res=>{
   r.onsuccess=()=>res(r.result||[]);r.onerror=()=>res([]);});}
 
 let _syncTimer=null,_syncing=false,_syncAgain=false,_lastSnapshot={};
+let _syncRetryTimer=null,_syncRetryAttempt=0,_syncContext=null,_syncError=null;
+let _syncState=apiConfigured()?'saved':'local';
+let _lastSyncAt=null;
+let _pendingSaveMessages=[];
+try { _lastSyncAt=localStorage.getItem('vetcare_last_sync')||null; } catch(e){}
 const _ENTITY_TABLES=['owners','pets','appointments','groomingAppointments','reminders','inventory','invoices'];
 function _snap(){return JSON.parse(JSON.stringify({owners:db.owners,pets:db.pets,appointments:db.appointments,groomingAppointments:db.groomingAppointments,reminders:db.reminders,inventory:db.inventory,invoices:db.invoices,clinicName:db.clinicName,settings:db.settings}));}
 function _sameSnapshotValue(a,b){return JSON.stringify(a)===JSON.stringify(b);}
+function _cloneSyncValue(value){return JSON.parse(JSON.stringify(value));}
+function _browserOnline(){return typeof navigator==='undefined'||navigator.onLine!==false;}
+function _syncView(retryDelayMs){return VetCareSync.view(_syncState,{context:_syncContext,retryDelayMs:retryDelayMs||0,lastSyncAt:_lastSyncAt});}
+function _syncTimeLabel(){
+  if(!_lastSyncAt)return '';
+  const value=new Date(_lastSyncAt);
+  return Number.isNaN(value.getTime())?'':'· '+value.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+}
+function _renderSyncState(retryDelayMs){
+  const view=_syncView(retryDelayMs);
+  const status=document.getElementById('syncStatus');
+  if(status){
+    status.className='sync-status sync-status-'+_syncState;
+    status.title=view.detail+(_lastSyncAt?' Última sincronización: '+new Date(_lastSyncAt).toLocaleString('es-AR')+'.':'');
+    status.setAttribute('aria-label',view.label+'. '+status.title);
+  }
+  const label=document.getElementById('syncStatusLabel');
+  if(label)label.textContent=view.label;
+  const time=document.getElementById('syncStatusTime');
+  if(time)time.textContent=_syncTimeLabel();
+  const summary=document.getElementById('syncSummary');
+  if(summary){summary.className='sync-summary sync-summary-'+_syncState;summary.textContent=view.label;}
+  const detail=document.getElementById('syncSummaryDetail');
+  if(detail)detail.textContent=view.detail;
+  const last=document.getElementById('syncSummaryLast');
+  if(last)last.textContent=_lastSyncAt?'Última sincronización confirmada: '+new Date(_lastSyncAt).toLocaleString('es-AR'):'Todavía no hay una sincronización confirmada.';
+}
+function _setSyncState(state,context,retryDelayMs){
+  _syncState=state;
+  if(context!==undefined)_syncContext=context;
+  _renderSyncState(retryDelayMs);
+}
+function getSyncStatus(){
+  const view=_syncView();
+  return {state:_syncState,label:view.label,detail:view.detail,lastSyncAt:_lastSyncAt,retryable:view.retryable,context:_syncContext};
+}
+function _markSyncConfirmed(){
+  _lastSyncAt=new Date().toISOString();
+  try { localStorage.setItem('vetcare_last_sync',_lastSyncAt); } catch(e){}
+  _syncRetryAttempt=0;_syncError=null;_syncContext=null;
+  _setSyncState('saved',null);
+}
+function _queueSaveMessage(message){
+  if(message&&!_pendingSaveMessages.includes(message))_pendingSaveMessages.push(message);
+}
+function _flushSaveMessages(target){
+  if(!_pendingSaveMessages.length)return;
+  const messages=_pendingSaveMessages.splice(0);
+  const suffix=target==='cloud'?' · Guardado en la nube':' · Guardado local';
+  toast(messages.length===1?messages[0]+suffix:messages.length+' cambios guardados'+(target==='cloud'?' en la nube':' en este equipo'));
+}
+function _snapshotUpsert(table,item){
+  const items=_lastSnapshot[table]||[];
+  const index=items.findIndex(existing=>existing&&existing.id===item.id);
+  if(index===-1)items.push(_cloneSyncValue(item));else items[index]=_cloneSyncValue(item);
+  _lastSnapshot[table]=items;
+}
+function _snapshotDelete(table,id){_lastSnapshot[table]=(_lastSnapshot[table]||[]).filter(item=>item&&item.id!==id);}
+function _hasPendingChanges(){
+  for(const table of _ENTITY_TABLES){
+    if(!_sameSnapshotValue(db[table]||[],_lastSnapshot[table]||[]))return true;
+  }
+  if(canManageSettings()){
+    const next={clinicName:db.clinicName||'VetCare',settings:db.settings||{}};
+    const prev={clinicName:_lastSnapshot.clinicName||'VetCare',settings:_lastSnapshot.settings||{}};
+    if(!_sameSnapshotValue(next,prev))return true;
+  }
+  return false;
+}
+function _clearRetryTimer(){if(_syncRetryTimer){clearTimeout(_syncRetryTimer);_syncRetryTimer=null;}}
+function _scheduleSyncRetry(){
+  _clearRetryTimer();
+  const delay=VetCareSync.retryDelay(_syncRetryAttempt++);
+  _setSyncState(_browserOnline()?'error':'offline',_syncContext,delay);
+  _syncRetryTimer=setTimeout(()=>{_syncRetryTimer=null;syncToAPI();},delay);
+}
 async function syncToAPI(){
-  if(!apiConfigured()||!authToken)return;
-  if(_syncing){_syncAgain=true;return;}
+  if(!apiConfigured()||!authToken){_setSyncState('local',null);return true;}
+  if(!_browserOnline()){_setSyncState('offline',_syncContext);return false;}
+  if(_syncing){_syncAgain=true;return false;}
+  _clearRetryTimer();
   _syncing=true;
+  _setSyncState('saving',_syncContext);
   let canonicalDataChanged=false;
+  let succeeded=false;
   try{
     for(const t of _ENTITY_TABLES){
-      const cur=db[t]||[]; const prev=_lastSnapshot[t]||[]; const curIds=new Set(cur.map(x=>x.id));
+      const cur=db[t]||[];const prev=_lastSnapshot[t]||[];const curIds=new Set(cur.map(x=>x.id));
       const prevById=new Map(prev.filter(x=>x&&x.id).map(x=>[x.id,x]));
       for(const item of cur){
         if(!item||!item.id||_sameSnapshotValue(item,prevById.get(item.id)))continue;
-        const saved=await api('/api/'+t,{method:'POST',body:item});
-        if(t==='pets'&&saved&&Number.isInteger(saved.revision))item.revision=saved.revision;
-        if(t==='invoices'&&saved&&saved.number&&item.number!==saved.number){
-          item.number=saved.number;
-          canonicalDataChanged=true;
+        const payload=_cloneSyncValue(item);
+        _syncContext={table:t,id:item.id,operation:prevById.has(item.id)?'update':'create'};
+        _setSyncState('saving',_syncContext);
+        const saved=await api('/api/'+t,{method:'POST',body:payload});
+        if(t==='pets'&&saved&&Number.isInteger(saved.revision)){
+          item.revision=saved.revision;payload.revision=saved.revision;canonicalDataChanged=true;
         }
+        if(t==='invoices'&&saved&&saved.number&&item.number!==saved.number){
+          item.number=saved.number;payload.number=saved.number;canonicalDataChanged=true;
+        }
+        _snapshotUpsert(t,payload);
       }
       for(const old of prev){
         if(!old||!old.id||curIds.has(old.id))continue;
-        await api('/api/'+t+'/'+old.id,{
-          method:'DELETE',
-          body:t==='pets'?{revision:Number.isInteger(old.revision)?old.revision:0}:undefined
-        });
+        _syncContext={table:t,id:old.id,operation:'delete'};
+        _setSyncState('saving',_syncContext);
+        await api('/api/'+t+'/'+old.id,{method:'DELETE',body:t==='pets'?{revision:Number.isInteger(old.revision)?old.revision:0}:undefined});
+        _snapshotDelete(t,old.id);
       }
-      _lastSnapshot[t]=JSON.parse(JSON.stringify(cur));
     }
     const nextSettings={clinicName:db.clinicName||'VetCare',settings:db.settings||{}};
     const prevSettings={clinicName:_lastSnapshot.clinicName||'VetCare',settings:_lastSnapshot.settings||{}};
     if(canManageSettings()&&!_sameSnapshotValue(nextSettings,prevSettings)){
+      _syncContext={table:'settings',id:'singleton',operation:'update'};
+      _setSyncState('saving',_syncContext);
       await api('/api/settings',{method:'POST',body:nextSettings});
       _lastSnapshot.clinicName=nextSettings.clinicName;
-      _lastSnapshot.settings=JSON.parse(JSON.stringify(nextSettings.settings));
+      _lastSnapshot.settings=_cloneSyncValue(nextSettings.settings);
     }
-    if(canonicalDataChanged)await saveIDB();
+    if(canonicalDataChanged&&!(await saveIDB())){
+      toast('⚠ Guardado en la nube, pero no se pudo actualizar la copia local.');
+    }
+    succeeded=true;
   }catch(e){
-    console.warn('Sync API fallo:',e);
-    toast(e&&e.status===409
-      ? '⚠ La ficha cambió en otro equipo. Recargá antes de guardar.'
-      : '⚠ No se pudo guardar en el servidor');
+    _syncError=e;
+    console.warn('Sync API falló:',e);
+    if(e&&e.status===409){
+      _setSyncState('conflict',_syncContext);
+      toast('⚠ Conflicto detectado. Tus cambios siguen en este equipo.');
+    }else if(VetCareSync.isRetryableStatus(e&&e.status)){
+      _scheduleSyncRetry();
+      toast(_browserOnline()
+        ? '⚠ No se pudo guardar en la nube. VetCare reintentará automáticamente.'
+        : '⚠ Sin conexión. Los cambios siguen guardados en este equipo.');
+    }else{
+      _clearRetryTimer();
+      _setSyncState('error',_syncContext);
+      toast('⚠ El servidor rechazó el cambio. Revisá tus permisos o los datos antes de reintentar.');
+    }
+  }finally{
+    _syncing=false;
+    const pendingRun=_syncAgain||_hasPendingChanges();
+    _syncAgain=false;
+    if(succeeded&&pendingRun){
+      _setSyncState('queued',null);
+      setTimeout(syncToAPI,0);
+    }else if(succeeded){
+      _markSyncConfirmed();
+      _flushSaveMessages('cloud');
+    }
   }
-  finally{ _syncing=false; if(_syncAgain){_syncAgain=false;syncToAPI();} }
+  return succeeded;
 }
-async function saveDB(){
-  saveIDB();
-  if(!apiConfigured()||!authToken)return;
-  clearTimeout(_syncTimer); _syncTimer=setTimeout(syncToAPI,600);
+async function saveDB(successMessage){
+  _queueSaveMessage(successMessage);
+  const remote=apiConfigured()&&authToken;
+  _setSyncState(remote?'queued':'saving',null);
+  const localSaved=await saveIDB();
+  if(!remote){
+    if(localSaved){_setSyncState('local',null);_flushSaveMessages('local');}
+    else{_setSyncState('error',{table:'local',operation:'write'});toast('⚠ No se pudo guardar en este dispositivo.');}
+    return localSaved;
+  }
+  if(!localSaved)toast('⚠ No se pudo actualizar la copia local. VetCare espera la confirmación de la nube.');
+  clearTimeout(_syncTimer);
+  _syncTimer=setTimeout(syncToAPI,600);
+  return localSaved;
 }
 async function saveIDB(){
-  if(!idb)return;
+  if(!idb)return false;
   try {
+    let saved=true;
     const stores=['pets','owners','appointments','groomingAppointments','reminders','inventory','invoices'];
     for(const s of stores){
       try {
         const arr=db[s]||[];const tx=idb.transaction(s,'readwrite');const os=tx.objectStore(s);
         os.clear();for(const item of arr){if(item&&item.id)os.put(item);}
-        await new Promise(r=>{tx.oncomplete=r;tx.onerror=r;});
-      } catch(e){}
+        const complete=await new Promise(r=>{
+          tx.oncomplete=()=>r(true);tx.onerror=()=>r(false);tx.onabort=()=>r(false);
+        });
+        if(!complete)saved=false;
+      } catch(e){saved=false;}
     }
     try {
       const mt=idb.transaction('meta','readwrite');
       mt.objectStore('meta').put({key:'clinicName',value:db.clinicName||'VetCare'});
       mt.objectStore('meta').put({key:'settings',value:db.settings||{theme:'light'}});
-      await new Promise(r=>{mt.oncomplete=r;mt.onerror=r;});
-    } catch(e){}
-  } catch(e){}
+      const complete=await new Promise(r=>{
+        mt.oncomplete=()=>r(true);mt.onerror=()=>r(false);mt.onabort=()=>r(false);
+      });
+      if(!complete)saved=false;
+    } catch(e){saved=false;}
+    return saved;
+  } catch(e){return false;}
+}
+
+function retrySync(){
+  if(_syncState==='conflict'){handleSyncStatusAction();return Promise.resolve(false);}
+  _clearRetryTimer();
+  clearTimeout(_syncTimer);
+  if(!_browserOnline()){_setSyncState('offline',_syncContext);return Promise.resolve(false);}
+  _setSyncState('queued',_syncContext);
+  return syncToAPI();
+}
+
+function handleSyncStatusAction(){
+  if(_syncState==='conflict'){
+    const status=getSyncStatus();
+    showModal(
+      '<div class="modal-header"><h3>Conflicto de sincronización</h3><button class="close-btn" onclick="closeModal()">&times;</button></div>'
+      +'<div class="modal-body"><p>'+escapeHtml(status.detail)+'</p>'
+      +'<p style="color:var(--text-soft);margin-top:10px">Tus cambios locales no se eliminaron. Podés descargar una copia antes de recargar la versión confirmada por el servidor.</p></div>'
+      +'<div class="modal-footer"><button class="btn" onclick="closeModal()">Cancelar</button>'
+      +'<button class="btn btn-secondary" onclick="exportVetcare(\'full\')">Descargar copia</button>'
+      +'<button class="btn btn-danger" onclick="reloadServerData()">Recargar servidor</button></div>'
+    );
+    return;
+  }
+  if(_syncState==='error'||_syncState==='offline')retrySync();
+}
+
+function reloadServerData(){
+  closeModal();
+  showConfirm('Se reemplazarán los cambios locales pendientes por la última versión confirmada en la nube. ¿Continuar?',async()=>{
+    _pendingSaveMessages=[];
+    _setSyncState('saving',null);
+    try{
+      await loadFromAPI();
+      await saveIDB();
+      closeModal();
+      render();
+      toast('Datos recargados desde la nube');
+    }catch(e){
+      _syncError=e;
+      _scheduleSyncRetry();
+      toast('No se pudieron recargar los datos');
+    }
+  });
+}
+
+if(typeof window!=='undefined'){
+  window.addEventListener('offline',()=>{
+    if(apiConfigured()&&authToken)_setSyncState('offline',_syncContext);
+  });
+  window.addEventListener('online',()=>{
+    if(apiConfigured()&&authToken&&(_syncState==='offline'||_hasPendingChanges()))retrySync();
+  });
+  window.addEventListener('beforeunload',event=>{
+    if(apiConfigured()&&authToken&&(_syncState!=='saved'||_hasPendingChanges())){
+      event.preventDefault();
+      event.returnValue='';
+    }
+  });
 }
 
 async function loadIDB(){
@@ -246,8 +446,7 @@ function loadFromFile(input) {
       db = { ...JSON.parse(JSON.stringify(defaultData)), ...imported };
       if (!db.invoices) db.invoices = [];
       startApp();
-      await saveDB();
-      toast('Archivo .vetcare cargado y guardado en IndexedDB ✓');
+      await saveDB('Archivo .vetcare importado');
     } catch(err) {
       alert('El archivo no es un .vetcare válido. Verificalo.');
     }
@@ -270,5 +469,5 @@ async function createNewDB() {
     } catch(e){}
   }
   startApp();
-  toast('Nueva base de datos creada ✓');
+  saveDB('Nueva base de datos creada');
 }

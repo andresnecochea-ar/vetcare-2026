@@ -4,7 +4,6 @@ function startApp() {
   document.getElementById('globalSearchWrap').style.display = 'flex';
   if(!db.invoices)db.invoices=[];
   applyTheme(); render(); updateBadges();
-  saveDB();
 }
 
 

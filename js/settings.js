@@ -4,7 +4,7 @@
    y de los recibos, y acceso al respaldo.
    ===================================================================== */
 
-var APP_VERSION = '2.2.0';
+var APP_VERSION = '2.3.0';
 
 function _ensureSettings(){
   if(!db.settings) db.settings = {};
@@ -90,8 +90,7 @@ function saveSettings(){
   if(byId('setRecAddr')) db.settings.receiptAddress = byId('setRecAddr').value.trim();
   if(byId('setRecPhone')) db.settings.receiptPhone = byId('setRecPhone').value.trim();
   if(byId('setRecTax')) db.settings.receiptTaxId = byId('setRecTax').value.trim();
-  saveDB();
-  toast('Datos guardados');
+  saveDB('Datos de la clínica actualizados');
 }
 
 function _auditLabel(action){

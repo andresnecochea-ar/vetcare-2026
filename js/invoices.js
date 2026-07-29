@@ -177,15 +177,14 @@ function saveInvoice(id,isNew){
   };
   if(isNew){db.invoices.push(inv);}
   else{const idx=db.invoices.findIndex(i=>i.id===id);if(idx>-1)db.invoices[idx]=inv;else db.invoices.push(inv);}
-  saveDB();closeModal();currentView='invoices';render();
-  toast(isNew?'Recibo creado ✓':'Recibo actualizado ✓');
+  saveDB(isNew?'Recibo creado':'Recibo actualizado');closeModal();currentView='invoices';render();
 }
 
 function deleteInvoice(id){
   if(!canDeleteEntity('invoices')){ toast('Tu rol no permite eliminar recibos'); return; }
   showConfirm('¿Eliminar este recibo?',()=>{
     db.invoices=(db.invoices||[]).filter(i=>i.id!==id);
-    saveDB();render();toast('Recibo eliminado');
+    saveDB('Recibo eliminado');render();
   });
 }
 
