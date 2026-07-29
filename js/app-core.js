@@ -40,7 +40,7 @@ function exportVetcare(type) {
     structure: {
       pets: 'id, name, species, breed, sex, color, birthdate, weight, microchip, ownerIds[], allergies, conditions, notes, photo, images[], studies[], history[], vaccines[]',
       owners: 'id, name, relationship, phone, email, address, docId, notes',
-      appointments: 'id, petId, date, time, type, vet, notes',
+      appointments: 'id, petId, date, time, type, vet, notes, status, duration, checkedInAt, startedAt, completedAt',
       groomingAppointments: 'id, petId, date, time, status, reminder, notes',
       reminders: 'id, petId, title, date, type, completed',
       inventory: 'id, name, category, stock, minStock, unit, notes',

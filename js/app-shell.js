@@ -121,6 +121,7 @@ function navigateTo(view) {
   if (view !== 'encounter' && typeof currentEncounterPetId !== 'undefined') {
     currentEncounterPetId = null;
     currentEncounterId = null;
+    currentEncounterAppointmentId = null;
   }
   currentView = view;
   render();
@@ -142,17 +143,19 @@ function renderToday() {
     .sort((a,b) => new Date(a.date) - new Date(b.date));
 
   function apptSlot(a, cls) {
-    const slotTime = new Date(a.date + 'T' + (a.time || '00:00'));
-    const diff = Math.abs(now - slotTime) / 60000;
-    const isCurrent = diff <= 30;
-    if (isCurrent) cls += ' current';
+    const isClinical = !String(cls || '').includes('grooming');
+    const status = isClinical ? appointmentStatusValue(a) : '';
+    if (status === 'in_consultation') cls += ' current';
     const pet = db.pets.find(p=>p.id===a.petId);
     return `<div class="today-slot ${cls}">
       <div class="ts-info">
-        <strong>${escapeHtml(pet ? pet.name : '—')}${isCurrent ? '<span class="current-badge">En curso</span>' : ''}</strong>
-        <small>${a.time||'Sin hora'} · ${escapeHtml(a.type||a.service||'—')}</small>
+        <strong>${escapeHtml(pet ? pet.name : 'Paciente')}${isClinical ? `<span class="appointment-status ${appointmentStatusClass(status)}">${appointmentStatusLabel(status)}</span>` : ''}</strong>
+        <small>${a.time||'Sin hora'} &middot; ${escapeHtml(a.type||a.service||'Sin tipo')}</small>
       </div>
-      ${pet ? `<button class="btn btn-sm" onclick="openPetDetail('${pet.id}')">Ver</button>` : ''}
+      <div class="today-slot-actions">
+        ${isClinical ? appointmentPrimaryActionHTML(a, true) : ''}
+        ${pet ? `<button class="btn btn-sm" onclick="openPetDetail('${pet.id}')">Ver</button>` : ''}
+      </div>
     </div>`;
   }
 

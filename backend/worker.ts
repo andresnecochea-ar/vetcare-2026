@@ -30,7 +30,10 @@ const TABLES: Record<string, EntityConfig> = {
     ],
   },
   appointments: {
-    columns: ['id', 'petId', 'date', 'time', 'type', 'vet', 'notes'],
+    columns: [
+      'id', 'petId', 'date', 'time', 'type', 'vet', 'notes', 'status',
+      'duration', 'checkedInAt', 'startedAt', 'completedAt',
+    ],
   },
   groomingAppointments: {
     columns: [
@@ -56,6 +59,10 @@ const TABLES: Record<string, EntityConfig> = {
 };
 
 const USER_ROLES = new Set<UserRole>(['admin', 'veterinarian', 'reception']);
+const APPOINTMENT_STATUS_VALUES = new Set([
+  'scheduled', 'confirmed', 'arrived', 'waiting',
+  'in_consultation', 'completed', 'no_show', 'cancelled',
+]);
 const VETERINARIAN_WRITE = new Set([
   'owners', 'pets', 'appointments', 'groomingAppointments', 'reminders',
   'inventory', 'invoices',
@@ -388,6 +395,9 @@ async function listAudit(env: Env, limit: number): Promise<JsonObject[]> {
 }
 
 async function upsertEntity(env: Env, table: string, body: JsonObject): Promise<JsonObject> {
+  if (table === 'appointments' && Object.hasOwn(body, 'status') && !APPOINTMENT_STATUS_VALUES.has(stringValue(body.status))) {
+    throw new HttpError('Estado de turno invalido');
+  }
   const { row, statement } = buildUpsertStatement(env, table, body);
   await statement.run();
   return deserializeRow(row, tableConfig(table));
@@ -461,7 +471,7 @@ const PET_CHILDREN: readonly PetChildConfig[] = [
     columns: [
       'date', 'type', 'title', 'description', 'treatment', 'vet',
       'weight', 'temp', 'hr', 'exam', 'diagnosis', 'nextControl',
-      'status', 'startedAt', 'closedAt', 'reopenedReason',
+      'status', 'startedAt', 'closedAt', 'reopenedReason', 'appointmentId',
     ],
   },
   {
@@ -744,9 +754,16 @@ async function health(env: Env): Promise<{
          FROM pragma_table_info('pet_history')
          WHERE name IN (
            'weight', 'temp', 'hr', 'exam', 'diagnosis', 'nextControl',
-           'status', 'startedAt', 'closedAt', 'reopenedReason'
+           'status', 'startedAt', 'closedAt', 'reopenedReason', 'appointmentId'
          )
-       ) = 10
+       ) = 11
+       AND (
+         SELECT COUNT(*)
+         FROM pragma_table_info('appointments')
+         WHERE name IN (
+           'status', 'duration', 'checkedInAt', 'startedAt', 'completedAt'
+         )
+       ) = 5
        AND (
          SELECT COUNT(*)
          FROM pragma_table_info('pets')
@@ -768,7 +785,7 @@ async function health(env: Env): Promise<{
     status: ready ? 'ok' : 'degraded',
     version: stringValue(env.APP_VERSION, 'unknown'),
     database: ready ? 'ready' : 'migrations-pending',
-    schemaVersion: ready ? 7 : 0,
+    schemaVersion: ready ? 8 : 0,
   };
 }
 

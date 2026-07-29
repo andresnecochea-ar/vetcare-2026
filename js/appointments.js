@@ -1,3 +1,56 @@
+const APPOINTMENT_STATUSES = {
+  scheduled: 'Programado',
+  confirmed: 'Confirmado',
+  arrived: 'Lleg' + String.fromCharCode(243),
+  waiting: 'En espera',
+  in_consultation: 'En consulta',
+  completed: 'Finalizado',
+  no_show: 'No asisti' + String.fromCharCode(243),
+  cancelled: 'Cancelado'
+};
+
+function appointmentStatusValue(appointment) { return appointment.status || 'scheduled'; }
+function appointmentStatusLabel(status) { return APPOINTMENT_STATUSES[status] || APPOINTMENT_STATUSES.scheduled; }
+function appointmentStatusClass(status) { return 'appointment-status-' + (status || 'scheduled').replace(/_/g, '-'); }
+function appointmentIsTerminal(appointment) { return ['completed','no_show','cancelled','Finalizado','No asistio','Cancelado'].includes(appointment.status || ''); }
+
+function appointmentPrimaryActionHTML(appointment, compact) {
+  const status = appointmentStatusValue(appointment);
+  const cls = compact ? 'btn btn-sm' : 'btn btn-sm btn-primary';
+  if (['waiting','in_consultation'].includes(status) && typeof canEditClinical === 'function' && !canEditClinical()) return '';
+  if (status === 'scheduled') return `<button class="${cls}" onclick="updateAppointmentStatus('${appointment.id}','confirmed')">Confirmar</button>`;
+  if (status === 'confirmed') return `<button class="${cls}" onclick="updateAppointmentStatus('${appointment.id}','arrived')">Lleg&oacute;</button>`;
+  if (status === 'arrived') return `<button class="${cls}" onclick="updateAppointmentStatus('${appointment.id}','waiting')">Pasar a espera</button>`;
+  if (status === 'waiting') return `<button class="${cls}" onclick="startAppointmentEncounter('${appointment.id}')">Iniciar consulta</button>`;
+  if (status === 'in_consultation') return `<button class="${cls}" onclick="startAppointmentEncounter('${appointment.id}')">Continuar consulta</button>`;
+  return '';
+}
+
+function updateAppointmentStatus(id, status) {
+  const appointment = db.appointments.find(item => item.id === id);
+  if (!appointment) return;
+  const now = new Date().toISOString();
+  appointment.status = status;
+  if (status === 'arrived' && !appointment.checkedInAt) appointment.checkedInAt = now;
+  if (status === 'in_consultation' && !appointment.startedAt) appointment.startedAt = now;
+  if (status === 'completed' && !appointment.completedAt) appointment.completedAt = now;
+  saveDB('Estado del turno actualizado');
+  render();
+}
+
+function startAppointmentEncounter(id) {
+  const appointment = db.appointments.find(item => item.id === id);
+  if (!appointment) return;
+  const pet = db.pets.find(item => item.id === appointment.petId);
+  if (!pet) { toast('El turno no tiene un paciente valido', 'error'); return; }
+  appointment.status = 'in_consultation';
+  if (!appointment.startedAt) appointment.startedAt = new Date().toISOString();
+  const encounter = (pet.history || []).find(entry => entry.appointmentId === appointment.id);
+  saveDB('Consulta iniciada desde el turno');
+  closeModal();
+  openEncounter(pet.id, encounter ? encounter.id : null, appointment.id);
+}
+
 function renderAppointments() {
   const now = new Date();
   const upcoming = db.appointments.filter(a=>new Date(a.date+'T'+(a.time||'00:00'))>=now)
@@ -9,6 +62,9 @@ function renderAppointments() {
     const pet = db.pets.find(p=>p.id===a.petId);
     const isPast = new Date(a.date+'T'+(a.time||'00:00')) < now;
     const notesFull = a.notes||'';
+    const status = appointmentStatusValue(a);
+    const terminal = appointmentIsTerminal(a);
+    const momentLabel = terminal ? 'Cerrado' : (isPast ? 'Pasado' : 'Pr' + String.fromCharCode(243) + 'ximo');
     const notesShort = notesFull.length > 40 ? notesFull.slice(0,40)+'…' : notesFull;
     return `<tr>
       <td>${formatDate(a.date)}</td>
@@ -17,8 +73,9 @@ function renderAppointments() {
       <td class="col-sec">${escapeHtml(a.type||'—')}</td>
       <td class="col-sec">${escapeHtml(a.vet||'—')}</td>
       <td class="col-sec"><span${notesFull.length>40?' data-tip="'+escapeAttr(notesFull)+'"':''} style="white-space:nowrap">${escapeHtml(notesShort)}</span></td>
-      <td class="col-sec"><span class="tag ${isPast?'':'accent'}">${isPast?'Pasado':'Próximo'}</span></td>
-      <td><div class="actions"><button class="btn btn-sm" onclick="openApptModal('${a.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="deleteAppt('${a.id}')" title="Eliminar">${iconX()}</button></div></td>
+      <td class="col-sec"><span class="tag ${!terminal&&!isPast?'accent':''}">${momentLabel}</span></td>
+      <td class="col-sec"><span class="appointment-status ${appointmentStatusClass(status)}">${appointmentStatusLabel(status)}</span></td>
+      <td><div class="actions">${appointmentPrimaryActionHTML(a, false)}<button class="btn btn-sm" onclick="openApptModal('${a.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="deleteAppt('${a.id}')" title="Eliminar">${iconX()}</button></div></td>
     </tr>`;
   }
   return `
@@ -28,9 +85,9 @@ function renderAppointments() {
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Fecha</th><th>Hora</th><th>Paciente</th><th class="col-sec">Tipo</th><th class="col-sec">Profesional</th><th class="col-sec">Notas</th><th class="col-sec">Estado</th><th></th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Hora</th><th>Paciente</th><th class="col-sec">Tipo</th><th class="col-sec">Profesional</th><th class="col-sec">Notas</th><th class="col-sec">Momento</th><th class="col-sec">Estado</th><th></th></tr></thead>
         <tbody>
-          ${sorted.length===0?'<tr><td colspan="8"><div class="empty-state">Sin turnos registrados</div></td></tr>':sorted.map(apptRow).join('')}
+          ${sorted.length===0?'<tr><td colspan="9"><div class="empty-state">Sin turnos registrados</div></td></tr>':sorted.map(apptRow).join('')}
         </tbody>
       </table>
     </div>
@@ -41,6 +98,8 @@ function openApptModal(id, presetPetId) {
   const a = id ? db.appointments.find(x=>x.id===id) : { id: uid(), petId: presetPetId||'' };
   const isNew = !id;
   const petOpts = db.pets.map(p => `<option value="${p.id}" ${(a.petId===p.id||p.id===presetPetId)?'selected':''}>${escapeHtml(p.name)}</option>`).join('');
+  const currentStatus = appointmentStatusValue(a);
+  const statusOpts = Object.entries(APPOINTMENT_STATUSES).map(([value,label]) => `<option value="${value}" ${currentStatus===value?'selected':''}>${label}</option>`).join('');
   showModal(`
     <div class="modal-header"><h2>${isNew?'Nuevo turno':'Editar turno'}</h2><button class="close-btn" onclick="closeModal()">&times;</button></div>
     <div class="modal-body">
@@ -52,6 +111,10 @@ function openApptModal(id, presetPetId) {
       </div>
       <div class="form-group"><label>Profesional</label><input type="text" id="aVet" value="${escapeAttr(a.vet||'')}"></div>
       <div class="form-group"><label>Notas</label><textarea id="aNotes">${escapeHtml(a.notes||'')}</textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label>Estado</label><select id="aStatus">${statusOpts}</select></div>
+        <div class="form-group"><label>Duraci&oacute;n estimada</label><select id="aDuration"><option value="15" ${String(a.duration||'30')==='15'?'selected':''}>15 minutos</option><option value="30" ${String(a.duration||'30')==='30'?'selected':''}>30 minutos</option><option value="45" ${String(a.duration||'30')==='45'?'selected':''}>45 minutos</option><option value="60" ${String(a.duration||'30')==='60'?'selected':''}>60 minutos</option></select></div>
+      </div>
     </div>
     <div class="modal-footer">
       ${!isNew ? `<button class="btn btn-danger" onclick="deleteAppt('${a.id}')">Eliminar</button>` : ''}
@@ -67,7 +130,23 @@ function saveAppt(id, isNew) {
   const _v1 = validateField('aPet', !!petId, 'Seleccioná un paciente');
   const _v2 = validateField('aDate', !!date, 'La fecha es obligatoria');
   if (!_v1 || !_v2) return;
-  const data = { id, petId, date, time: document.getElementById('aTime').value, type: document.getElementById('aType').value, vet: document.getElementById('aVet').value, notes: document.getElementById('aNotes').value };
+  const existing = isNew ? null : db.appointments.find(a=>a.id===id);
+  const data = {
+    ...(existing || {}), id, petId, date,
+    time: document.getElementById('aTime').value,
+    type: document.getElementById('aType').value,
+    vet: document.getElementById('aVet').value,
+    notes: document.getElementById('aNotes').value,
+    status: document.getElementById('aStatus').value,
+    duration: document.getElementById('aDuration').value,
+    checkedInAt: existing?.checkedInAt || '',
+    startedAt: existing?.startedAt || '',
+    completedAt: existing?.completedAt || ''
+  };
+  const now = new Date().toISOString();
+  if (['arrived','waiting','in_consultation','completed'].includes(data.status) && !data.checkedInAt) data.checkedInAt = now;
+  if (['in_consultation','completed'].includes(data.status) && !data.startedAt) data.startedAt = now;
+  if (data.status === 'completed' && !data.completedAt) data.completedAt = now;
   if (isNew) db.appointments.push(data); else { const i = db.appointments.findIndex(a=>a.id===id); db.appointments[i] = data; }
   saveDB(isNew?'Turno creado':'Turno actualizado'); closeModal(); render();
 }

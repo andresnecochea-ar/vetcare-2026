@@ -63,6 +63,7 @@ function renderDashboard() {
 function renderUpcomingAppts() {
   const upcoming = [...db.appointments, ...db.groomingAppointments]
     .filter(a => new Date(a.date + 'T' + (a.time || '00:00')) >= new Date(new Date().setHours(0,0,0,0)))
+    .filter(a => a.service ? !['Cancelado','Completado'].includes(a.status) : !appointmentIsTerminal(a))
     .sort((a,b) => new Date(a.date+'T'+(a.time||'00:00')) - new Date(b.date+'T'+(b.time||'00:00')))
     .slice(0, 5);
   if (upcoming.length === 0) return '<div class="empty-state"><div class="ico">◰</div>Sin turnos próximos</div>';

@@ -445,7 +445,7 @@
   /* Zebra striping: filas impares con un tono tenue para facilitar la lectura */
   tbody tr:nth-child(odd) td { background: var(--row-stripe); }
   tbody tr:hover td, tbody tr:nth-child(odd):hover td { background: var(--row-hover); }
-  td .actions { display: flex; gap: 6px; }
+  td .actions { display: flex; flex-wrap: wrap; gap: 6px; }
 
   /* Pet cards grid */
   .pets-grid {
@@ -1111,6 +1111,9 @@
     margin-bottom: 8px;
     border-left: 3px solid var(--accent);
   }
+  .today-slot .ts-info { min-width: 0; }
+  .today-slot-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+  .today-slot .appointment-status { margin-left: 7px; vertical-align: middle; }
   .today-slot.grooming { border-left-color: var(--color-lilac); }
   .today-slot.reminder { border-left-color: var(--color-coral); }
   .today-slot .ts-info strong { display: block; font-size: var(--fs-sm); }
@@ -1797,6 +1800,26 @@ html, body { max-width:100%; overflow-x:hidden; }
 .encounter-actions .btn { width: 100%; justify-content: center; }
 .encounter-actions .btn-success { border-color: #247a52; background: #247a52; color: #fff; }
 .encounter-actions .btn-success:hover { background: #1d6845; }
+.appointment-status {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  padding: 3px 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+.appointment-status-scheduled { border-color: var(--border-strong); background: var(--bg-soft); color: var(--text-soft); }
+.appointment-status-confirmed { border-color: #c9a3e5; background: var(--accent-soft); color: var(--accent); }
+.appointment-status-arrived { border-color: #e7c47b; background: var(--highlight-soft); color: #8a5b13; }
+.appointment-status-waiting { border-color: #e7c47b; background: #fff4d8; color: #7a4f0a; }
+.appointment-status-in-consultation { border-color: #9e73c8; background: var(--accent-soft); color: var(--accent); }
+.appointment-status-completed { border-color: #a9d5c3; background: #edf8f3; color: #246b4d; }
+.appointment-status-no-show { border-color: #efb0b3; background: var(--color-coral-soft); color: var(--danger); }
+.appointment-status-cancelled { border-color: var(--border-strong); background: var(--bg-soft); color: var(--text-mute); }
 .encounter-status {
   display: inline-flex;
   align-items: center;

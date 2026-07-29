@@ -67,8 +67,8 @@ describe('VetCare Worker', () => {
     expect(body).toMatchObject({
       status: 'ok',
       database: 'ready',
-      version: '2.3.0',
-      schemaVersion: 7,
+      version: '2.4.0',
+      schemaVersion: 8,
     });
   });
 
@@ -148,6 +148,7 @@ describe('VetCare Worker', () => {
         startedAt: '2026-07-01T14:00:00.000Z',
         closedAt: '2026-07-01T14:30:00.000Z',
         reopenedReason: '',
+        appointmentId: '',
       }],
       vaccines: [{ id: crypto.randomUUID(), name: 'Antirrábica', date: '2026-07-02', nextDose: '2027-07-02' }],
       images: [{ id: crypto.randomUUID(), data: 'data:image/png;base64,dGVzdA==', caption: 'Foto' }],
@@ -166,6 +167,33 @@ describe('VetCare Worker', () => {
     });
     expect(savedPet.response.status).toBe(200);
     expect(savedPet.body.revision).toBe(1);
+
+    const appointment = {
+      id: crypto.randomUUID(),
+      petId: pet.id,
+      date: '2026-07-29',
+      time: '10:30',
+      type: 'Control',
+      vet: 'Dra. Test',
+      notes: 'Control programado',
+      status: 'waiting',
+      duration: '30',
+      checkedInAt: '2026-07-29T13:20:00.000Z',
+      startedAt: '',
+      completedAt: '',
+    };
+    expect((await request('/api/appointments', {
+      method: 'POST',
+      headers: authenticated,
+      body: appointment,
+    })).status).toBe(200);
+    const invalidAppointment = await jsonResponse('/api/appointments', {
+      method: 'POST',
+      headers: authenticated,
+      body: { ...appointment, id: crypto.randomUUID(), status: 'invented' },
+    });
+    expect(invalidAppointment.response.status).toBe(400);
+
 
     const grooming = {
       id: crypto.randomUUID(),
@@ -258,6 +286,7 @@ describe('VetCare Worker', () => {
 
     expect(snapshot.body.owners[0]).toMatchObject({ dni: owner.dni, notes: owner.notes });
     expect(snapshot.body.pets[0].history).toEqual(pet.history);
+    expect(snapshot.body.appointments[0]).toMatchObject(appointment);
     expect(snapshot.body.pets[0].studies).toEqual(pet.studies);
     expect(snapshot.body.pets[0].ownerIds).toEqual([owner.id]);
     expect(snapshot.body.groomingAppointments[0]).toMatchObject({
@@ -278,7 +307,7 @@ describe('VetCare Worker', () => {
 
     const databaseHistory = await env.DB.prepare(
       `SELECT weight, temp, hr, exam, diagnosis, nextControl,
-              status, startedAt, closedAt, reopenedReason FROM pet_history WHERE id = ?`,
+              status, startedAt, closedAt, reopenedReason, appointmentId FROM pet_history WHERE id = ?`,
     ).bind(pet.history[0].id).first();
     expect(databaseHistory).toMatchObject({
       weight: '28.4',
@@ -291,6 +320,7 @@ describe('VetCare Worker', () => {
       startedAt: '2026-07-01T14:00:00.000Z',
       closedAt: '2026-07-01T14:30:00.000Z',
       reopenedReason: '',
+      appointmentId: '',
     });
 
     const firstEditor = structuredClone(snapshot.body.pets[0]);

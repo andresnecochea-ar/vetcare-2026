@@ -249,6 +249,7 @@ let petDetailReturnScrollY = 0;
 let petDetailActiveTab = 'tab-history';
 let currentEncounterPetId = null;
 let currentEncounterId = null;
+let currentEncounterAppointmentId = null;
 
 const ENCOUNTER_STATUSES = {
   draft: 'Borrador',
@@ -315,7 +316,7 @@ function renderPetDetail(id) {
   const history = [...(pet.history || [])].sort((a,b) => new Date(b.date) - new Date(a.date));
   const owners = (pet.ownerIds || []).map(oid => db.owners.find(o => o.id === oid)).filter(Boolean);
   const nextAppointment = (db.appointments || [])
-    .filter(a => a.petId === pet.id && a.date >= localDateKey() && a.status !== 'Cancelado')
+    .filter(a => a.petId === pet.id && a.date >= localDateKey() && !appointmentIsTerminal(a))
     .sort((a,b) => `${a.date} ${a.time || ''}`.localeCompare(`${b.date} ${b.time || ''}`))[0];
   const summary = document.createElement('div');
   summary.className = 'pet-detail-summary';
@@ -712,13 +713,15 @@ function addHistoryEntry(petId, editId) {
   openEncounter(petId, editId);
 }
 
-function openEncounter(petId, editId) {
+function openEncounter(petId, editId, appointmentId) {
   if (!canEditClinical()) { toast('Tu rol no permite modificar informacion clinica'); return; }
   const pet = db.pets.find(p => p.id === petId);
   if (!pet) return;
   if (editId && !(pet.history || []).some(h => h.id === editId)) return;
+  const existingEncounter = editId ? (pet.history || []).find(h => h.id === editId) : null;
   currentEncounterPetId = petId;
   currentEncounterId = editId || null;
+  currentEncounterAppointmentId = appointmentId || existingEncounter?.appointmentId || null;
   currentPetId = petId;
   currentView = 'encounter';
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -733,6 +736,7 @@ function closeEncounter() {
   const petId = currentEncounterPetId;
   currentEncounterPetId = null;
   currentEncounterId = null;
+  currentEncounterAppointmentId = null;
   if (!petId) { navigateTo('pets'); return; }
   currentPetId = petId;
   petDetailActiveTab = 'tab-history';
@@ -745,11 +749,15 @@ function renderEncounter() {
   const pet = db.pets.find(p => p.id === currentEncounterPetId);
   if (!pet) return '<div class="pet-detail-missing"><h1>Paciente no encontrado</h1><button class="btn btn-primary" onclick="navigateTo(\'pets\')">Volver a pacientes</button></div>';
   const ex = currentEncounterId ? (pet.history || []).find(h => h.id === currentEncounterId) : null;
+  const appointmentId = ex?.appointmentId || currentEncounterAppointmentId;
+  const appointment = appointmentId ? db.appointments.find(a => a.id === appointmentId) : null;
   const today = localDateKey();
   const attrValue = field => escapeAttr(ex ? ex[field] || '' : '');
   const textValue = field => escapeHtml(ex ? ex[field] || '' : '');
-  const status = ex ? (ex.status || 'closed') : 'draft';
+  const status = ex ? (ex.status || 'closed') : (appointment ? 'in_progress' : 'draft');
   const types = ['Consulta general','Control','Urgencia','Cirug' + String.fromCharCode(237) + 'a','Vacunaci' + String.fromCharCode(243) + 'n','Laboratorio','Otro'];
+  const encounterType = ex?.type || appointment?.type || 'Consulta general';
+  if (!types.includes(encounterType)) types.push(encounterType);
   const owner = (pet.ownerIds || []).map(id => db.owners.find(o => o.id === id)).find(Boolean);
   const statusOptions = Object.entries(ENCOUNTER_STATUSES).map(([value,label]) => `<option value="${value}" ${status===value?'selected':''}>${label}</option>`).join('');
   return `
@@ -759,7 +767,7 @@ function renderEncounter() {
         <div class="pet-detail-breadcrumb"><span>Pacientes</span><span aria-hidden="true">/</span><span>${escapeHtml(pet.name)}</span><span aria-hidden="true">/</span><strong>Consulta</strong></div>
       </div>
       <header class="encounter-header">
-        <div><div class="page-eyebrow">Atenci&oacute;n cl&iacute;nica</div><h1>${ex ? 'Editar consulta' : 'Nueva consulta'}</h1><p>${escapeHtml(pet.name)} &middot; ${escapeHtml(pet.species || 'Paciente')} ${pet.breed ? '&middot; ' + escapeHtml(pet.breed) : ''}</p></div>
+        <div><div class="page-eyebrow">Atenci&oacute;n cl&iacute;nica</div><h1>${ex ? 'Editar consulta' : 'Nueva consulta'}</h1><p>${escapeHtml(pet.name)} &middot; ${escapeHtml(pet.species || 'Paciente')} ${pet.breed ? '&middot; ' + escapeHtml(pet.breed) : ''}${appointment ? ` &middot; Turno ${escapeHtml(appointment.time || 'sin hora')}` : ''}</p></div>
         <span class="encounter-status ${encounterStatusClass(status)}">${encounterStatusLabel(status)}</span>
       </header>
       <div class="encounter-layout">
@@ -767,11 +775,11 @@ function renderEncounter() {
           <div class="encounter-section">
             <div class="encounter-section-heading"><span>1</span><div><h2>Contexto de la consulta</h2><p>Fecha, tipo, profesional y motivo de atenci&oacute;n.</p></div></div>
             <div class="form-row-3">
-              <div class="form-group"><label for="hDate">Fecha *</label><input type="date" id="hDate" value="${ex ? attrValue('date') : today}"></div>
-              <div class="form-group"><label for="hType">Tipo</label><select id="hType">${types.map(type=>`<option ${ex&&ex.type===type?'selected':''} value="${type}">${type}</option>`).join('')}</select></div>
-              <div class="form-group"><label for="hVet">Profesional</label><input type="text" id="hVet" value="${attrValue('vet')}" placeholder="Nombre del profesional"></div>
+              <div class="form-group"><label for="hDate">Fecha *</label><input type="date" id="hDate" value="${escapeAttr(ex?.date || appointment?.date || today)}"></div>
+              <div class="form-group"><label for="hType">Tipo</label><select id="hType">${types.map(type=>`<option ${encounterType===type?'selected':''} value="${type}">${type}</option>`).join('')}</select></div>
+              <div class="form-group"><label for="hVet">Profesional</label><input type="text" id="hVet" value="${escapeAttr(ex?.vet || appointment?.vet || '')}" placeholder="Nombre del profesional"></div>
             </div>
-            <div class="form-group"><label for="hTitle">Motivo de consulta ${status==='draft'?'':'*'}</label><input type="text" id="hTitle" value="${attrValue('title')}" placeholder="Por que viene hoy"></div>
+            <div class="form-group"><label for="hTitle">Motivo de consulta ${status==='draft'?'':'*'}</label><input type="text" id="hTitle" value="${escapeAttr(ex?.title || appointment?.notes || appointment?.type || '')}" placeholder="Por que viene hoy"></div>
           </div>
           <div class="encounter-section encounter-vitals-section">
             <div class="encounter-section-heading"><span>2</span><div><h2>Signos vitales</h2><p>Quedan disponibles para ver la evoluci&oacute;n del paciente.</p></div></div>
@@ -806,9 +814,10 @@ function saveHistory(petId, editId, forcedStatus) {
   const status = forcedStatus || (statusField ? statusField.value : 'closed');
   const existing = editId ? (db.pets.find(p => p.id === petId)?.history || []).find(h => h.id === editId) : null;
   const now = new Date().toISOString();
+  const linkedAppointmentId = existing?.appointmentId || currentEncounterAppointmentId || '';
   const reopenedReason = (document.getElementById('hReopen')?.value || '').trim();
   if (status === 'reopened' && !reopenedReason) { toast('Completa el motivo de reapertura', 'error'); return; }
-  if ((existing?.status || 'closed') === 'closed' && !['closed','reopened'].includes(status)) { toast('Una consulta cerrada debe pasar a Reabierta', 'error'); return; }
+  if (existing && (existing.status || 'closed') === 'closed' && !['closed','reopened'].includes(status)) { toast('Una consulta cerrada debe pasar a Reabierta', 'error'); return; }
   if (!date || !title) { toast('Completá fecha y motivo', 'error'); return; }
   const pet = db.pets.find(p => p.id === petId);
   if (!pet) return;
@@ -826,6 +835,7 @@ function saveHistory(petId, editId, forcedStatus) {
     nextControl: document.getElementById('hNext').value,
     description: document.getElementById('hDesc').value,
     status,
+    appointmentId: linkedAppointmentId,
     startedAt: existing?.startedAt || now,
     closedAt: status === 'closed' ? (existing?.closedAt || now) : '',
     reopenedReason: status === 'reopened' ? reopenedReason : (existing?.reopenedReason || '')
@@ -845,6 +855,14 @@ function saveHistory(petId, editId, forcedStatus) {
   if (latestWeight) pet.weight = latestWeight.weight;
   if (entry.nextControl && status === 'closed' && !editId) {
     db.reminders.push({id:uid(),title:'Control: '+title,petId,date:entry.nextControl,type:'control',completed:false});
+  }
+  if (linkedAppointmentId) {
+    const appointment = db.appointments.find(a => a.id === linkedAppointmentId);
+    if (appointment) {
+      appointment.status = status === 'closed' ? 'completed' : 'in_consultation';
+      if (!appointment.startedAt) appointment.startedAt = now;
+      appointment.completedAt = status === 'closed' ? (appointment.completedAt || now) : '';
+    }
   }
   saveDB(editId ? 'Consulta actualizada' : 'Consulta registrada'); closeEncounter();
 }
