@@ -59,19 +59,19 @@ function saveReminder(id, isNew) {
   if (!_r1 || !_r2) return;
   const data = { id, title, date, petId: document.getElementById('rPet').value, notes: document.getElementById('rNotes').value, completed: false };
   if (isNew) db.reminders.push(data); else { const i = db.reminders.findIndex(r=>r.id===id); db.reminders[i] = { ...db.reminders[i], ...data }; }
-  saveDB(); closeModal(); render(); toast(isNew?'Aviso creado':'Aviso actualizado');
+  saveDB(isNew?'Aviso creado':'Aviso actualizado'); closeModal(); render();
 }
 
 function completeReminder(id) {
   const r = db.reminders.find(x=>x.id===id);
   r.completed = true;
-  saveDB(); render(); toast('Aviso completado');
+  saveDB('Aviso completado'); render();
 }
 
 function deleteReminder(id) {
   showConfirm('¿Eliminar este aviso?', () => {
     db.reminders = db.reminders.filter(r=>r.id!==id);
-    saveDB(); closeModal(); render();
+    saveDB('Aviso eliminado'); closeModal(); render();
   });
 }
 
@@ -113,8 +113,7 @@ function saveBirthdayTemplate(){
   if(!ta) return;
   if(!db.settings) db.settings = {};
   db.settings.birthdayTemplate = ta.value;
-  saveDB();
-  toast('Plantilla guardada ✓');
+  saveDB('Plantilla actualizada');
 }
 
 function renderBirthdays() {

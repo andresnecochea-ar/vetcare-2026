@@ -221,10 +221,9 @@ function savePet(id, isNew) {
     const idx = db.pets.findIndex(p => p.id === id);
     db.pets[idx] = { ...db.pets[idx], ...data };
   }
-  saveDB();
+  saveDB(isNew ? 'Paciente creado' : 'Paciente actualizado');
   closeModal();
   render();
-  toast(isNew ? 'Paciente creado' : 'Paciente actualizado');
 }
 
 function deletePet(id) {
@@ -234,7 +233,7 @@ function deletePet(id) {
     db.appointments = db.appointments.filter(a => a.petId !== id);
     db.groomingAppointments = db.groomingAppointments.filter(a => a.petId !== id);
     db.reminders = db.reminders.filter(r => r.petId !== id);
-    saveDB(); closeModal(); render(); toast('Paciente eliminado');
+    saveDB('Paciente eliminado'); closeModal(); render();
   });
 }
 
@@ -415,10 +414,9 @@ function uploadPetPhoto(petId, input) {
     if(!dataUrl){ toast('No se pudo procesar la imagen'); return; }
     const pet = db.pets.find(p => p.id === petId);
     pet.photo = dataUrl;
-    saveDB();
+    saveDB('Foto actualizada');
     closeModal();
     openPetDetail(petId);
-    toast('Foto actualizada');
   });
 }
 
@@ -444,10 +442,9 @@ function uploadPetImages(petId, input) {
       }
       pending--;
       if (pending === 0) {
-        saveDB();
+        saveDB('Imágenes actualizadas');
         closeModal();
         openPetDetail(petId);
-        toast('Imágenes guardadas');
       }
     });
   });
@@ -458,10 +455,9 @@ function deletePetImage(petId, imgId) {
   showConfirm('¿Eliminar esta imagen?', () => {
   const pet = db.pets.find(p => p.id === petId);
   pet.images = pet.images.filter(i => i.id !== imgId);
-  saveDB();
+  saveDB('Imagen eliminada');
   closeModal();
   openPetDetail(petId);
-  toast('Imagen eliminada');
 });
 }
 
@@ -529,10 +525,9 @@ function saveStudyLink(petId, studyId) {
   } else {
     pet.studies.push({ id: uid(), ...data });
   }
-  saveDB();
+  saveDB('Estudio actualizado');
   closeModal();
   openPetDetail(petId);
-  toast('Estudio guardado');
 }
 
 function deleteStudyLink(petId, studyId) {
@@ -542,10 +537,9 @@ function deleteStudyLink(petId, studyId) {
   const name = study ? (study.title || study.type || 'estudio') : 'estudio';
   showConfirm(`¿Eliminar "${name}"?`, () => {
     pet.studies = (pet.studies||[]).filter(s => s.id !== studyId);
-    saveDB();
+    saveDB('Estudio eliminado');
     closeModal();
     openPetDetail(petId);
-    toast('Estudio eliminado');
   });
 }
 
@@ -644,8 +638,7 @@ function saveHistory(petId, editId) {
   if (entry.nextControl) {
     db.reminders.push({id:uid(),title:'Control: '+title,petId,date:entry.nextControl,type:'control',completed:false});
   }
-  saveDB(); closeModal(); openPetDetail(petId);
-  toast(editId ? 'Consulta actualizada ✓' : 'Consulta registrada ✓');
+  saveDB(editId ? 'Consulta actualizada' : 'Consulta registrada'); closeModal(); openPetDetail(petId);
 }
 
 function printHistEntry(petId, hId) {
@@ -684,10 +677,9 @@ function deleteHistory(petId, hId) {
   showConfirm('¿Eliminar este registro clínico?', () => {
   const pet = db.pets.find(p => p.id === petId);
   pet.history = pet.history.filter(h => h.id !== hId);
-  saveDB();
+  saveDB('Registro clínico eliminado');
   closeModal();
   openPetDetail(petId);
-  toast('Registro eliminado');
 });
 }
 
@@ -732,10 +724,9 @@ function saveVaccine(petId) {
       notes: 'Recordatorio automático de vacuna'
     });
   }
-  saveDB();
+  saveDB('Vacuna registrada' + (next ? ' y recordatorio creado' : ''));
   closeModal();
   openPetDetail(petId);
-  toast('Vacuna registrada' + (next ? ' + recordatorio creado' : ''));
 }
 
 function deleteVaccine(petId, vId) {
@@ -743,10 +734,9 @@ function deleteVaccine(petId, vId) {
   showConfirm('¿Eliminar este registro de vacuna?', () => {
   const pet = db.pets.find(p => p.id === petId);
   pet.vaccines = pet.vaccines.filter(v => v.id !== vId);
-  saveDB();
+  saveDB('Vacuna eliminada');
   closeModal();
   openPetDetail(petId);
-  toast('Vacuna eliminada');
 });
 }
 

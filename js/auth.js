@@ -102,7 +102,23 @@ async function enterApp(){
   hideSplash();
   toast('Bienvenido ' + (currentUser && currentUser.name ? currentUser.name : '') + ' ✓');
 }
-async function logout(){ await apiLogout(); showLogin(); }
+async function logout(){
+  if(apiConfigured()&&authToken){
+    if(_syncState==='saving'){toast('Esperá a que termine el guardado antes de salir');return;}
+    if(_syncState==='conflict'){handleSyncStatusAction();return;}
+    if(_syncState==='offline'||_syncState==='error'){
+      toast('Hay cambios pendientes. Reconectá o reintentá antes de salir.');
+      retrySync();
+      return;
+    }
+    if(_syncState==='queued'||_hasPendingChanges()){
+      const saved=await retrySync();
+      if(!saved||_hasPendingChanges()){toast('No se confirmó el guardado. La sesión sigue abierta.');return;}
+    }
+  }
+  await apiLogout();
+  showLogin();
+}
 
 (async function initApp() {
   try { await openIDB(); } catch(e){}
@@ -114,6 +130,7 @@ async function logout(){ await apiLogout(); showLogin(); }
         document.getElementById('welcomeScreen').style.display = 'none';
         document.getElementById('appShell').classList.remove('is-hidden');
         document.getElementById('globalSearchWrap').style.display = 'flex';
+        _setSyncState('local',null);
         applyTheme(); render(); updateBadges();
         toast('Modo local (sin servidor configurado)');
       }

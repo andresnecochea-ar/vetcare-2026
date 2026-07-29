@@ -825,6 +825,24 @@
   }
   .backup-card h4 { margin-bottom: 8px; }
   .backup-card p { font-size: var(--fs-xs); color: var(--text-soft); margin-bottom: 12px; }
+  .sync-summary {
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    font-weight:var(--fw-bold);
+  }
+  .sync-summary::before {
+    content:"";
+    width:9px;
+    height:9px;
+    border-radius:50%;
+    background:var(--color-mint-hover);
+  }
+  .sync-summary-queued::before,
+  .sync-summary-saving::before { background:var(--warning); }
+  .sync-summary-offline::before { background:var(--text-mute); }
+  .sync-summary-error::before,
+  .sync-summary-conflict::before { background:var(--danger); }
 
   /* Reminders */
   .reminder-item {
@@ -919,6 +937,41 @@
   /* El logo del header solo se usa en mobile */
   .header-logo-btn { display: none; }
   .global-search-inner { position: relative; flex: 1; max-width: 560px; margin-left: auto; }
+  .sync-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 34px;
+    padding: 7px 11px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--bg-alt);
+    color: var(--text-soft);
+    font: 600 var(--fs-xs)/1 var(--font-body);
+    cursor: default;
+    white-space: nowrap;
+  }
+  .sync-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-mint-hover);
+    flex: none;
+  }
+  .sync-status-time { color: var(--text-mute); font-weight: var(--fw-normal); }
+  .sync-status-queued .sync-status-dot,
+  .sync-status-saving .sync-status-dot { background: var(--warning); }
+  .sync-status-saving .sync-status-dot { animation: syncPulse 1s ease-in-out infinite; }
+  .sync-status-offline .sync-status-dot { background: var(--text-mute); }
+  .sync-status-error .sync-status-dot,
+  .sync-status-conflict .sync-status-dot { background: var(--danger); }
+  .sync-status-offline,
+  .sync-status-error,
+  .sync-status-conflict { cursor: pointer; }
+  .sync-status-offline:hover,
+  .sync-status-error:hover,
+  .sync-status-conflict:hover { background: var(--bg-soft); }
+  @keyframes syncPulse { 50% { opacity: .3; transform: scale(.75); } }
   .global-search-inner input {
     width: 100%;
     padding: 10px 14px 10px 40px;
@@ -1354,11 +1407,14 @@
     #globalSearchWrap { height: auto; padding: 24px 14px 24px 24px; gap: 8px; }
     .sidebar .logo { cursor: pointer; }
     .header-logo-btn { display: inline-flex; }
-    .header-search-btn { display: inline-flex; }
+    .sync-status { margin-left:auto; padding:7px 9px; }
+    .sync-status-time { display:none; }
+    .header-search-btn { display: inline-flex; margin-left:0; }
     /* El buscador queda oculto y se expande al tocar la lupa */
     .global-search-inner { display: none; }
     #globalSearchWrap.search-open .header-logo-btn,
-    #globalSearchWrap.search-open .header-search-btn { display: none; }
+    #globalSearchWrap.search-open .header-search-btn,
+    #globalSearchWrap.search-open .sync-status { display: none; }
     #globalSearchWrap.search-open .global-search-inner { display: block; flex: 1; max-width: none; margin-left: 0; }
     #globalSearchWrap.search-open .global-search-inner input { padding-right: 48px; }
     .gs-close-btn { display: inline-flex; }

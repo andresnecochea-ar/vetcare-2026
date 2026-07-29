@@ -118,7 +118,7 @@ function saveInv(id, isNew) {
     it.notes = document.getElementById('iNotes').value;
     if (!it.lots) it.lots = [];
   }
-  saveDB(); openCatalog(); render(); toast('Producto guardado');
+  saveDB('Producto actualizado'); openCatalog(); render();
 }
 
 // ---- Cargar stock (agregar lote) ----
@@ -151,7 +151,7 @@ function saveLot(id) {
   const expiry = document.getElementById('lotExp').value || '';
   if (!it.lots) it.lots = [];
   it.lots.push({ id: uid(), qty: qty, expiry: expiry });
-  saveDB(); closeModal(); render(); toast('Stock cargado ✓');
+  saveDB('Stock cargado'); closeModal(); render();
 }
 
 // ---- Usar / bajar stock ----
@@ -193,13 +193,13 @@ function useStock(id) {
   if (qty > lot.qty) { toast('No hay tantas unidades en ese lote ('+lot.qty+')'); return; }
   lot.qty -= qty;
   if (lot.qty <= 0) it.lots = it.lots.filter(l=>l.id!==lot.id);
-  saveDB(); closeModal(); render(); toast('Stock descontado ✓');
+  saveDB('Stock descontado'); closeModal(); render();
 }
 
 function deleteInv(id) {
   if(!canDeleteEntity('inventory')){ toast('Tu rol no permite eliminar productos'); return; }
   showConfirm('¿Eliminar este producto del catálogo? Se pierde su stock.', () => {
     db.inventory = db.inventory.filter(i=>i.id!==id);
-    saveDB(); closeModal(); render();
+    saveDB('Producto eliminado'); closeModal(); render();
   });
 }

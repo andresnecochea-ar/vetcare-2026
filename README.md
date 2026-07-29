@@ -60,6 +60,18 @@ vacunas, estudios, imágenes, turnos, peluquería, recordatorios, inventario,
 facturas y configuración de la clínica. Los campos estructurados como lotes e
 ítems de factura se guardan como JSON y vuelven a entregarse como arreglos.
 
+## Estado de guardado
+
+El encabezado distingue entre cambios pendientes, guardado en curso, guardado
+confirmado, trabajo sin conexión, error y conflicto. Los mensajes de éxito de
+altas, ediciones y eliminaciones se muestran recién cuando el servidor confirma
+la operación. Mientras tanto, IndexedDB conserva una copia local.
+
+Los errores transitorios se reintentan a los 3, 10 y 30 segundos, y al recuperar
+la conexión. Los rechazos permanentes requieren una acción manual. Un conflicto
+de versión nunca se reintenta a ciegas: la pantalla de respaldo permite descargar
+la copia local o reemplazarla explícitamente por la versión del servidor.
+
 ## Roles y auditoría
 
 La primera cuenta de una instalación nueva se crea como administradora. Las

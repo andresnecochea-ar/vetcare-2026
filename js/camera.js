@@ -102,9 +102,8 @@ function captureCamera(){
       var pet = db.pets.find(function(p){ return p.id === petId; });
       if(!pet){ return; }
       pet.photo = dataUrl;
-      saveDB();
+      saveDB('Foto actualizada');
       openPetDetail(petId);
-      toast('Foto actualizada');
     });
   }, 'image/jpeg', 0.9);
 }

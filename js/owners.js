@@ -114,10 +114,9 @@ function saveOwner(id, isNew) {
       if (!want && has) p.ownerIds = p.ownerIds.filter(oid => oid !== id);
     });
   }
-  saveDB();
+  saveDB(isNew?'Tutor creado':'Tutor actualizado');
   closeModal();
   render();
-  toast(isNew?'Tutor creado':'Tutor actualizado');
 }
 
 function deleteOwner(id) {
@@ -125,7 +124,7 @@ function deleteOwner(id) {
   showConfirm('¿Eliminar este tutor? Quedará desvinculado de sus mascotas.', () => {
   db.owners = db.owners.filter(o=>o.id!==id);
   db.pets.forEach(p => { if (p.ownerIds) p.ownerIds = p.ownerIds.filter(oid => oid !== id); });
-  saveDB(); closeModal(); render(); toast('Tutor eliminado');
+  saveDB('Tutor eliminado'); closeModal(); render();
 });
 }
 
