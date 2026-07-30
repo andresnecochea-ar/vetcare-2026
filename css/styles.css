@@ -1887,6 +1887,7 @@ html, body { max-width:100%; overflow-x:hidden; }
   align-items: start;
   gap: 18px;
 }
+.close-review-grid.is-clinical-only { grid-template-columns: minmax(0, 1fr); }
 .close-review-card {
   min-width: 0;
   padding: 20px;
@@ -1967,16 +1968,26 @@ html, body { max-width:100%; overflow-x:hidden; }
   gap: 12px;
   margin-bottom: 16px;
   padding: 14px;
-  border: 1px solid #8cc8b0;
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: #edf8f3;
+  background: var(--bg-soft);
   cursor: pointer;
 }
+.billing-toggle:has(input:checked) { border-color: #8cc8b0; background: #edf8f3; }
 .billing-toggle input { flex: 0 0 auto; width: 18px; height: 18px; margin-top: 2px; }
 .billing-toggle span { display: grid; gap: 3px; }
 .billing-toggle small { color: var(--text-soft); line-height: 1.4; }
 #encounterBillingFields { transition: opacity .15s ease; }
-#encounterBillingFields.is-disabled { opacity: .45; }
+.settings-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+.settings-toggle input { flex: 0 0 auto; width: 18px; height: 18px; margin-top: 2px; }
+.settings-toggle span { display: grid; gap: 3px; }
+.settings-toggle small { color: var(--text-soft); line-height: 1.4; }
 .encounter-charge-labels,
 .encounter-charge-row {
   display: grid;

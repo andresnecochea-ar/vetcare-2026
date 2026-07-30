@@ -4,12 +4,13 @@
    y de los recibos, y acceso al respaldo.
    ===================================================================== */
 
-var APP_VERSION = '2.4.0';
+var APP_VERSION = '2.5.1';
 
 function _ensureSettings(){
   if(!db.settings) db.settings = {};
   if(!db.settings.theme) db.settings.theme = 'light';
   if(db.settings.clinicName === undefined) db.settings.clinicName = '';
+  if(db.settings.receiptsEnabled === undefined) db.settings.receiptsEnabled = true;
   if(db.settings.receiptAddress === undefined) db.settings.receiptAddress = '';
   if(db.settings.receiptPhone === undefined) db.settings.receiptPhone = '';
   if(db.settings.receiptTaxId === undefined) db.settings.receiptTaxId = '';
@@ -46,10 +47,13 @@ function openSettings(){
     + '</div>'
 
     + '<div class="settings-section">'
-    + '  <div class="settings-label">Datos para recibos</div>'
-    + '  <input class="input" id="setRecAddr" placeholder="Direccion" value="' + escapeAttr(s.receiptAddress) + '" style="margin-bottom:8px"' + (admin?'':' disabled') + '>'
-    + '  <input class="input" id="setRecPhone" placeholder="Telefono" value="' + escapeAttr(s.receiptPhone) + '" style="margin-bottom:8px"' + (admin?'':' disabled') + '>'
-    + '  <input class="input" id="setRecTax" placeholder="CUIT" value="' + escapeAttr(s.receiptTaxId) + '"' + (admin?'':' disabled') + '>'
+    + '  <div class="settings-label">Recibos (opcional)</div>'
+    + '  <label class="settings-toggle"><input type="checkbox" id="setReceiptsEnabled"' + (s.receiptsEnabled?' checked':'') + (admin?'':' disabled') + ' onchange="toggleReceiptSettingsFields(this.checked)"><span><strong>Mostrar módulo de recibos</strong><small>La atención clínica funciona normalmente aunque esté desactivado.</small></span></label>'
+    + '  <div id="receiptSettingsFields"' + (s.receiptsEnabled?'':' hidden') + '>'
+    + '    <input class="input" id="setRecAddr" placeholder="Direccion" value="' + escapeAttr(s.receiptAddress) + '" style="margin-bottom:8px"' + (admin?'':' disabled') + '>'
+    + '    <input class="input" id="setRecPhone" placeholder="Telefono" value="' + escapeAttr(s.receiptPhone) + '" style="margin-bottom:8px"' + (admin?'':' disabled') + '>'
+    + '    <input class="input" id="setRecTax" placeholder="CUIT" value="' + escapeAttr(s.receiptTaxId) + '"' + (admin?'':' disabled') + '>'
+    + '  </div>'
     + (admin
       ? '  <button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="saveSettings()">Guardar datos</button>'
       : '  <small style="color:var(--text-mute);display:block;margin-top:8px">Solo una persona administradora puede modificar estos datos.</small>')
@@ -87,10 +91,18 @@ function saveSettings(){
   _ensureSettings();
   var byId = function(id){ return document.getElementById(id); };
   if(byId('setClinicName')) db.settings.clinicName = byId('setClinicName').value.trim();
+  if(byId('setReceiptsEnabled')) db.settings.receiptsEnabled = byId('setReceiptsEnabled').checked;
   if(byId('setRecAddr')) db.settings.receiptAddress = byId('setRecAddr').value.trim();
   if(byId('setRecPhone')) db.settings.receiptPhone = byId('setRecPhone').value.trim();
   if(byId('setRecTax')) db.settings.receiptTaxId = byId('setRecTax').value.trim();
-  saveDB('Datos de la clínica actualizados');
+  updateReceiptModuleVisibility();
+  render();
+  saveDB('Opciones actualizadas');
+}
+
+function toggleReceiptSettingsFields(enabled){
+  var fields = document.getElementById('receiptSettingsFields');
+  if(fields) fields.hidden = !enabled;
 }
 
 function _auditLabel(action){

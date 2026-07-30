@@ -41,7 +41,7 @@ const defaultData = {
   inventory: [],
   invoices: [],
   clinicName: 'VetCare',
-  settings: { theme: 'light', clinicName: '', receiptAddress: '', receiptPhone: '', receiptTaxId: '' }
+  settings: { theme: 'light', clinicName: '', receiptsEnabled: true, receiptAddress: '', receiptPhone: '', receiptTaxId: '' }
 };
 
 let db = JSON.parse(JSON.stringify(defaultData));

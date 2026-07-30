@@ -815,6 +815,7 @@ function encounterInvoice(encounterId) {
 }
 
 function encounterInvoiceActionHTML(encounterId) {
+  if (!receiptsEnabled()) return '';
   const invoice = encounterInvoice(encounterId);
   if (!invoice) return '';
   const number = invoice.number || invoice.id.slice(-4).toUpperCase();
@@ -841,6 +842,7 @@ function openEncounterCloseReview(petId, editId) {
 
   const encounterId = editId || uid();
   const existingInvoice = encounterInvoice(encounterId);
+  const canUseReceipts = receiptsEnabled();
   const owners = (pet.ownerIds || []).map(id => db.owners.find(owner => owner.id === id)).filter(Boolean);
   const type = document.getElementById('hType')?.value || 'Consulta';
   const clinicalItems = [
@@ -863,7 +865,7 @@ function openEncounterCloseReview(petId, editId) {
       <button class="close-btn" onclick="closeModal()">&times;</button>
     </div>
     <div class="modal-body encounter-close-review">
-      <div class="close-review-grid">
+      <div class="close-review-grid${canUseReceipts ? '' : ' is-clinical-only'}">
         <section class="close-review-card">
           <div class="close-review-heading"><div><small>Información clínica</small><h3>${escapeHtml(pet.name)} · ${escapeHtml(type)}</h3></div><span class="encounter-status encounter-status-closed">Por cerrar</span></div>
           <div class="clinical-review-list">
@@ -881,7 +883,7 @@ function openEncounterCloseReview(petId, editId) {
           <div class="close-review-meta"><span>Fecha <strong>${formatDate(date)}</strong></span><span>Profesional <strong>${escapeHtml(document.getElementById('hVet')?.value || 'Sin indicar')}</strong></span></div>
         </section>
 
-        <section class="close-review-card close-review-billing">
+        ${canUseReceipts ? `<section class="close-review-card close-review-billing">
           <div class="close-review-heading"><div><small>Cobro</small><h3>Recibo de la consulta</h3></div></div>
           ${existingInvoice ? `
             <div class="linked-receipt-card">
@@ -891,10 +893,10 @@ function openEncounterCloseReview(petId, editId) {
             <p class="close-review-help">Esta consulta ya tiene un recibo vinculado. El cierre no creará otro.</p>
           ` : `
             <label class="billing-toggle">
-              <input type="checkbox" id="closeCreateInvoice" ${owners.length ? 'checked' : 'disabled'}>
-              <span><strong>Generar recibo pendiente</strong><small>${owners.length ? 'Quedará listo para cobrar desde Recibos.' : 'Primero asociá un tutor al paciente para emitirlo.'}</small></span>
+              <input type="checkbox" id="closeCreateInvoice" ${owners.length ? '' : 'disabled'}>
+              <span><strong>Generar recibo (opcional)</strong><small>${owners.length ? 'Activá esta opción solo si también querés registrar el cobro.' : 'Para generar un recibo, primero asociá un tutor al paciente.'}</small></span>
             </label>
-            <div id="encounterBillingFields">
+            <div id="encounterBillingFields" hidden>
               <div class="form-group"><label for="closeInvoiceOwner">Tutor responsable</label><select id="closeInvoiceOwner">${ownerOptions}</select></div>
               <div class="encounter-charge-labels"><span>Descripción</span><span>Cant.</span><span>Precio</span><span></span></div>
               <div id="encounterChargeRows">${encounterChargeRowHTML({ desc: `Consulta - ${type}`, qty: 1, price: 0 })}</div>
@@ -902,12 +904,12 @@ function openEncounterCloseReview(petId, editId) {
               <div class="close-review-total"><span>Total del recibo</span><strong id="encounterCloseTotal">$0</strong></div>
             </div>
           `}
-        </section>
+        </section>` : ''}
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeModal()">Volver a editar</button>
-      <button class="btn btn-success" id="finalizeEncounterCloseButton" onclick="finalizeEncounterClose('${petId}','${editId}','${encounterId}')">${existingInvoice ? 'Cerrar consulta' : (owners.length ? 'Cerrar consulta y crear recibo' : 'Cerrar consulta sin cargo')}</button>
+      <button class="btn btn-success" id="finalizeEncounterCloseButton" onclick="finalizeEncounterClose('${petId}','${editId}','${encounterId}')">Cerrar consulta</button>
     </div>
   `, true);
   if (!existingInvoice) {
@@ -921,10 +923,8 @@ function toggleEncounterBilling() {
   const enabled = Boolean(document.getElementById('closeCreateInvoice')?.checked);
   const fields = document.getElementById('encounterBillingFields');
   if (!fields) return;
-  fields.classList.toggle('is-disabled', !enabled);
+  fields.hidden = !enabled;
   fields.querySelectorAll('input,select,button').forEach(element => { element.disabled = !enabled; });
-  const closeButton = document.getElementById('finalizeEncounterCloseButton');
-  if (closeButton) closeButton.textContent = enabled ? 'Cerrar consulta y crear recibo' : 'Cerrar consulta sin cargo';
 }
 
 function addEncounterCharge() {
@@ -1053,7 +1053,7 @@ function saveHistory(petId, editId, forcedStatus, closeBundle) {
   const message = receiptCreated
     ? 'Consulta cerrada y recibo pendiente generado'
     : (status === 'closed' && closeBundle
-      ? (encounterInvoice(entry.id) ? 'Consulta cerrada' : 'Consulta cerrada sin recibo')
+      ? 'Consulta cerrada'
       : (editId ? 'Consulta actualizada' : 'Consulta registrada'));
   saveDB(message);
   closeModal();

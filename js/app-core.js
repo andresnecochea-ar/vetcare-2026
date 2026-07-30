@@ -3,7 +3,7 @@ function startApp() {
   document.getElementById('appShell').classList.remove('is-hidden');
   document.getElementById('globalSearchWrap').style.display = 'flex';
   if(!db.invoices)db.invoices=[];
-  applyTheme(); render(); updateBadges();
+  applyTheme(); updateReceiptModuleVisibility(); render(); updateBadges();
 }
 
 
@@ -77,6 +77,16 @@ function toggleTheme() {
   applyTheme();
 }
 
+function receiptsEnabled() {
+  return !db.settings || db.settings.receiptsEnabled !== false;
+}
+
+function updateReceiptModuleVisibility() {
+  const nav = document.querySelector('[data-view="invoices"]');
+  if (nav) nav.style.display = receiptsEnabled() ? '' : 'none';
+  if (!receiptsEnabled() && currentView === 'invoices') currentView = 'today';
+}
+
 // ========================================
 // [08] NAVIGATION / RENDER — router de vistas
 // ========================================
@@ -87,6 +97,7 @@ document.querySelectorAll('.nav-item').forEach(el => {
 
 function render() {
   const main = document.getElementById('mainContent');
+  updateReceiptModuleVisibility();
   updateBadges();
   switch (currentView) {
     case 'today': main.innerHTML = renderToday(); break;
@@ -101,7 +112,7 @@ function render() {
     case 'reminders': main.innerHTML = renderReminders(); break;
     case 'birthdays': main.innerHTML = renderBirthdays(); break;
     case 'inventory': main.innerHTML = renderInventory(); break;
-    case 'invoices': main.innerHTML = renderInvoices(); break;
+    case 'invoices': main.innerHTML = receiptsEnabled() ? renderInvoices() : renderToday(); break;
     case 'backup': main.innerHTML = renderBackup(); break;
   }
 }

@@ -8,7 +8,7 @@ function updateBadges() {
   if (bR) { bR.textContent = reminderCount; bR.style.display = reminderCount > 0 ? '' : 'none'; }
   if (bI) { bI.textContent = invCount; bI.style.display = invCount > 0 ? '' : 'none'; }
 
-  const bInv=document.getElementById('badgeInvoices');if(bInv){const pend=(db.invoices||[]).filter(i=>i.status==='pending').length;bInv.style.display=pend>0?'inline':'none';bInv.textContent=pend;}
+  const bInv=document.getElementById('badgeInvoices');if(bInv){const pend=(db.invoices||[]).filter(i=>i.status==='pending').length;bInv.style.display=receiptsEnabled()&&pend>0?'inline':'none';bInv.textContent=pend;}
 }
 function searchInHistory(q) {
   const query = String(q || '').trim().toLowerCase();
@@ -114,6 +114,7 @@ function closeMobileSearch() {
 }
 
 function navigateTo(view) {
+  if (view === 'invoices' && !receiptsEnabled()) view = 'today';
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const el = document.querySelector(`[data-view="${view}"]`);
   if (el) el.classList.add('active');
