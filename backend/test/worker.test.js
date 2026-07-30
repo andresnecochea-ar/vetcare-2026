@@ -67,7 +67,7 @@ describe('VetCare Worker', () => {
     expect(body).toMatchObject({
       status: 'ok',
       database: 'ready',
-      version: '2.8.0',
+      version: '2.9.0',
       schemaVersion: 11,
     });
 
@@ -155,6 +155,69 @@ describe('VetCare Worker', () => {
     ]);
     expect(alerts.every(row => row.item.state !== 'soon')).toBe(true);
     expect(alerts.some(row => row.pet.id === alDia.id)).toBe(false);
+  });
+
+  it('arma la historia clínica como línea de tiempo y compara consultas', async () => {
+    globalThis.formatDate = (value) => value || '—';
+    globalThis.encounterStatusLabel = (status) => status || 'closed';
+    globalThis.encounterStatusClass = (status) => 'encounter-status-' + (status || 'closed');
+    globalThis.studyIsPending = (study) => (study && study.status) === 'requested';
+    globalThis.followUpDaysUntil = () => 0;
+    globalThis.followUpWhen = () => 'Hoy';
+    const pet = {
+      id: 'pet-tl',
+      name: 'Nube',
+      history: [
+        {
+          id: 'enc-a', date: '2026-03-10', type: 'Consulta general', title: 'Control anual',
+          status: 'closed', vet: 'Dra. Test', weight: '9.4', temp: '38.2', hr: '88',
+          diagnosis: 'Estable', treatment: 'Plan vacunal', exam: 'Sin hallazgos', description: '',
+        },
+        {
+          id: 'enc-b', date: '2026-07-02', type: 'Urgencia', title: 'Decaimiento',
+          status: 'pending_results', vet: 'Dr. Prueba', weight: '8.1', temp: '39.4', hr: '104',
+          diagnosis: 'A confirmar', treatment: 'Fluidos', exam: 'Mucosas pálidas', description: 'Controlar',
+        },
+      ],
+      vaccines: [{ id: 'vac-a', name: 'Séxtuple', date: '2026-03-10', nextDose: '2027-03-10' }],
+      studies: [{ id: 'std-a', type: 'Radiografía', title: 'Rx tórax', date: '2026-07-03', status: 'requested' }],
+    };
+    globalThis.db = {
+      pets: [pet],
+      reminders: [{ id: 'rem-a', petId: 'pet-tl', title: 'Control post urgencia', date: '2026-07-12', completed: true }],
+      appointments: [],
+    };
+
+    await import('../../js/timeline.js');
+    const timeline = globalThis.VetCareTimeline;
+
+    const events = timeline.events(pet);
+    // Un solo hilo cronológico, del más reciente al más viejo.
+    expect(events.map(event => [event.date, event.kind])).toEqual([
+      ['2026-07-12', 'control'],
+      ['2026-07-03', 'study'],
+      ['2026-07-02', 'encounter'],
+      ['2026-03-10', 'encounter'],
+      ['2026-03-10', 'vaccine'],
+    ]);
+    expect(events.find(event => event.kind === 'study')).toMatchObject({ status: 'pending' });
+    expect(events.find(event => event.id === 'enc-b')).toMatchObject({ status: 'open' });
+
+    timeline.setFilters({ kind: 'encounter' });
+    expect(events.filter(timeline.matches).map(event => event.id)).toEqual(['enc-b', 'enc-a']);
+    timeline.setFilters({ status: 'pending' });
+    expect(events.filter(timeline.matches).map(event => event.id)).toEqual(['std-a', 'enc-b']);
+    timeline.setFilters({ query: 'fluidos' });
+    expect(events.filter(timeline.matches).map(event => event.id)).toEqual(['enc-b']);
+    timeline.setFilters({});
+
+    // La comparación ordena por fecha y calcula la diferencia numérica.
+    const rows = timeline.comparison(pet.history[0], pet.history[1]);
+    expect(rows.find(row => row.label === 'Peso')).toMatchObject({
+      older: '9.4 kg', newer: '8.1 kg', delta: -1.3, deltaLabel: '-1.3 kg',
+    });
+    expect(rows.find(row => row.label === 'Temperatura')).toMatchObject({ delta: 1.2, deltaLabel: '+1.2 °C' });
+    expect(rows.find(row => row.label === 'Diagnóstico')).toMatchObject({ older: 'Estable', newer: 'A confirmar' });
   });
 
   it('acepta localhost con cualquier puerto y bloquea otros orígenes', async () => {
