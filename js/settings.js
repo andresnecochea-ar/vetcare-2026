@@ -4,7 +4,7 @@
    y de los recibos, y acceso al respaldo.
    ===================================================================== */
 
-var APP_VERSION = '2.10.0';
+var APP_VERSION = '2.11.0';
 
 function _ensureSettings(){
   if(!db.settings) db.settings = {};
@@ -70,6 +70,12 @@ function openSettings(){
     + '  <button class="btn btn-secondary" style="width:100%" onclick="openAccessManagement()">Gestionar usuarios y actividad</button>'
     + '  <small style="color:var(--text-mute);display:block;margin-top:6px">Asigná roles y revisá las operaciones realizadas.</small>'
     + '</div>' : '')
+
+    + '<div class="settings-section">'
+    + '  <div class="settings-label">Laboratorio</div>'
+    + '  <button class="btn btn-secondary" style="width:100%" onclick="openLabRanges()">Valores de referencia</button>'
+    + '  <small style="color:var(--text-mute);display:block;margin-top:6px">Rangos por especie para marcar resultados altos y bajos. Los que vienen cargados son orientativos.</small>'
+    + '</div>'
 
     + '<div class="settings-section">'
     + '  <div class="settings-label">Respaldo</div>'

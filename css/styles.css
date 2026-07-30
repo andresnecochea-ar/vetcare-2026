@@ -1830,6 +1830,62 @@ html, body { max-width:100%; overflow-x:hidden; }
   .followup-actions .btn { flex: 1; }
 }
 
+/* Resultados de laboratorio */
+.lab-chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg-soft);
+  color: var(--text-soft);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  white-space: nowrap;
+}
+.lab-chip.is-out { border-color: var(--danger); background: var(--color-coral-soft); color: var(--danger); }
+.lab-chip.is-ok { border-color: #8cc8b0; background: var(--bg-soft); color: var(--text-soft); }
+.lab-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+.lab-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.lab-field label { color: var(--text-soft); font-size: var(--fs-sm); font-weight: var(--fw-medium); }
+.lab-field label small { color: var(--text-mute); font-weight: var(--fw-normal); }
+.lab-field input.is-low { border-color: var(--info); }
+.lab-field input.is-high { border-color: var(--danger); }
+.lab-field input.is-normal { border-color: #8cc8b0; }
+.lab-hint { color: var(--text-mute); font-size: var(--fs-2xs); min-height: 1em; }
+.lab-hint.is-out { color: var(--danger); font-weight: var(--fw-bold); }
+.lab-result-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+}
+.lab-table th[scope="row"] { color: var(--text); font-weight: var(--fw-medium); text-align: left; }
+.lab-table tr.is-high td, .lab-table tr.is-high th { background: var(--color-coral-soft); }
+.lab-table tr.is-low td, .lab-table tr.is-low th { background: var(--accent-soft); }
+.lab-flag { font-size: var(--fs-2xs); font-weight: var(--fw-bold); white-space: nowrap; }
+.lab-flag.is-high { color: var(--danger); }
+.lab-flag.is-low { color: var(--info); }
+.lab-out-summary { margin-top: 10px; color: var(--text-soft); font-size: var(--fs-sm); }
+.lab-ranges { margin-bottom: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.lab-ranges summary { padding: 10px 12px; cursor: pointer; font-weight: var(--fw-bold); }
+.lab-ranges[open] summary { border-bottom: 1px solid var(--border); }
+.lab-range-cell { white-space: nowrap; }
+.lab-range-cell input { display: inline-block; width: 78px; padding: 5px 7px; }
+.lab-range-cell span { color: var(--text-mute); padding: 0 3px; }
+
+@media (max-width: 768px) {
+  .lab-form { grid-template-columns: 1fr 1fr; }
+  .lab-range-cell input { width: 62px; }
+}
+
 /* Plan sanitario: vacunas y antiparasitarios */
 .sanitary-item {
   display: flex;
