@@ -67,9 +67,79 @@ describe('VetCare Worker', () => {
     expect(body).toMatchObject({
       status: 'ok',
       database: 'ready',
-      version: '2.6.0',
-      schemaVersion: 10,
+      version: '2.7.0',
+      schemaVersion: 11,
     });
+
+    // Los estudios cargados antes de 0011 siguen contando como resultado recibido.
+    const legacyStudyId = crypto.randomUUID();
+    await env.DB.prepare('INSERT INTO pets (id, name) VALUES (?, ?)').bind('pet-legacy-study', 'Legacy').run();
+    await env.DB.prepare(
+      'INSERT INTO pet_studies (id, pet_id, type, title, date, url) VALUES (?,?,?,?,?,?)',
+    ).bind(legacyStudyId, 'pet-legacy-study', 'Informe', 'Sin estado', '2026-01-01', 'https://example.test').run();
+    const legacyStudy = await env.DB.prepare('SELECT status FROM pet_studies WHERE id = ?').bind(legacyStudyId).first();
+    expect(legacyStudy.status).toBe('received');
+    await env.DB.prepare('DELETE FROM pets WHERE id = ?').bind('pet-legacy-study').run();
+  });
+
+  it('ordena los pendientes clínicos del paciente por urgencia', async () => {
+    const dayKey = (offset) => {
+      const date = new Date();
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() + offset);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    };
+
+    globalThis.localDateKey = () => dayKey(0);
+    globalThis.formatDate = (value) => value || '—';
+    globalThis.canEditClinical = () => true;
+    globalThis.appointmentIsTerminal = (appointment) => ['completed', 'cancelled', 'no_show'].includes(appointment.status);
+    const pet = {
+      id: 'pet-1',
+      history: [
+        { id: 'enc-1', date: dayKey(-40), title: 'Control anual', status: 'closed', nextControl: dayKey(-5), treatment: 'Antibiótico 7 días' },
+        { id: 'enc-2', date: dayKey(-2), title: 'Herida', status: 'pending_results', nextControl: '' },
+        { id: 'enc-3', date: dayKey(-90), title: 'Vacunación', status: 'closed', nextControl: dayKey(10) },
+      ],
+      studies: [
+        { id: 'st-1', type: 'Ecografía', title: 'Abdomen', date: dayKey(3), status: 'requested' },
+        { id: 'st-2', type: 'Receta', title: 'Ya cargada', date: dayKey(-1), status: 'received', url: 'https://example.test' },
+      ],
+      vaccines: [{ id: 'vac-1', name: 'Antirrábica', date: dayKey(-360), nextDose: dayKey(0) }],
+    };
+    globalThis.db = {
+      pets: [pet],
+      // El aviso ya creado para enc-3 no debe duplicarse con su próximo control.
+      reminders: [
+        { id: 'rem-1', petId: 'pet-1', title: 'Llamar al tutor', date: dayKey(-3), completed: false },
+        { id: 'rem-2', petId: 'pet-1', title: 'Control: Vacunación', date: dayKey(10), completed: false },
+        { id: 'rem-3', petId: 'pet-1', title: 'Ya resuelto', date: dayKey(-8), completed: true },
+      ],
+      appointments: [
+        { id: 'apt-1', petId: 'pet-1', date: dayKey(4), time: '09:00', type: 'Control', status: 'scheduled' },
+        { id: 'apt-2', petId: 'pet-1', date: dayKey(5), time: '10:00', type: 'Control', status: 'cancelled' },
+      ],
+    };
+
+    await import('../../js/followup.js');
+    const followUp = globalThis.VetCareFollowUp;
+
+    expect(followUp.daysUntil(dayKey(-5))).toBe(-5);
+    expect(followUp.state(0)).toBe('today');
+    expect(followUp.when(-5)).toBe('Vencido hace 5 días');
+
+    const summary = followUp.summary(pet);
+    expect(summary.items.map(item => item.state)).toEqual([
+      'overdue', 'overdue', 'today', 'soon', 'soon', 'soon',
+    ]);
+    expect(summary).toMatchObject({ overdue: 2, today: 1, soon: 3, pendingStudies: 1 });
+    // La consulta sin cerrar y el turno cancelado no se mezclan con los pendientes del tutor.
+    expect(summary.open.map(entry => entry.id)).toEqual(['enc-2']);
+    expect(summary.items.some(item => item.kind === 'appointment' && item.title === 'Control')).toBe(true);
+    expect(summary.items.filter(item => item.kind === 'appointment')).toHaveLength(1);
+    // El control de enc-3 ya tiene aviso: se cuenta una sola vez.
+    expect(summary.items.filter(item => item.date === dayKey(10))).toHaveLength(1);
+    expect(followUp.headline(summary)).toMatchObject({ tone: 'overdue' });
   });
 
   it('acepta localhost con cualquier puerto y bloquea otros orígenes', async () => {
@@ -158,6 +228,14 @@ describe('VetCare Worker', () => {
         title: 'Control abdominal',
         date: '2026-07-03',
         url: 'https://drive.google.com/example',
+        status: 'received',
+      }, {
+        id: crypto.randomUUID(),
+        type: 'Análisis de laboratorio',
+        title: 'Hemograma de control',
+        date: '2026-08-05',
+        url: '',
+        status: 'requested',
       }],
     };
     const savedPet = await jsonResponse('/api/pets', {

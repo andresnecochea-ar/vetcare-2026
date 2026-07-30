@@ -250,7 +250,7 @@ function deletePet(id) {
 let currentPetId = null;
 let petDetailReturnView = 'pets';
 let petDetailReturnScrollY = 0;
-let petDetailActiveTab = 'tab-history';
+let petDetailActiveTab = 'tab-followup';
 let currentEncounterPetId = null;
 let currentEncounterId = null;
 let currentEncounterAppointmentId = null;
@@ -275,7 +275,7 @@ function openPetDetail(id) {
     petDetailReturnView = currentView || 'pets';
     petDetailReturnScrollY = window.scrollY || 0;
   }
-  if (currentPetId !== id) petDetailActiveTab = 'tab-history';
+  if (currentPetId !== id) petDetailActiveTab = 'tab-followup';
   currentPetId = id;
   currentView = 'pet-detail';
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -290,7 +290,7 @@ function closePetDetail() {
   const returnView = petDetailReturnView === 'pet-detail' ? 'pets' : petDetailReturnView;
   const returnScroll = petDetailReturnScrollY;
   currentPetId = null;
-  petDetailActiveTab = 'tab-history';
+  petDetailActiveTab = 'tab-followup';
   navigateTo(returnView || 'pets');
   requestAnimationFrame(() => window.scrollTo({ top: returnScroll, behavior: 'auto' }));
 }
@@ -368,14 +368,19 @@ function renderPetDetailLegacy(id) {
       </div>
 
       <div class="tabs">
-        <div class="tab active" onclick="switchTab(event, 'tab-history')">Historia clínica</div>
+        <div class="tab active" onclick="switchTab(event, 'tab-followup')">Seguimiento${followUpTabBadge(pet)}</div>
+        <div class="tab" onclick="switchTab(event, 'tab-history')">Historia clínica</div>
         <div class="tab" onclick="switchTab(event, 'tab-owners')">Tutores</div>
         <div class="tab" onclick="switchTab(event, 'tab-images')">Estudios e imágenes</div>
         <div class="tab" onclick="switchTab(event, 'tab-vacc')">Vacunas y desparasitación</div>
         <div class="tab" onclick="switchTab(event, 'tab-info')">Datos</div>
       </div>
 
-      <div id="tab-history" class="tab-content active">
+      <div id="tab-followup" class="tab-content active">
+        ${renderPetFollowUp(pet)}
+      </div>
+
+      <div id="tab-history" class="tab-content">
         <div class="section-title">
           <h3>Registros clínicos</h3>
           ${canEditClinical() ? `<button class="btn btn-sm btn-primary" onclick="addHistoryEntry('${pet.id}')">+ Nueva consulta</button>` : '<span class="tag">Solo lectura</span>'}
@@ -406,20 +411,23 @@ function renderPetDetailLegacy(id) {
       <div id="tab-images" class="tab-content">
         <div class="section-title">
           <h3>Estudios clínicos (links a Drive)</h3>
-          ${canEditClinical() ? `<button class="btn btn-sm btn-primary" onclick="addStudyLink('${pet.id}')">+ Agregar estudio</button>` : '<span class="tag">Solo lectura</span>'}
+          ${canEditClinical() ? `<span class="section-actions"><button class="btn btn-sm" onclick="requestStudy('${pet.id}')">+ Solicitar</button><button class="btn btn-sm btn-primary" onclick="addStudyLink('${pet.id}')">+ Agregar estudio</button></span>` : '<span class="tag">Solo lectura</span>'}
         </div>
         <small style="color:var(--text-mute)">Pegá el link de Google Drive de cada estudio: radiografías, ecografías, análisis, recetas, etc.</small>
         <div class="study-list">
           ${(pet.studies||[]).length === 0
             ? `<div class="empty-state">Sin estudios cargados.${canEditClinical() ? ` <a href="#" onclick="addStudyLink('${pet.id}');return false">+ Agregar el primero</a>` : ''}</div>`
-            : pet.studies.map(s => `
-            <div class="study-item">
+            : [...pet.studies].sort((a,b) => (studyIsPending(b)?1:0) - (studyIsPending(a)?1:0)).map(s => `
+            <div class="study-item${studyIsPending(s) ? ' is-pending' : ''}">
               <div class="study-icon">${studyIcon(s.type)}</div>
               <div class="study-body">
-                <a href="${escapeAttr(s.url)}" target="_blank" rel="noopener" class="study-title">${escapeHtml(s.title || s.type || 'Estudio')}</a>
-                <div class="study-meta">${escapeHtml(s.type || 'Estudio')}${s.date ? ' · ' + formatDate(s.date) : ''}</div>
+                ${s.url
+                  ? `<a href="${escapeAttr(s.url)}" target="_blank" rel="noopener" class="study-title">${escapeHtml(s.title || s.type || 'Estudio')}</a>`
+                  : `<span class="study-title">${escapeHtml(s.title || s.type || 'Estudio')}</span>`}
+                <div class="study-meta">${studyIsPending(s) ? '<span class="study-pending-tag">Pendiente</span>' : ''}${escapeHtml(s.type || 'Estudio')}${s.date ? ' · ' + formatDate(s.date) : ''}</div>
               </div>
-              ${canEditClinical() ? `<button class="btn btn-sm" onclick="editStudyLink('${pet.id}','${s.id}')">Editar</button>
+              ${canEditClinical() ? `${studyIsPending(s) ? `<button class="btn btn-sm" onclick="markStudyReceived('${pet.id}','${s.id}')">Marcar recibido</button>` : ''}
+              <button class="btn btn-sm" onclick="editStudyLink('${pet.id}','${s.id}')">Editar</button>
               <button class="img-x study-x" onclick="deleteStudyLink('${pet.id}','${s.id}')">×</button>` : ''}
             </div>
           `).join('')}
@@ -587,26 +595,59 @@ function normalizeUrl(u) {
 
 function studyModal(petId, study, studyId) {
   const opts = STUDY_TYPES.map(t => `<option value="${t}" ${study.type===t?'selected':''}>${t}</option>`).join('');
+  const pending = studyIsPending(study);
   showModal(`
-    <div class="modal-header"><h2>${studyId ? 'Editar estudio' : 'Nuevo estudio'}</h2><button class="close-btn" onclick="closeModal()">&times;</button></div>
+    <div class="modal-header"><h2>${studyId ? 'Editar estudio' : (pending ? 'Solicitar estudio' : 'Nuevo estudio')}</h2><button class="close-btn" onclick="closeModal()">&times;</button></div>
     <div class="modal-body">
       <div class="form-row">
         <div class="form-group"><label>Tipo de estudio</label><select id="studyType">${opts}</select></div>
-        <div class="form-group"><label>Fecha del estudio</label><input type="date" id="studyDate" value="${study.date||''}"></div>
+        <div class="form-group"><label>Estado</label><select id="studyStatus" onchange="toggleStudyUrlHint()">
+          <option value="requested" ${pending?'selected':''}>Solicitado (pendiente de resultado)</option>
+          <option value="received" ${pending?'':'selected'}>Resultado disponible</option>
+        </select></div>
       </div>
-      <div class="form-group"><label>Título / descripción</label><input type="text" id="studyTitle" value="${escapeAttr(study.title||'')}" placeholder="Ej: Rx tórax control"></div>
-      <div class="form-group"><label>Link de Google Drive</label><input type="url" id="studyUrl" value="${escapeAttr(study.url||'')}" placeholder="https://drive.google.com/..."></div>
+      <div class="form-row">
+        <div class="form-group"><label>Fecha ${pending ? 'prevista' : 'del estudio'}</label><input type="date" id="studyDate" value="${study.date||''}"></div>
+        <div class="form-group"><label>Título / descripción</label><input type="text" id="studyTitle" value="${escapeAttr(study.title||'')}" placeholder="Ej: Rx tórax control"></div>
+      </div>
+      <div class="form-group"><label>Link de Google Drive</label><input type="url" id="studyUrl" value="${escapeAttr(study.url||'')}" placeholder="https://drive.google.com/..."><small id="studyUrlHint" style="color:var(--text-mute)"></small></div>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-primary" onclick="saveStudyLink('${petId}'${studyId ? `,'${studyId}'` : ''})">Guardar</button>
     </div>
   `);
+  toggleStudyUrlHint();
+}
+
+// El link solo es obligatorio cuando el resultado ya está disponible.
+function toggleStudyUrlHint() {
+  const hint = document.getElementById('studyUrlHint');
+  if (!hint) return;
+  const requested = document.getElementById('studyStatus')?.value === 'requested';
+  hint.textContent = requested
+    ? 'Opcional mientras el estudio esté pendiente. Al cargar el link marcá el resultado como disponible.'
+    : 'Obligatorio para dejar el resultado accesible desde la ficha.';
 }
 
 function addStudyLink(petId) {
   if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
-  studyModal(petId, {});
+  studyModal(petId, { status: 'received' });
+}
+
+function requestStudy(petId) {
+  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
+  studyModal(petId, { status: 'requested' });
+}
+
+function markStudyReceived(petId, studyId) {
+  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
+  const pet = db.pets.find(p => p.id === petId);
+  const study = pet ? (pet.studies||[]).find(s => s.id === studyId) : null;
+  if (!study) return;
+  study.status = 'received';
+  saveDB('Estudio marcado como recibido');
+  render();
 }
 
 function editStudyLink(petId, studyId) {
@@ -620,14 +661,16 @@ function editStudyLink(petId, studyId) {
 function saveStudyLink(petId, studyId) {
   if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
   const url = normalizeUrl(document.getElementById('studyUrl').value);
-  if (!url) { toast('Pegá un link válido'); return; }
+  const status = document.getElementById('studyStatus').value === 'requested' ? 'requested' : 'received';
+  if (!url && status === 'received') { toast('Pegá un link válido o dejá el estudio como solicitado'); return; }
   const pet = db.pets.find(p => p.id === petId);
   pet.studies = pet.studies || [];
   const data = {
     type: document.getElementById('studyType').value,
     title: document.getElementById('studyTitle').value.trim(),
     date: document.getElementById('studyDate').value,
-    url
+    url,
+    status
   };
   if (studyId) {
     const s = pet.studies.find(x => x.id === studyId);
@@ -635,7 +678,7 @@ function saveStudyLink(petId, studyId) {
   } else {
     pet.studies.push({ id: uid(), ...data });
   }
-  saveDB('Estudio actualizado');
+  saveDB(studyId ? 'Estudio actualizado' : (status === 'requested' ? 'Estudio solicitado' : 'Estudio agregado'));
   closeModal();
   openPetDetail(petId);
 }
@@ -743,7 +786,7 @@ function closeEncounter() {
   currentEncounterAppointmentId = null;
   if (!petId) { navigateTo('pets'); return; }
   currentPetId = petId;
-  petDetailActiveTab = 'tab-history';
+  petDetailActiveTab = 'tab-followup';
   currentView = 'pet-detail';
   render();
   window.scrollTo({ top: 0, behavior: 'auto' });
