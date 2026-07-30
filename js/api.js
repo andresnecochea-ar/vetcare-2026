@@ -279,7 +279,7 @@ async function syncToAPI(){
       _lastSnapshot.settings=_cloneSyncValue(nextSettings.settings);
     }
     if(canonicalDataChanged&&!(await saveIDB())){
-      toast('⚠ Guardado en la nube, pero no se pudo actualizar la copia local.');
+      toast('Guardado en la nube, pero no se pudo actualizar la copia local.', 'warn');
     }
     succeeded=true;
   }catch(e){
@@ -287,16 +287,16 @@ async function syncToAPI(){
     console.warn('Sync API falló:',e);
     if(e&&e.status===409){
       _setSyncState('conflict',_syncContext);
-      toast('⚠ Conflicto detectado. Tus cambios siguen en este equipo.');
+      toast('Conflicto detectado. Tus cambios siguen en este equipo.', 'warn');
     }else if(VetCareSync.isRetryableStatus(e&&e.status)){
       _scheduleSyncRetry();
       toast(_browserOnline()
-        ? '⚠ No se pudo guardar en la nube. VetCare reintentará automáticamente.'
-        : '⚠ Sin conexión. Los cambios siguen guardados en este equipo.');
+        ? 'No se pudo guardar en la nube. VetCare reintentará automáticamente.'
+        : 'Sin conexión. Los cambios siguen guardados en este equipo.', 'warn');
     }else{
       _clearRetryTimer();
       _setSyncState('error',_syncContext);
-      toast('⚠ El servidor rechazó el cambio. Revisá tus permisos o los datos antes de reintentar.');
+      toast('El servidor rechazó el cambio. Revisá tus permisos o los datos antes de reintentar.', 'error');
     }
   }finally{
     _syncing=false;
@@ -319,10 +319,10 @@ async function saveDB(successMessage){
   const localSaved=await saveIDB();
   if(!remote){
     if(localSaved){_setSyncState('local',null);_flushSaveMessages('local');}
-    else{_setSyncState('error',{table:'local',operation:'write'});toast('⚠ No se pudo guardar en este dispositivo.');}
+    else{_setSyncState('error',{table:'local',operation:'write'});toast('No se pudo guardar en este dispositivo.', 'error');}
     return localSaved;
   }
-  if(!localSaved)toast('⚠ No se pudo actualizar la copia local. VetCare espera la confirmación de la nube.');
+  if(!localSaved)toast('No se pudo actualizar la copia local. VetCare espera la confirmación de la nube.', 'warn');
   clearTimeout(_syncTimer);
   _syncTimer=setTimeout(syncToAPI,600);
   return localSaved;

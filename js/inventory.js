@@ -39,7 +39,7 @@ function renderInventory() {
               <td><div class="actions" style="white-space:nowrap">
                 ${canWriteEntity('inventory') ? `
                 <button class="btn btn-sm btn-primary" onclick="openAddLotModal('${i.id}')" title="Cargar stock">+</button>
-                <button class="btn btn-sm" onclick="openUseStockModal('${i.id}')" title="Usar/bajar stock">−</button>
+                <button class="btn btn-sm" onclick="openUseStockModal('${i.id}')" title="Usar/bajar stock" aria-label="Usar o bajar stock">${icon('minus','ico-sm')}</button>
                 ` : '<span class="tag">Solo lectura</span>'}
               </div></td>
             </tr>`;

@@ -7,10 +7,10 @@ function renderInvoices() {
       <button class="btn btn-primary" onclick="openInvoiceModal()">+ Nuevo recibo</button>
     </div>
     <div class="grid-stats">
-      <div class="stat-card"><div class="stat-label">💰 Total cobrado</div><div class="stat-val" style="color:var(--color-navy)">$${summary.paidTotal.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
-      <div class="stat-card"><div class="stat-label">⏳ Pendiente cobro</div><div class="stat-val" style="color:var(--warning)">$${summary.pendingTotal.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
-      <div class="stat-card"><div class="stat-label">✅ Cobrados</div><div class="stat-val" style="color:var(--color-mint-hover)">${summary.paidCount}</div></div>
-      <div class="stat-card"><div class="stat-label">🧾 Comprobantes</div><div class="stat-val">${invs.length}</div></div>
+      <div class="stat-card"><div class="stat-label">${icon('money','ico-sm')} Total cobrado</div><div class="stat-val" style="color:var(--color-navy)">$${summary.paidTotal.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
+      <div class="stat-card"><div class="stat-label">${icon('clock','ico-sm')} Pendiente cobro</div><div class="stat-val" style="color:var(--warning)">$${summary.pendingTotal.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
+      <div class="stat-card"><div class="stat-label">${icon('checkCircle','ico-sm')} Cobrados</div><div class="stat-val" style="color:var(--color-mint-hover)">${summary.paidCount}</div></div>
+      <div class="stat-card"><div class="stat-label">${icon('receipt','ico-sm')} Comprobantes</div><div class="stat-val">${invs.length}</div></div>
     </div>
     <div class="card" style="overflow-x:auto">
       <table>
@@ -31,8 +31,8 @@ function renderInvoices() {
                 <td><strong>$${parseFloat(inv.total||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</strong></td>
                 <td class="col-sec"><span class="tag ${sc}">${sl}</span></td>
                 <td style="white-space:nowrap">
-                  <button class="btn btn-sm" onclick="printInvoice('${inv.id}')" title="Imprimir">🖨</button>
-                  <button class="btn btn-sm" onclick="openInvoiceModal('${inv.id}')" title="Editar">✏</button>
+                  <button class="btn btn-sm" onclick="printInvoice('${inv.id}')" title="Imprimir" aria-label="Imprimir">${icon('print','ico-sm')}</button>
+                  <button class="btn btn-sm" onclick="openInvoiceModal('${inv.id}')" title="Editar" aria-label="Editar">${icon('edit','ico-sm')}</button>
                   ${canDeleteEntity('invoices') ? `<button class="btn btn-sm btn-danger" onclick="deleteInvoice('${inv.id}')" title="Eliminar">${iconX()}</button>` : ''}
                 </td></tr>`;}).join('')}
         </tbody>
@@ -90,7 +90,7 @@ function openInvoiceModal(id) {
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveInvoice('${id||''}',${isNew})">💾 ${isNew?'Crear recibo':'Guardar cambios'}</button>
+      <button class="btn btn-primary" onclick="saveInvoice('${id||''}',${isNew})">${icon('save','ico-sm')} ${isNew?'Crear recibo':'Guardar cambios'}</button>
     </div>
   `,true);
   updateInvTotal();

@@ -21,7 +21,7 @@ function renderReminders() {
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${owners.map(o => o.phone ? `<a class="contact-btn wa" href="https://wa.me/${cleanPhone(o.phone)}?text=${encodeURIComponent('Hola '+o.name+', desde la veterinaria le recordamos: '+r.title)}" target="_blank" title="Avisar a ${escapeAttr(o.name)}">WA</a>` : '').join('')}
-          <button class="btn btn-sm" onclick="completeReminder('${r.id}')">✓</button>
+          <button class="btn btn-sm" onclick="completeReminder('${r.id}')" title="Marcar como hecho" aria-label="Marcar como hecho">${icon('check','ico-sm')}</button>
           <button class="btn btn-sm btn-danger" onclick="deleteReminder('${r.id}')" title="Eliminar">${iconX()}</button>
         </div>
       </div>`;
@@ -133,7 +133,7 @@ function renderBirthdays() {
             <div class="pet-photo${pet.photo?'':' is-silhouette'}" style="${petPhotoStyle(pet)}"></div>
             <div class="pet-card-body">
               <h3>${escapeHtml(pet.name)}</h3>
-              <div class="meta">${pet.daysUntil === 0 ? '🎂 ¡HOY cumple ' + pet.age + '!' : `Cumple ${pet.age} años en ${pet.daysUntil} día${pet.daysUntil>1?'s':''}`}</div>
+              <div class="meta">${pet.daysUntil === 0 ? `${icon('cake','ico-sm')} ¡HOY cumple ` + pet.age + '!' : `Cumple ${pet.age} años en ${pet.daysUntil} día${pet.daysUntil>1?'s':''}`}</div>
               <div class="meta">${formatDate(localDateKey(pet.nextBirthday))}</div>
               <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
                 ${owners.map(o => o.phone ? `<a class="contact-btn wa" href="https://wa.me/${cleanPhone(o.phone)}?text=${promoMsg}" target="_blank">WhatsApp ${escapeHtml(o.name.split(' ')[0])}</a>` : '').join('')}

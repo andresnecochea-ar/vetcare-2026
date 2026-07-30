@@ -35,13 +35,13 @@ function renderDashboard() {
       <div style="font-size:var(--fs-sm);color:var(--text-soft)">${new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
     </div>
     <div class="grid-stats">
-      <div class="stat-card"><div class="stat-label">🐾 Pacientes</div><div class="stat-val" style="color:var(--color-navy)">${db.pets.length}</div></div>
-      <div class="stat-card"><div class="stat-label">👥 Tutores</div><div class="stat-val">${db.owners.length}</div></div>
-      <div class="stat-card"><div class="stat-label">📅 Turnos hoy</div><div class="stat-val" style="color:var(--color-navy)">${todayAppts+todayGroom}</div></div>
-      <div class="stat-card"><div class="stat-label">💰 Cobrado total</div><div class="stat-val" style="color:var(--color-mint-hover)">$${invoiceSummary.paidTotal.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
-      ${pendingRem>0?`<div class="stat-card"><div class="stat-label">🔔 Avisos pendientes</div><div class="stat-val" style="color:var(--color-coral)">${pendingRem}</div></div>`:''}
-      ${lowStock>0?`<div class="stat-card"><div class="stat-label">⚠ Stock bajo</div><div class="stat-val" style="color:var(--warning)">${lowStock}</div></div>`:''}
-      ${pendingInv>0?`<div class="stat-card"><div class="stat-label">🧾 Recibos pendientes</div><div class="stat-val" style="color:var(--warning)">${pendingInv}</div></div>`:''}
+      <div class="stat-card"><div class="stat-label">${icon('paw','ico-sm')} Pacientes</div><div class="stat-val" style="color:var(--color-navy)">${db.pets.length}</div></div>
+      <div class="stat-card"><div class="stat-label">${icon('users','ico-sm')} Tutores</div><div class="stat-val">${db.owners.length}</div></div>
+      <div class="stat-card"><div class="stat-label">${icon('calendar','ico-sm')} Turnos hoy</div><div class="stat-val" style="color:var(--color-navy)">${todayAppts+todayGroom}</div></div>
+      <div class="stat-card"><div class="stat-label">${icon('money','ico-sm')} Cobrado total</div><div class="stat-val" style="color:var(--color-mint-hover)">$${invoiceSummary.paidTotal.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
+      ${pendingRem>0?`<div class="stat-card"><div class="stat-label">${icon('bell','ico-sm')} Avisos pendientes</div><div class="stat-val" style="color:var(--color-coral)">${pendingRem}</div></div>`:''}
+      ${lowStock>0?`<div class="stat-card"><div class="stat-label">${icon('alert','ico-sm')} Stock bajo</div><div class="stat-val" style="color:var(--warning)">${lowStock}</div></div>`:''}
+      ${pendingInv>0?`<div class="stat-card"><div class="stat-label">${icon('receipt','ico-sm')} Recibos pendientes</div><div class="stat-val" style="color:var(--warning)">${pendingInv}</div></div>`:''}
     </div>
     <div class="dashboard-charts">
       <div class="card"><h3 style="margin-bottom:14px">Actividad — últimos 7 días</h3>
@@ -53,7 +53,7 @@ function renderDashboard() {
     </div>
     ${lowItems.length>0?`
     <div class="card" style="border-left:3px solid var(--warning);margin-bottom:16px">
-      <h3 style="color:var(--warning);margin-bottom:10px">⚠ Stock bajo</h3>
+      <h3 style="color:var(--warning);margin-bottom:10px">${icon('alert','ico-sm')} Stock bajo</h3>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
         ${lowItems.map(i=>`<span style="background:var(--bg-soft);padding:4px 12px;border-radius:20px;font-size:var(--fs-sm)">${escapeHtml(i.name)} <strong style="color:var(--warning)">(${invTotalStock(i)} u)</strong></span>`).join('')}
       </div></div>`:''}
@@ -66,7 +66,7 @@ function renderUpcomingAppts() {
     .filter(a => a.service ? !['Cancelado','Completado'].includes(a.status) : !appointmentIsTerminal(a))
     .sort((a,b) => new Date(a.date+'T'+(a.time||'00:00')) - new Date(b.date+'T'+(b.time||'00:00')))
     .slice(0, 5);
-  if (upcoming.length === 0) return '<div class="empty-state"><div class="ico">◰</div>Sin turnos próximos</div>';
+  if (upcoming.length === 0) return `<div class="empty-state"><div class="ico">${icon('calendar')}</div>Sin turnos próximos</div>`;
   return upcoming.map(a => {
     const pet = db.pets.find(p => p.id === a.petId);
     return `<div class="reminder-item">
@@ -82,7 +82,7 @@ function renderUrgentReminders() {
   const urgent = db.reminders.filter(r => !r.completed)
     .sort((a,b) => new Date(a.date) - new Date(b.date))
     .slice(0, 5);
-  if (urgent.length === 0) return '<div class="empty-state"><div class="ico">▲</div>Sin avisos pendientes</div>';
+  if (urgent.length === 0) return `<div class="empty-state"><div class="ico">${icon('bell')}</div>Sin avisos pendientes</div>`;
   return urgent.map(r => {
     const pet = db.pets.find(p => p.id === r.petId);
     const days = Math.floor((new Date(r.date) - new Date()) / (1000*60*60*24));
@@ -92,7 +92,7 @@ function renderUrgentReminders() {
         <strong>${r.title}</strong>
         <small>${pet ? pet.name + ' · ' : ''}${formatDate(r.date)} ${days < 0 ? '(vencido)' : days === 0 ? '(hoy)' : `(en ${days}d)`}</small>
       </div>
-      <button class="btn btn-sm" onclick="completeReminder('${r.id}')">✓</button>
+      <button class="btn btn-sm" onclick="completeReminder('${r.id}')" title="Marcar como hecho" aria-label="Marcar como hecho">${icon('check','ico-sm')}</button>
     </div>`;
   }).join('');
 }
