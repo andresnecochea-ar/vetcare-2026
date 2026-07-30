@@ -205,8 +205,8 @@ function printInvoice(id){
     +'table{width:100%;border-collapse:collapse;margin:20px 0}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f5f5f5}'
     +'.total{text-align:right;font-size:1.3rem;font-weight:bold;padding:12px 0}'
     +'@media print{button{display:none}}</style></head><body>'
-    +'<h1>'+escapeHtml((db.settings&&db.settings.clinicName)||db.clinicName||'VetCare')+' \u2014 Recibo #'+(inv.number||inv.id.slice(-4).toUpperCase())+'</h1>'
-    +((db.settings&&(db.settings.receiptAddress||db.settings.receiptPhone||db.settings.receiptTaxId))?'<div style="color:#666;font-size:.85rem;margin-bottom:14px">'+[db.settings.receiptAddress,db.settings.receiptPhone,db.settings.receiptTaxId?'CUIT '+db.settings.receiptTaxId:''].filter(Boolean).map(escapeHtml).join(' \u00b7 ')+'</div>':'')
+    +'<h1>'+escapeHtml(clinicInfo().name)+' \u2014 Recibo #'+(inv.number||inv.id.slice(-4).toUpperCase())+'</h1>'
+    +((clinicContactLine()||clinicInfo().taxId)?'<div style="color:#666;font-size:.85rem;margin-bottom:14px">'+[clinicContactLine(),clinicInfo().taxId?'CUIT '+escapeHtml(clinicInfo().taxId):''].filter(Boolean).join(' \u00b7 ')+'</div>':'')
     +'<div class="meta">Fecha: '+formatDate(inv.date)+' \u00b7 Estado: '+sl
     +(owner?'<br>Tutor: '+escapeHtml(owner.name):'')
     +(pet?' \u00b7 Paciente: '+escapeHtml(pet.name):'')+'</div>'

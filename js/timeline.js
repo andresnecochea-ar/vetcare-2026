@@ -187,6 +187,7 @@ function timelineEventHTML(pet, event) {
     if (canEditClinical()) {
       actions.push(`<button class="btn btn-sm" onclick="addHistoryEntry('${pet.id}','${event.id}')">Abrir</button>`);
       actions.push(`<button class="btn btn-sm" onclick="printHistEntry('${pet.id}','${event.id}')">Imprimir</button>`);
+      actions.push(`<button class="btn btn-sm" onclick="openMedicalCertificate('${pet.id}','${event.id}')">Certificado</button>`);
       actions.push(`<button class="btn btn-sm btn-danger" onclick="deleteHistory('${pet.id}','${event.id}')" title="Eliminar consulta">${iconX()}</button>`);
     }
   }

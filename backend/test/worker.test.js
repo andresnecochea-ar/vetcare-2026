@@ -67,7 +67,7 @@ describe('VetCare Worker', () => {
     expect(body).toMatchObject({
       status: 'ok',
       database: 'ready',
-      version: '2.11.0',
+      version: '2.12.0',
       schemaVersion: 13,
     });
 
@@ -156,6 +156,49 @@ describe('VetCare Worker', () => {
     ]);
     expect(alerts.every(row => row.item.state !== 'soon')).toBe(true);
     expect(alerts.some(row => row.pet.id === alDia.id)).toBe(false);
+  });
+
+  it('arma los documentos clínicos con los datos de la clínica y las plantillas', async () => {
+    globalThis.formatDate = (value) => value || '—';
+    globalThis.localDateKey = () => '2026-07-30';
+    globalThis.db = {
+      clinicName: 'VetCare',
+      owners: [{ id: 'own-1', name: 'Ana Pérez' }],
+      settings: { clinicName: 'Clínica Norte', receiptAddress: 'Calle 1', receiptPhone: '2262-000' },
+    };
+
+    await import('../../js/documents.js');
+    const docs = globalThis.VetCareDocuments;
+
+    // Las instalaciones viejas heredan dirección y teléfono de los recibos.
+    expect(docs.clinicInfo()).toMatchObject({
+      name: 'Clínica Norte', address: 'Calle 1', phone: '2262-000', email: '', license: '',
+    });
+    globalThis.db.settings.clinicAddress = 'Av. Siempreviva 742';
+    globalThis.db.settings.clinicLicense = 'MP 1234';
+    expect(docs.clinicInfo()).toMatchObject({ address: 'Av. Siempreviva 742', license: 'MP 1234' });
+
+    // El certificado reemplaza los marcadores por datos reales.
+    const pet = { id: 'p1', name: 'Luna', species: 'Perro', breed: 'Golden', ownerIds: ['own-1'] };
+    const encounter = { date: '2026-07-28', vet: 'Dra. Test', diagnosis: 'Sano', treatment: '' };
+    const text = docs.fillCertificate(pet, encounter);
+    expect(text).toContain('Luna');
+    expect(text).toContain('Perro');
+    expect(text).toContain('Ana Pérez');
+    expect(text).toContain('2026-07-28');
+    expect(text).not.toMatch(/\[(paciente|especie|raza|tutor|fecha)\]/);
+
+    // Un texto propio con marcadores desconocidos no se rompe.
+    globalThis.db.settings.certificateTemplate = '[paciente] atendido por [profesional]. [inventado]';
+    expect(docs.fillCertificate(pet, encounter)).toBe('Luna atendido por Dra. Test. [inventado]');
+    delete globalThis.db.settings.certificateTemplate;
+
+    // Plantillas: vienen las de fábrica hasta que se guarden otras.
+    expect(docs.templates().map(t => t.id)).toEqual(['general', 'postquirurgico', 'sano']);
+    globalThis.db.settings.examTemplates = [{ id: 'x', name: 'Propia', text: 'Peso:' }];
+    expect(docs.templates()).toHaveLength(1);
+    globalThis.db.settings.examTemplates = [];
+    expect(docs.templates().map(t => t.id)).toEqual(['general', 'postquirurgico', 'sano']);
   });
 
   it('compara resultados de laboratorio contra los valores de referencia', async () => {

@@ -1830,6 +1830,47 @@ html, body { max-width:100%; overflow-x:hidden; }
   .followup-actions .btn { flex: 1; }
 }
 
+/* Documentos clinicos y plantillas de examen */
+.exam-template-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 5px;
+}
+.exam-template-bar label { margin: 0; }
+.exam-template-bar span { display: flex; gap: 6px; align-items: center; }
+.exam-template-bar select { width: auto; min-width: 150px; padding: 5px 8px; font-size: var(--fs-sm); }
+.exam-template {
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-soft);
+}
+.exam-template-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.exam-template-head > div { display: flex; gap: 6px; }
+.exam-template pre {
+  margin: 0;
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+@media (max-width: 768px) {
+  .exam-template-bar span { flex: 1 1 100%; }
+  .exam-template-bar select { flex: 1; min-width: 0; }
+}
+
 /* Resultados de laboratorio */
 .lab-chip {
   display: inline-block;

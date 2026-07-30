@@ -288,11 +288,8 @@ function printLabResults(petId, studyId) {
   const species = labSpecies(pet);
   const rows = labEvaluate(study.panel, study.results, species).filter(row => row.filled);
   if (!rows.length) { toast('No hay valores para imprimir'); return; }
-  const w = window.open('', '_blank');
-  if (!w) { toast('El navegador bloqueó la ventana de impresión', 'error'); return; }
-  w.document.write(sanitaryPrintHead(LAB_PANELS[study.panel].label)
-    + '<h1>' + escapeHtml(db.clinicName || 'VetCare') + ' — ' + escapeHtml(LAB_PANELS[study.panel].label) + '</h1>'
-    + sanitaryPatientMeta(pet)
+  printDocument(LAB_PANELS[study.panel].label,
+    documentPatientMeta(pet)
     + (study.date ? '<p>Fecha del estudio: ' + formatDate(study.date) + '</p>' : '')
     + '<table><thead><tr><th>Determinación</th><th>Resultado</th><th>Referencia</th><th></th></tr></thead><tbody>'
     + rows.map(row => '<tr>'
@@ -302,9 +299,7 @@ function printLabResults(petId, studyId) {
       + '<td>' + (row.status && row.status !== 'normal' ? labStatusLabel(row.status).toUpperCase() : '') + '</td>'
       + '</tr>').join('')
     + '</tbody></table>'
-    + '<div class="sign">Profesional actuante</div>'
-    + '<br><button onclick="window.print()">Imprimir</button></body></html>');
-  w.document.close();
+    + '<div class="sign">Profesional actuante</div>');
 }
 
 // ----------------------------------------

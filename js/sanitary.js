@@ -346,39 +346,12 @@ function markSanitaryNotified(petId, kind, id) {
 // Impresos
 // ----------------------------------------
 
-function sanitaryPrintHead(title) {
-  return '<html><head><title>' + title + '</title><meta charset="utf-8"><style>'
-    + 'body{font-family:Georgia,serif;max-width:760px;margin:28px auto;padding:0 20px;color:#222}'
-    + 'h1{font-size:1.4rem;border-bottom:2px solid #6F2DBD;padding-bottom:8px}'
-    + 'h2{font-size:1rem;margin:18px 0 6px;color:#6F2DBD}'
-    + '.meta{background:#f7f2fb;padding:12px;border-radius:6px;font-size:.9rem;line-height:1.6}'
-    + 'table{width:100%;border-collapse:collapse;margin-top:10px;font-size:.9rem}'
-    + 'th,td{border-bottom:1px solid #ddd;padding:7px 6px;text-align:left}'
-    + 'th{color:#666;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em}'
-    + '.sign{margin-top:52px;border-top:1px solid #888;width:260px;padding-top:6px;font-size:.85rem}'
-    + '@media print{button{display:none}}</style></head><body>';
-}
-
-function sanitaryPatientMeta(pet) {
-  const owner = (pet.ownerIds || []).map(id => db.owners.find(o => o.id === id)).find(Boolean);
-  return '<div class="meta">Paciente: <strong>' + escapeHtml(pet.name) + '</strong>'
-    + ' · ' + escapeHtml(pet.species || '—') + ' ' + escapeHtml(pet.breed || '')
-    + (pet.sex ? ' · ' + escapeHtml(pet.sex) : '')
-    + (pet.birthdate ? ' · Nac. ' + formatDate(pet.birthdate) : '')
-    + (pet.microchip ? '<br>Microchip: ' + escapeHtml(pet.microchip) : '')
-    + '<br>Tutor: ' + (owner ? escapeHtml(owner.name) : '—')
-    + '</div>';
-}
-
 function printVaccineCertificate(petId, id) {
   const pet = db.pets.find(p => p.id === petId);
   const record = sanitaryRecord(pet, 'vaccine', id);
   if (!pet || !record) return;
-  const w = window.open('', '_blank');
-  if (!w) { toast('El navegador bloqueó la ventana de impresión', 'error'); return; }
-  w.document.write(sanitaryPrintHead('Certificado de vacunación')
-    + '<h1>' + escapeHtml(db.clinicName || 'VetCare') + ' — Certificado de vacunación</h1>'
-    + sanitaryPatientMeta(pet)
+  printDocument('Certificado de vacunación',
+    documentPatientMeta(pet)
     + '<h2>Vacuna aplicada</h2>'
     + '<table><tbody>'
     + '<tr><th>Vacuna</th><td>' + escapeHtml(record.name) + '</td></tr>'
@@ -386,9 +359,7 @@ function printVaccineCertificate(petId, id) {
     + (record.lot ? '<tr><th>Serie o lote</th><td>' + escapeHtml(record.lot) + '</td></tr>' : '')
     + (record.nextDose && !record.cancelled ? '<tr><th>Próxima dosis</th><td>' + formatDate(record.nextDose) + '</td></tr>' : '')
     + '</tbody></table>'
-    + '<div class="sign">' + escapeHtml(record.vet || 'Profesional actuante') + '</div>'
-    + '<br><button onclick="window.print()">Imprimir</button></body></html>');
-  w.document.close();
+    + '<div class="sign">' + escapeHtml(record.vet || 'Profesional actuante') + '</div>');
 }
 
 function printSanitaryPlan(petId) {
@@ -396,11 +367,8 @@ function printSanitaryPlan(petId) {
   if (!pet) return;
   const records = sanitaryRecords(pet);
   if (!records.length) { toast('No hay registros para imprimir'); return; }
-  const w = window.open('', '_blank');
-  if (!w) { toast('El navegador bloqueó la ventana de impresión', 'error'); return; }
-  w.document.write(sanitaryPrintHead('Plan sanitario')
-    + '<h1>' + escapeHtml(db.clinicName || 'VetCare') + ' — Plan sanitario</h1>'
-    + sanitaryPatientMeta(pet)
+  printDocument('Plan sanitario',
+    documentPatientMeta(pet)
     + '<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Lote</th><th>Próxima dosis</th></tr></thead><tbody>'
     + records.map(record => '<tr>'
       + '<td>' + formatDate(record.date) + '</td>'
@@ -410,9 +378,7 @@ function printSanitaryPlan(petId) {
       + '<td>' + (record.nextDose ? (record.cancelled ? 'Anulada' : formatDate(record.nextDose)) : '—') + '</td>'
       + '</tr>').join('')
     + '</tbody></table>'
-    + '<div class="sign">Profesional actuante</div>'
-    + '<br><button onclick="window.print()">Imprimir</button></body></html>');
-  w.document.close();
+    + '<div class="sign">Profesional actuante</div>');
 }
 
 // Superficie mínima para las pruebas automatizadas del plan sanitario.
