@@ -23,12 +23,12 @@ function renderBackup() {
       <div class="backup-card">
         <h4>Respaldo completo</h4>
         <p>Todos los datos, incluidas las fotos de mascotas e imágenes de estudios.</p>
-        <button class="btn btn-primary" onclick="exportVetcare('full')">↓ Descargar todo</button>
+        <button class="btn btn-primary" onclick="exportVetcare('full')">${icon('download','ico-sm')} Descargar todo</button>
       </div>
       <div class="backup-card">
         <h4>Liviano (sin imágenes)</h4>
         <p>Todos los datos excepto las fotos. Archivo más chico, ideal para enviar por mail.</p>
-        <button class="btn" onclick="exportVetcare('lite')">↓ Descargar</button>
+        <button class="btn" onclick="exportVetcare('lite')">${icon('download','ico-sm')} Descargar</button>
       </div>
     </div>
 

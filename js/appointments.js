@@ -190,7 +190,7 @@ function renderGrooming() {
               <td class="col-sec">${escapeHtml(a.groomer||'—')}</td>
               <td class="col-sec">${a.price ? '$'+a.price : '—'}</td>
               <td class="col-sec"><span class="tag ${a.status==='Completado'?'accent':a.status==='Cancelado'?'danger':''}">${a.status||'Pendiente'}</span></td>
-              <td class="col-sec">${a.reminder ? `<span style='font-size:var(--fs-2xs);background:var(--color-lilac-soft);color:#6a4fa0;border:1px solid var(--color-lilac);border-radius:20px;padding:2px 8px;'>&#128276; ${escapeHtml(a.reminder)}</span>` : '<span style="color:var(--text-mute);font-size:var(--fs-xs)">—</span>'}</td>
+              <td class="col-sec">${a.reminder ? `<span style='font-size:var(--fs-2xs);background:var(--color-lilac-soft);color:#6a4fa0;border:1px solid var(--color-lilac);border-radius:20px;padding:2px 8px;'>${icon('bell','ico-sm')} ${escapeHtml(a.reminder)}</span>` : '<span style="color:var(--text-mute);font-size:var(--fs-xs)">—</span>'}</td>
               <td class="col-sec"><span class="tag ${isPast?'':'accent'}">${isPast?'Pasado':'Próximo'}</span></td>
               <td><div class="actions"><button class="btn btn-sm" onclick="openGroomModal('${a.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="deleteGroom('${a.id}')" title="Eliminar">${iconX()}</button></div></td>
             </tr>`;
@@ -219,7 +219,7 @@ function openGroomModal(id) {
         <div class="form-group"><label>Peluquero/a</label><input type="text" id="gGroomer" value="${escapeAttr(a.groomer||'')}"></div>
         <div class="form-group"><label>Precio</label><input type="number" id="gPrice" value="${a.price||''}"></div>
       </div>
-      <div class="form-group"><label>&#128276; Recordatorio / Nota al cliente</label><input type="text" id="gReminder" value="${escapeAttr(a.reminder||'')}" placeholder="Ej: Traer champu especial, avisar 1h antes..."></div>
+      <div class="form-group"><label>${icon('bell','ico-sm')} Recordatorio / Nota al cliente</label><input type="text" id="gReminder" value="${escapeAttr(a.reminder||'')}" placeholder="Ej: Traer champu especial, avisar 1h antes..."></div>
       <div class="form-group"><label>Notas internas</label><textarea id="gNotes">${escapeHtml(a.notes||'')}</textarea></div>
     </div>
     <div class="modal-footer">

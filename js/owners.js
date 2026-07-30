@@ -8,7 +8,7 @@ function renderOwners() {
       <input type="text" placeholder="Buscar tutor..." onkeyup="filterOwners(this.value)">
     </div>
     <div id="ownersGrid" class="pets-grid">
-      ${db.owners.length === 0 ? '<div class="empty-state" style="grid-column:1/-1"><div class="ico">◐</div>Sin tutores registrados</div>' : db.owners.map(o => ownerListCardHTML(o)).join('')}
+      ${db.owners.length === 0 ? `<div class="empty-state" style="grid-column:1/-1"><div class="ico">${icon('users')}</div>Sin tutores registrados</div>` : db.owners.map(o => ownerListCardHTML(o)).join('')}
     </div>
   `;
 }
@@ -19,12 +19,12 @@ function ownerListCardHTML(o) {
     <div class="pet-card" style="cursor:default">
       <div class="pet-card-body">
         <h3>${escapeHtml(o.name)}</h3>
-        <div class="meta">${escapeHtml(o.phone||'sin teléfono')}</div>
-        <div class="meta">${escapeHtml(o.email||'sin email')}</div>
+        <div class="meta">${icon('phone','ico-sm')} ${escapeHtml(o.phone||'sin teléfono')}</div>
+        <div class="meta">${icon('mail','ico-sm')} ${escapeHtml(o.email||'sin email')}</div>
         <div class="tags">
           ${pets.map(p => `<span class="tag">${escapeHtml(p.name)}</span>`).join('') || '<span class="tag">Sin mascotas</span>'}
         </div>
-        <div style="display:flex;gap:6px;margin-top:12px">
+        <div class="contact-links">
           ${o.phone ? `<a class="contact-btn wa" href="https://wa.me/${cleanPhone(o.phone)}" target="_blank">WhatsApp</a>` : ''}
           ${o.email ? `<a class="contact-btn mail" href="mailto:${o.email}">Email</a>` : ''}
           <button class="btn btn-sm" style="margin-left:auto" onclick="openOwnerModal('${o.id}')">Editar</button>
@@ -41,9 +41,9 @@ function ownerCardHTML(o, petName) {
     <div class="owner-card">
       <h4>${escapeHtml(o.name)} ${o.relationship ? `<small style="font-weight: var(--fw-normal);color:var(--text-mute)">· ${escapeHtml(o.relationship)}</small>` : ''}</h4>
       <div style="font-size:var(--fs-sm);color:var(--text-soft)">
-        ${o.phone ? `📞 ${escapeHtml(o.phone)}<br>` : ''}
-        ${o.email ? `✉ ${escapeHtml(o.email)}<br>` : ''}
-        ${o.address ? `📍 ${escapeHtml(o.address)}` : ''}
+        ${o.phone ? `${icon('phone','ico-sm')} ${escapeHtml(o.phone)}<br>` : ''}
+        ${o.email ? `${icon('mail','ico-sm')} ${escapeHtml(o.email)}<br>` : ''}
+        ${o.address ? `${icon('pin','ico-sm')} ${escapeHtml(o.address)}` : ''}
       </div>
       <div class="contact-links">
         ${o.phone ? `<a class="contact-btn wa" href="https://wa.me/${cleanPhone(o.phone)}?text=${waMsg}" target="_blank">WhatsApp</a>` : ''}

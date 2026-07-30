@@ -8,8 +8,8 @@ function renderPets() {
       <div class="title"><small>Fichas clínicas</small><h1>Pacientes</h1></div>
       <div style="display:flex;gap:8px;align-items:center">
         <div class="view-toggle">
-          <button class="btn btn-sm ${petViewMode==='grid'?'active':''}" onclick="setPetView('grid')" title="Vista grilla">⊞</button>
-          <button class="btn btn-sm ${petViewMode==='list'?'active':''}" onclick="setPetView('list')" title="Vista lista">☰</button>
+          <button class="btn btn-sm ${petViewMode==='grid'?'active':''}" onclick="setPetView('grid')" title="Vista grilla" aria-label="Vista grilla">${icon('grid','ico-sm')}</button>
+          <button class="btn btn-sm ${petViewMode==='list'?'active':''}" onclick="setPetView('list')" title="Vista lista" aria-label="Vista lista">${icon('list','ico-sm')}</button>
         </div>
         <button class="btn btn-primary" onclick="openPetModal()">+ Nuevo paciente</button>
       </div>
@@ -70,17 +70,17 @@ function filterPets() {
   });
   const grid = document.getElementById('petsGrid');
   if (grid) grid.innerHTML = filtered.length === 0
-    ? '<div class="empty-state"><div class="ico">⊘</div>Sin resultados</div>'
+    ? `<div class="empty-state"><div class="ico">${icon('ban')}</div>Sin resultados</div>`
     : renderPetItems(filtered);
 }
 
 function renderPetItems(pets) {
   if (petViewMode === 'list') return renderPetList(pets);
-  return `<div class="pets-grid">${pets.length===0?'<div class="empty-state" style="grid-column:1/-1"><div class="ico">◉</div>Sin pacientes registrados.</div>':pets.map(petCardHTML).join('')}</div>`;
+  return `<div class="pets-grid">${pets.length===0?`<div class="empty-state" style="grid-column:1/-1"><div class="ico">${icon('paw')}</div>Sin pacientes registrados.</div>`:pets.map(petCardHTML).join('')}</div>`;
 }
 
 function renderPetList(pets) {
-  if (pets.length === 0) return '<div class="empty-state"><div class="ico">◉</div>Sin pacientes registrados.</div>';
+  if (pets.length === 0) return `<div class="empty-state"><div class="ico">${icon('paw')}</div>Sin pacientes registrados.</div>`;
   return `<div class="table-wrap pet-list-table"><table>
     <thead><tr><th></th><th>Nombre</th><th class="col-sec">Especie/Raza</th><th class="col-sec">Sexo</th><th class="col-sec">Edad</th><th>Tutor</th><th>Pendientes</th><th class="col-sec">Estado</th><th></th></tr></thead>
     <tbody>${pets.map(p => {
@@ -89,7 +89,7 @@ function renderPetList(pets) {
       const statusTag = p.chronicConditions ? '<span class="tag danger">Crónico</span>' : p.allergies ? '<span class="tag warning">Alergia</span>' : '<span class="tag">OK</span>';
       return `<tr>
         <td><div class="pet-mini-avatar${p.photo?'':' is-silhouette'}" style="${petPhotoStyle(p)}"></div></td>
-        <td><a style="cursor:pointer;color:var(--accent);font-weight: var(--fw-bold)" onclick="openPetDetail('${p.id}')">${escapeHtml(p.name)}</a></td>
+        <td><button type="button" class="link-cell" onclick="openPetDetail('${p.id}')">${escapeHtml(p.name)}</button></td>
         <td class="col-sec">${escapeHtml(p.species||'—')} / ${escapeHtml(p.breed||'—')}</td>
         <td class="col-sec">${escapeHtml(p.sex||'—')}</td>
         <td class="col-sec">${age}</td>
@@ -339,7 +339,7 @@ function renderPetDetail(id) {
   return `
     <div class="pet-detail-page">
       <div class="pet-detail-topbar">
-        <button class="pet-detail-back" onclick="closePetDetail()" aria-label="Volver"><span aria-hidden="true">&larr;</span><span>Volver</span></button>
+        <button class="pet-detail-back" onclick="closePetDetail()" aria-label="Volver">${icon('arrowLeft','ico-sm')}<span>Volver</span></button>
         <div class="pet-detail-breadcrumb"><span>Pacientes</span><span aria-hidden="true">/</span><strong>Ficha cl&iacute;nica</strong></div>
       </div>
       <div class="pet-detail-surface">${content}</div>
@@ -369,31 +369,31 @@ function renderPetDetailLegacy(id) {
         <button class="btn btn-sm" onclick="closeModal();openPetModal('${pet.id}')">Editar datos</button>
       </div>
 
-      <div class="tabs">
-        <div class="tab active" onclick="switchTab(event, 'tab-followup')">Seguimiento${followUpTabBadge(pet)}</div>
-        <div class="tab" onclick="switchTab(event, 'tab-history')">Historia clínica</div>
-        <div class="tab" onclick="switchTab(event, 'tab-owners')">Tutores</div>
-        <div class="tab" onclick="switchTab(event, 'tab-images')">Estudios e imágenes</div>
-        <div class="tab" onclick="switchTab(event, 'tab-vacc')">Vacunas y desparasitación</div>
-        <div class="tab" onclick="switchTab(event, 'tab-info')">Datos</div>
+      <div class="tabs" role="tablist" aria-label="Secciones de la ficha" onkeydown="tabsKeydown(event)">
+        <button type="button" role="tab" class="tab active" aria-selected="true" aria-controls="tab-followup" onclick="switchTab(event, 'tab-followup')">Seguimiento${followUpTabBadge(pet)}</button>
+        <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" aria-controls="tab-history" onclick="switchTab(event, 'tab-history')">Historia clínica</button>
+        <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" aria-controls="tab-owners" onclick="switchTab(event, 'tab-owners')">Tutores</button>
+        <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" aria-controls="tab-images" onclick="switchTab(event, 'tab-images')">Estudios e imágenes</button>
+        <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" aria-controls="tab-vacc" onclick="switchTab(event, 'tab-vacc')">Vacunas y desparasitación</button>
+        <button type="button" role="tab" class="tab" aria-selected="false" tabindex="-1" aria-controls="tab-info" onclick="switchTab(event, 'tab-info')">Datos</button>
       </div>
 
-      <div id="tab-followup" class="tab-content active">
+      <div id="tab-followup" class="tab-content active" role="tabpanel" tabindex="0">
         ${renderPetFollowUp(pet)}
       </div>
 
-      <div id="tab-history" class="tab-content">
+      <div id="tab-history" class="tab-content" role="tabpanel" tabindex="0">
         ${renderPetTimeline(pet)}
       </div>
 
-      <div id="tab-owners" class="tab-content">
+      <div id="tab-owners" class="tab-content" role="tabpanel" tabindex="0">
         <div class="section-title">
           <h3>Personas asociadas</h3>
         </div>
         ${owners.length === 0 ? '<div class="empty-state">Sin tutores asociados. Edita el paciente para agregar.</div>' : owners.map(o => ownerCardHTML(o, pet.name)).join('')}
       </div>
 
-      <div id="tab-images" class="tab-content">
+      <div id="tab-images" class="tab-content" role="tabpanel" tabindex="0">
         <div class="section-title">
           <h3>Estudios clínicos (links a Drive)</h3>
           ${canEditClinical() ? `<span class="section-actions"><button class="btn btn-sm" onclick="requestStudy('${pet.id}')">+ Solicitar</button><button class="btn btn-sm btn-primary" onclick="addStudyLink('${pet.id}')">+ Agregar estudio</button></span>` : '<span class="tag">Solo lectura</span>'}
@@ -435,11 +435,11 @@ function renderPetDetailLegacy(id) {
         </div>
       </div>
 
-      <div id="tab-vacc" class="tab-content">
+      <div id="tab-vacc" class="tab-content" role="tabpanel" tabindex="0">
         ${renderSanitaryTab(pet)}
       </div>
 
-      <div id="tab-info" class="tab-content">
+      <div id="tab-info" class="tab-content" role="tabpanel" tabindex="0">
         <h3 style="margin-bottom:10px">Información general</h3>
         ${pet.allergies ? `<p style="margin-bottom:10px"><strong>Alergias:</strong> ${escapeHtml(pet.allergies)}</p>` : ''}
         ${pet.chronicConditions ? `<p style="margin-bottom:10px"><strong>Condiciones crónicas:</strong> ${escapeHtml(pet.chronicConditions)}</p>` : ''}
@@ -453,12 +453,39 @@ function renderPetDetailLegacy(id) {
 function switchTab(e, id) {
   petDetailActiveTab = id;
   const scope = e.currentTarget.closest('.pet-detail-page') || document;
-  scope.querySelectorAll('.tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
+  scope.querySelectorAll('.tab').forEach(t => {
+    t.classList.remove('active');
+    t.setAttribute('aria-selected', 'false');
+    t.tabIndex = -1;
+  });
   scope.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   e.currentTarget.classList.add('active');
   e.currentTarget.setAttribute('aria-selected', 'true');
+  e.currentTarget.tabIndex = 0;
   const panel = scope.querySelector('#' + id);
   if (panel) panel.classList.add('active');
+  // Si la pestaña quedó fuera de vista (en móvil la barra scrollea), la traemos.
+  if (e.currentTarget.scrollIntoView) {
+    e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+}
+
+// Navegación por teclado de la barra de pestañas (patrón tablist estándar).
+// Antes las pestañas eran <div onclick> sin role ni tabindex: la historia
+// clínica del paciente no se podía alcanzar con el teclado.
+function tabsKeydown(e) {
+  const teclas = { ArrowRight: 1, ArrowLeft: -1, Home: 'inicio', End: 'fin' };
+  if (!(e.key in teclas)) return;
+  const tabs = [...e.currentTarget.querySelectorAll('.tab')];
+  const actual = tabs.indexOf(document.activeElement);
+  if (actual === -1) return;
+  e.preventDefault();
+  const paso = teclas[e.key];
+  const destino = paso === 'inicio' ? 0
+    : paso === 'fin' ? tabs.length - 1
+    : (actual + paso + tabs.length) % tabs.length;
+  tabs[destino].focus();
+  tabs[destino].click();
 }
 
 // Comprime una imagen en el navegador a <100KB (canvas + JPEG con calidad decreciente)
@@ -556,10 +583,9 @@ function deletePetImage(petId, imgId) {
 
 const STUDY_TYPES = ['Radiografía','Ecografía','Análisis de laboratorio','Receta','Informe','Otro'];
 
-function studyIcon(type) {
-  const map = { 'Radiografía':'🩻','Ecografía':'🔊','Análisis de laboratorio':'🧪','Receta':'📋','Informe':'📄' };
-  return map[type] || '🔗';
-}
+// studyIcon vive ahora en js/icons.js, junto al resto del set.
+// Antes era un mapa de emoji: 🩻 🔊 🧪 📋 📄, que convivían en la misma
+// pantalla con los SVG de trazo del menú.
 
 function normalizeUrl(u) {
   u = (u || '').trim();
@@ -702,14 +728,14 @@ function addHistoryEntryLegacy(petId, editId) {
         <div class="form-group"><label>Profesional</label>
           <input type="text" id="hVet" value="${ev('vet')}" placeholder="Dr. García"></div>
       </div>
-      <div style="background:var(--color-mint-soft);padding:12px;border-radius:var(--radius-sm);margin-bottom:12px">
-        <div style="font-size:var(--fs-2xs);font-weight: var(--fw-bold);color:var(--text-soft);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">⚕ Signos vitales</div>
+      <div style="background:var(--surface-sunken);padding:var(--space-3);border-radius:var(--radius-sm);margin-bottom:var(--space-3)">
+        <div style="font-size:var(--fs-2xs);font-weight: var(--fw-bold);color:var(--text-soft);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">${icon('stethoscope','ico-sm')} Signos vitales</div>
         <div class="form-row-3">
-          <div class="form-group"><label>⚖ Peso (kg)</label>
+          <div class="form-group"><label>${icon('weight','ico-sm')} Peso (kg)</label>
             <input type="number" id="hWeight" step="0.1" placeholder="4.5" value="${ex?ex.weight||'':''}"></div>
-          <div class="form-group"><label>🌡 Temperatura (°C)</label>
+          <div class="form-group"><label>${icon('thermometer','ico-sm')} Temperatura (°C)</label>
             <input type="number" id="hTemp" step="0.1" placeholder="38.5" value="${ex?ex.temp||'':''}"></div>
-          <div class="form-group"><label>♥ FC (lpm)</label>
+          <div class="form-group"><label>${icon('heart','ico-sm')} FC (lpm)</label>
             <input type="number" id="hHR" placeholder="80" value="${ex?ex.hr||'':''}"></div>
         </div>
       </div>
@@ -730,8 +756,8 @@ function addHistoryEntryLegacy(petId, editId) {
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeModal()">Cancelar</button>
-      ${ex ? `<button class="btn btn-secondary" onclick="printHistEntry('${petId}','${editId}')">🖨 Imprimir</button>` : ''}
-      <button class="btn btn-primary" onclick="saveHistory('${petId}','${editId||''}')">💾 Guardar consulta</button>
+      ${ex ? `<button class="btn btn-secondary" onclick="printHistEntry('${petId}','${editId}')">${icon('print','ico-sm')} Imprimir</button>` : ''}
+      <button class="btn btn-primary" onclick="saveHistory('${petId}','${editId||''}')">${icon('save','ico-sm')} Guardar consulta</button>
     </div>
   `, false);
 }
@@ -790,7 +816,7 @@ function renderEncounter() {
   return `
     <div class="encounter-page">
       <div class="pet-detail-topbar">
-        <button class="pet-detail-back" onclick="closeEncounter()" aria-label="Volver a la ficha"><span aria-hidden="true">&larr;</span><span>Volver a la ficha</span></button>
+        <button class="pet-detail-back" onclick="closeEncounter()" aria-label="Volver a la ficha">${icon('arrowLeft','ico-sm')}<span>Volver a la ficha</span></button>
         <div class="pet-detail-breadcrumb"><span>Pacientes</span><span aria-hidden="true">/</span><span>${escapeHtml(pet.name)}</span><span aria-hidden="true">/</span><strong>Consulta</strong></div>
       </div>
       <header class="encounter-header">
@@ -940,7 +966,7 @@ function openEncounterCloseReview(petId, editId) {
           <div class="clinical-review-list">
             ${clinicalItems.map(item => `
               <div class="${item.value ? 'is-complete' : 'is-missing'}">
-                <span aria-hidden="true">${item.value ? '✓' : '!'}</span>
+                <span aria-hidden="true">${item.value ? icon('check','ico-sm') : '!'}</span>
                 <div><strong>${escapeHtml(item.label)}</strong><p>${item.value ? escapeHtml(item.value) : 'Sin completar'}</p></div>
               </div>`).join('')}
           </div>

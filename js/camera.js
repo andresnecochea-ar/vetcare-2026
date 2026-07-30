@@ -45,9 +45,9 @@ async function openCamera(petId){
     + '<div class="camera-guide"></div>'
     + '<div class="camera-hint">Centra la cara de la mascota en el circulo</div>'
     + '<div class="camera-controls">'
-    + '  <button class="cam-btn cam-cancel" onclick="closeCamera()" aria-label="Cancelar">✕</button>'
+    + '  <button class="cam-btn cam-cancel" onclick="closeCamera()" aria-label="Cancelar">' + icon('close') + '</button>'
     + '  <button class="cam-shutter" onclick="captureCamera()" aria-label="Tomar foto"></button>'
-    + '  <button class="cam-btn cam-flip" onclick="flipCamera()" aria-label="Cambiar camara">⟲</button>'
+    + '  <button class="cam-btn cam-flip" onclick="flipCamera()" aria-label="Cambiar camara">' + icon('refresh') + '</button>'
     + '</div>';
   document.body.appendChild(ov);
   try { history.pushState({ camera:true }, ''); } catch(e){}

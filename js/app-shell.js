@@ -64,7 +64,7 @@ function globalSearchHandler(q) {
   if (results.length === 0) {
     dd.innerHTML = '<div class="gs-item"><span class="gs-label">Sin resultados</span></div>';
   } else {
-    const icons = { pet:'◉', owner:'◐', appt:'◰', history:'📋' };
+    const icons = { pet: icon('paw','ico-sm'), owner: icon('users','ico-sm'), appt: icon('calendar','ico-sm'), history: icon('clipboard','ico-sm') };
     dd.innerHTML = results.slice(0,10).map(r => `
       <div class="gs-item" onclick="globalSearchGo('${r.type}','${r.petId||r.id}')">
         <span style="font-size:var(--fs-base)">${icons[r.type]}</span>

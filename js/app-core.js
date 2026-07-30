@@ -25,11 +25,23 @@ function localDateKey(value) {
 // Icono X (cerrar/eliminar/limpiar) del pack de iconos VetCare.
 function iconX(em){ em = em || 1; return '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:'+em+'em;height:'+em+'em;vertical-align:-.12em"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>'; }
 
+// El segundo parámetro ya existía en las llamadas ('error', 'success'...) pero
+// se ignoraba: las variantes .toast.error / .success / .info del CSS nunca se
+// aplicaban. Ahora el tipo pinta el borde y elige el icono, y los avisos dejan
+// de anunciarse con un "⚠ " escrito a mano dentro del texto.
+const TOAST_ICONS = { error: 'alert', success: 'check', info: 'bell', warn: 'alert' };
+
 function toast(msg, type = '') {
   const t = document.getElementById('toast');
-  t.textContent = msg;
+  t.className = 'toast' + (type ? ' ' + type : '');
+  const glifo = TOAST_ICONS[type];
+  t.innerHTML = glifo ? icon(glifo, 'ico-sm') + '<span></span>' : '<span></span>';
+  t.querySelector('span').textContent = msg;
+  // reflow para que la transición vuelva a correr si ya estaba visible
+  void t.offsetWidth;
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2800);
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('show'), 2800);
 }
 
 function exportVetcare(type) {
@@ -68,7 +80,7 @@ function applyTheme() {
   document.documentElement.setAttribute('data-theme', db.settings.theme);
   var ic = document.getElementById('themeIcon');
   var lb = document.getElementById('themeLabel');
-  if (ic) ic.textContent = db.settings.theme === 'dark' ? '☀' : '☾';
+  if (ic) ic.innerHTML = icon(db.settings.theme === 'dark' ? 'sun' : 'moon', 'ico-sm');
   if (lb) lb.textContent = db.settings.theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro';
 }
 function toggleTheme() {
