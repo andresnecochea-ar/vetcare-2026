@@ -82,7 +82,7 @@ function renderPetItems(pets) {
 function renderPetList(pets) {
   if (pets.length === 0) return '<div class="empty-state"><div class="ico">◉</div>Sin pacientes registrados.</div>';
   return `<div class="table-wrap pet-list-table"><table>
-    <thead><tr><th></th><th>Nombre</th><th class="col-sec">Especie/Raza</th><th class="col-sec">Sexo</th><th class="col-sec">Edad</th><th>Tutor</th><th class="col-sec">Estado</th><th></th></tr></thead>
+    <thead><tr><th></th><th>Nombre</th><th class="col-sec">Especie/Raza</th><th class="col-sec">Sexo</th><th class="col-sec">Edad</th><th>Tutor</th><th>Pendientes</th><th class="col-sec">Estado</th><th></th></tr></thead>
     <tbody>${pets.map(p => {
       const owners = (p.ownerIds||[]).map(id=>db.owners.find(o=>o.id===id)).filter(Boolean);
       const age = p.birthdate ? calcAge(p.birthdate) : '—';
@@ -94,6 +94,7 @@ function renderPetList(pets) {
         <td class="col-sec">${escapeHtml(p.sex||'—')}</td>
         <td class="col-sec">${age}</td>
         <td>${owners.length ? escapeHtml(owners[0].name) : '—'}</td>
+        <td>${petAlertBadgeHTML(p) || '<span class="pet-alert-clear">Al día</span>'}</td>
         <td class="col-sec">${statusTag}</td>
         <td><div class="actions"><button class="btn btn-sm" onclick="openPetDetail('${p.id}')">Ver</button><button class="btn btn-sm" onclick="openPetModal('${p.id}')">Editar</button></div></td>
       </tr>`;
@@ -135,6 +136,7 @@ function petCardHTML(p) {
         <div class="meta">${escapeHtml(p.species || '—')} · ${escapeHtml(p.breed || '—')}</div>
         <div class="meta">${age} ${p.sex ? '· ' + escapeHtml(p.sex) : ''}</div>
         <div class="tags">
+          ${petAlertBadgeHTML(p, true)}
           ${owners.length ? `<span class="tag">${escapeHtml(owners[0].name)}${owners.length > 1 ? ` +${owners.length-1}` : ''}</span>` : ''}
           ${p.allergies ? '<span class="tag warning">Alergias</span>' : ''}
           ${p.chronicConditions ? '<span class="tag danger">Crónico</span>' : ''}
@@ -865,6 +867,44 @@ function encounterInvoiceActionHTML(encounterId) {
   return `<button class="btn btn-sm encounter-receipt-link" onclick="openInvoiceModal('${invoice.id}')">Recibo #${escapeHtml(number)}</button>`;
 }
 
+function closeStudyRowHTML() {
+  const opts = STUDY_TYPES.map(t => `<option value="${t}">${t}</option>`).join('');
+  return `
+    <div class="close-study-row">
+      <select class="close-study-type" aria-label="Tipo de estudio">${opts}</select>
+      <input class="close-study-title" type="text" placeholder="Detalle (ej: hemograma de control)">
+      <input class="close-study-date" type="date" aria-label="Fecha prevista">
+      <button class="btn btn-sm btn-danger" type="button" onclick="this.closest('.close-study-row').remove()" title="Quitar estudio">${iconX()}</button>
+    </div>`;
+}
+
+function toggleCloseStudies() {
+  const enabled = Boolean(document.getElementById('closeRequestStudies')?.checked);
+  const fields = document.getElementById('closeStudyFields');
+  if (!fields) return;
+  fields.hidden = !enabled;
+  fields.querySelectorAll('input,select,button').forEach(element => { element.disabled = !enabled; });
+}
+
+function addCloseStudyRow() {
+  const container = document.getElementById('closeStudyRows');
+  if (container) container.insertAdjacentHTML('beforeend', closeStudyRowHTML());
+}
+
+// Estudios que la consulta deja pedidos: nacen pendientes y sin link.
+function collectCloseStudies() {
+  if (!document.getElementById('closeRequestStudies')?.checked) return [];
+  const studies = [];
+  document.querySelectorAll('.close-study-row').forEach(row => {
+    const type = row.querySelector('.close-study-type')?.value || '';
+    const title = row.querySelector('.close-study-title')?.value.trim() || '';
+    const date = row.querySelector('.close-study-date')?.value || '';
+    if (!type && !title) return;
+    studies.push({ id: uid(), type, title: title || type, date, url: '', status: 'requested' });
+  });
+  return studies;
+}
+
 function encounterChargeRowHTML(item) {
   return `
     <div class="encounter-charge-row">
@@ -926,6 +966,17 @@ function openEncounterCloseReview(petId, editId) {
               : 'La información clínica principal está completa.'}
           </div>
           <div class="close-review-meta"><span>Fecha <strong>${formatDate(date)}</strong></span><span>Profesional <strong>${escapeHtml(document.getElementById('hVet')?.value || 'Sin indicar')}</strong></span></div>
+
+          <div class="close-review-studies">
+            <label class="billing-toggle">
+              <input type="checkbox" id="closeRequestStudies">
+              <span><strong>Dejar estudios solicitados (opcional)</strong><small>Quedan pendientes en Seguimiento hasta que se cargue el resultado.</small></span>
+            </label>
+            <div id="closeStudyFields" hidden>
+              <div id="closeStudyRows">${closeStudyRowHTML()}</div>
+              <button class="btn btn-sm" type="button" onclick="addCloseStudyRow()">+ Agregar estudio</button>
+            </div>
+          </div>
         </section>
 
         ${canUseReceipts ? `<section class="close-review-card close-review-billing">
@@ -957,6 +1008,8 @@ function openEncounterCloseReview(petId, editId) {
       <button class="btn btn-success" id="finalizeEncounterCloseButton" onclick="finalizeEncounterClose('${petId}','${editId}','${encounterId}','${closeOperationId}','${closeTimestamp}')">Cerrar consulta</button>
     </div>
   `, true);
+  document.getElementById('closeRequestStudies')?.addEventListener('change', toggleCloseStudies);
+  toggleCloseStudies();
   if (!existingInvoice) {
     document.getElementById('closeCreateInvoice')?.addEventListener('change', toggleEncounterBilling);
     toggleEncounterBilling();
@@ -1012,6 +1065,7 @@ async function finalizeEncounterClose(petId, editId, encounterId, closeOperation
     }
     invoice = { ownerId, items, total };
   }
+  const studies = collectCloseStudies();
   const closeButton = document.getElementById('finalizeEncounterCloseButton');
   if (closeButton) {
     closeButton.disabled = true;
@@ -1023,6 +1077,7 @@ async function finalizeEncounterClose(petId, editId, encounterId, closeOperation
       idempotencyKey: `clinical-close:${closeOperationId}`,
       closedAt: closeTimestamp,
       invoice,
+      studies,
     });
   } finally {
     const pendingButton = document.getElementById('finalizeEncounterCloseButton');
@@ -1107,6 +1162,11 @@ async function saveHistory(petId, editId, forcedStatus, closeBundle) {
       linkedAppointment.completedAt = status === 'closed' ? (linkedAppointment.completedAt || now) : '';
     }
   }
+  const requestedStudies = (closeBundle?.studies || []).filter(study => !(pet.studies || []).some(s => s.id === study.id));
+  if (requestedStudies.length) {
+    pet.studies = pet.studies || [];
+    pet.studies.push(...requestedStudies);
+  }
   let receiptCreated = false;
   let createdInvoice = null;
   if (closeBundle?.invoice && !encounterInvoice(entry.id)) {
@@ -1145,6 +1205,7 @@ async function saveHistory(petId, editId, forcedStatus, closeBundle) {
           appointment: linkedAppointment,
           reminder: createdReminder,
           invoice: createdInvoice,
+          studies: requestedStudies,
         },
       });
       pet.revision = result.petRevision;

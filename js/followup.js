@@ -267,6 +267,91 @@ function renderPetFollowUp(pet) {
     </div>`;
 }
 
+// ----------------------------------------
+// Señal agregada: los pendientes de toda la veterinaria, no de un paciente.
+// ----------------------------------------
+
+// Pendientes que ya requieren acción, ordenados por urgencia y con el paciente
+// al que pertenecen. Alimenta la vista Hoy.
+function clinicFollowUpAlerts() {
+  const rows = [];
+  (db.pets || []).forEach(pet => {
+    const summary = petFollowUpSummary(pet);
+    summary.items
+      .filter(item => item.state === 'overdue' || item.state === 'today')
+      .forEach(item => rows.push({ pet, item }));
+    summary.open.forEach(entry => rows.push({
+      pet,
+      item: {
+        kind: 'encounter',
+        label: 'Consulta sin cerrar',
+        title: entry.title || 'Sin motivo registrado',
+        detail: encounterStatusLabel(entry.status),
+        date: entry.date,
+        days: followUpDaysUntil(entry.date),
+        state: 'open'
+      }
+    }));
+  });
+  const weight = { overdue: 0, today: 1, open: 2 };
+  return rows.sort((a, b) =>
+    (weight[a.item.state] - weight[b.item.state]) ||
+    ((a.item.days ?? 0) - (b.item.days ?? 0)) ||
+    String(a.pet.name || '').localeCompare(String(b.pet.name || '')));
+}
+
+function renderTodayFollowUp(limit = 6) {
+  const rows = clinicFollowUpAlerts();
+  const overdue = rows.filter(r => r.item.state === 'overdue').length;
+  const today = rows.filter(r => r.item.state === 'today').length;
+  const open = rows.filter(r => r.item.state === 'open').length;
+  const visible = rows.slice(0, limit);
+  const rest = rows.length - visible.length;
+
+  return `
+    <div class="today-followup${rows.length ? '' : ' is-clear'}">
+      <div class="today-col-head">
+        <svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.4-7 10-7 10Z"/><path d="M5.5 12.4h3l1.6-2.6 1.8 4.2 1.5-2.4h5.1"/></svg>
+        <h3>Continuidad cl&iacute;nica</h3>
+        <div class="followup-chips">
+          <span class="followup-chip${overdue ? ' is-overdue' : ''}">${overdue} vencido${overdue === 1 ? '' : 's'}</span>
+          <span class="followup-chip${today ? ' is-today' : ''}">${today} hoy</span>
+          <span class="followup-chip">${open} sin cerrar</span>
+        </div>
+      </div>
+      ${rows.length === 0
+        ? '<div class="empty-state">Nada vencido ni pendiente para hoy. La continuidad cl&iacute;nica est&aacute; al d&iacute;a.</div>'
+        : `<div class="today-followup-list">
+            ${visible.map(({ pet, item }) => `
+              <div class="followup-item followup-${item.state}">
+                <div class="followup-when">
+                  <strong>${escapeHtml(item.state === 'open' ? (item.detail || 'Sin cerrar') : followUpWhen(item.days))}</strong>
+                  <small>${item.date ? formatDate(item.date) : 'Sin fecha'}</small>
+                </div>
+                <div class="followup-body">
+                  <span class="followup-kind">${escapeHtml(pet.name)} &middot; ${escapeHtml(item.label)}</span>
+                  <strong>${escapeHtml(item.title)}</strong>
+                </div>
+                <div class="followup-actions"><button class="btn btn-sm" onclick="openPetDetail('${pet.id}')">Abrir ficha</button></div>
+              </div>`).join('')}
+          </div>
+          ${rest > 0 ? `<div class="today-followup-rest">y ${rest} pendiente${rest === 1 ? '' : 's'} m&aacute;s en las fichas</div>` : ''}`}
+    </div>`;
+}
+
+// Marca compacta para el listado de pacientes.
+function petAlertBadgeHTML(pet, compact) {
+  const summary = petFollowUpSummary(pet);
+  if (summary.overdue) {
+    return `<span class="tag danger pet-alert" title="Pendientes vencidos">${summary.overdue} vencido${summary.overdue === 1 ? '' : 's'}</span>`;
+  }
+  if (summary.today) return '<span class="tag warning pet-alert" title="Pendientes de hoy">Hoy</span>';
+  if (summary.open.length) {
+    return `<span class="tag pet-alert" title="Consultas sin cerrar">${compact ? 'Sin cerrar' : summary.open.length + ' sin cerrar'}</span>`;
+  }
+  return '';
+}
+
 // Superficie mínima para las pruebas automatizadas del cálculo de pendientes.
 globalThis.VetCareFollowUp = {
   daysUntil: followUpDaysUntil,
@@ -274,7 +359,8 @@ globalThis.VetCareFollowUp = {
   when: followUpWhen,
   items: petFollowUpItems,
   summary: petFollowUpSummary,
-  headline: followUpHeadline
+  headline: followUpHeadline,
+  clinicAlerts: clinicFollowUpAlerts
 };
 
 // Crea el aviso del próximo control indicado en una consulta.

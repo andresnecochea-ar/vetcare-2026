@@ -5,7 +5,7 @@
   "compatibility_date": "2026-07-28",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    "APP_VERSION": "2.7.0",
+    "APP_VERSION": "2.8.0",
     "ALLOWED_ORIGINS": "https://andresnecochea-ar.github.io,null"
   },
   "secrets": {

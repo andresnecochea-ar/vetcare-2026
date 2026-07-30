@@ -852,6 +852,13 @@ async function closeClinicalEncounter(
     }
   }
 
+  // Estudios que la consulta deja pedidos: entran en la misma transacción para
+  // que un cierre confirmado nunca pierda el pendiente.
+  const requestedStudies = arrayOfObjects(body.studies).filter((study) => optionalString(study.id));
+  if (requestedStudies.length > 20) {
+    throw new HttpError('Demasiados estudios en un mismo cierre');
+  }
+
   const historyColumns = [
     'date', 'type', 'title', 'description', 'treatment', 'vet',
     'weight', 'temp', 'hr', 'exam', 'diagnosis', 'nextControl',
@@ -962,6 +969,32 @@ async function closeClinicalEncounter(
     );
   }
 
+  for (const study of requestedStudies) {
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO pet_studies (id,pet_id,type,title,date,url,status)
+         SELECT ?,?,?,?,?,?,?
+         WHERE EXISTS (
+           SELECT 1 FROM clinical_close_operations
+           WHERE idempotency_key=? AND claim_token=?
+         )
+         ON CONFLICT(id) DO UPDATE SET
+           type=excluded.type,title=excluded.title,date=excluded.date,
+           url=excluded.url,status=excluded.status`,
+      ).bind(
+        optionalString(study.id),
+        petId,
+        stringValue(study.type),
+        stringValue(study.title),
+        stringValue(study.date),
+        stringValue(study.url),
+        stringValue(study.status, 'requested'),
+        idempotencyKey,
+        claimToken,
+      ),
+    );
+  }
+
   if (invoiceId) {
     statements.push(
       env.DB.prepare(
@@ -1024,7 +1057,12 @@ async function closeClinicalEncounter(
       'close',
       'clinical_encounter',
       encounterId,
-      JSON.stringify(['encounter', 'appointment', ...(reminderId ? ['reminder'] : []), ...(invoiceId ? ['invoice'] : [])]),
+      JSON.stringify([
+        'encounter', 'appointment',
+        ...(reminderId ? ['reminder'] : []),
+        ...(invoiceId ? ['invoice'] : []),
+        ...(requestedStudies.length ? ['studies'] : []),
+      ]),
       now,
       idempotencyKey,
       claimToken,

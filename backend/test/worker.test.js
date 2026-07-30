@@ -67,7 +67,7 @@ describe('VetCare Worker', () => {
     expect(body).toMatchObject({
       status: 'ok',
       database: 'ready',
-      version: '2.7.0',
+      version: '2.8.0',
       schemaVersion: 11,
     });
 
@@ -140,6 +140,21 @@ describe('VetCare Worker', () => {
     // El control de enc-3 ya tiene aviso: se cuenta una sola vez.
     expect(summary.items.filter(item => item.date === dayKey(10))).toHaveLength(1);
     expect(followUp.headline(summary)).toMatchObject({ tone: 'overdue' });
+
+    // Señal agregada de la veterinaria: solo lo vencido, lo de hoy y lo abierto,
+    // con lo más urgente primero y el paciente al que pertenece.
+    globalThis.encounterStatusLabel = () => 'Pendiente de resultados';
+    const alDia = { id: 'pet-2', name: 'Ada', history: [], studies: [], vaccines: [] };
+    globalThis.db.pets.push(alDia);
+    const alerts = followUp.clinicAlerts();
+    expect(alerts.map(row => [row.pet.id, row.item.state])).toEqual([
+      ['pet-1', 'overdue'],
+      ['pet-1', 'overdue'],
+      ['pet-1', 'today'],
+      ['pet-1', 'open'],
+    ]);
+    expect(alerts.every(row => row.item.state !== 'soon')).toBe(true);
+    expect(alerts.some(row => row.pet.id === alDia.id)).toBe(false);
   });
 
   it('acepta localhost con cualquier puerto y bloquea otros orígenes', async () => {
@@ -701,6 +716,57 @@ describe('VetCare Worker', () => {
     });
     expect((await env.DB.prepare('SELECT COUNT(*) AS total FROM invoices WHERE encounterId = ?')
       .bind(invoicedEncounterId).first()).total).toBe(1);
+
+    // El cierre puede dejar estudios pedidos: entran en la misma transacción y
+    // el reintento no los duplica.
+    const studyEncounterId = crypto.randomUUID();
+    const requestedStudyId = crypto.randomUUID();
+    const closeWithStudies = {
+      ...atomicClose,
+      idempotencyKey: `close-${crypto.randomUUID()}`,
+      expectedRevision: 3,
+      encounter: {
+        ...atomicClose.encounter,
+        id: studyEncounterId,
+        appointmentId: '',
+        title: 'Consulta que deja estudios pedidos',
+      },
+      appointment: null,
+      reminder: null,
+      invoice: null,
+      studies: [{
+        id: requestedStudyId,
+        type: 'Ecografía',
+        title: 'Ecografía abdominal de control',
+        date: '2026-08-10',
+        url: '',
+        status: 'requested',
+      }],
+    };
+    const closedWithStudies = await jsonResponse('/api/clinical-close', {
+      method: 'POST',
+      headers: authenticated,
+      body: closeWithStudies,
+    });
+    expect(closedWithStudies.response.status).toBe(200);
+    expect(closedWithStudies.body).toMatchObject({ petRevision: 4, replayed: false });
+    const storedStudy = await env.DB.prepare('SELECT pet_id, status, url, title FROM pet_studies WHERE id = ?')
+      .bind(requestedStudyId).first();
+    expect(storedStudy).toMatchObject({
+      pet_id: atomicPet.id,
+      status: 'requested',
+      url: '',
+      title: 'Ecografía abdominal de control',
+    });
+    const replayedWithStudies = await jsonResponse('/api/clinical-close', {
+      method: 'POST',
+      headers: authenticated,
+      body: closeWithStudies,
+    });
+    expect(replayedWithStudies.response.status).toBe(200);
+    expect(replayedWithStudies.body).toMatchObject({ petRevision: 4, replayed: true });
+    expect((await env.DB.prepare('SELECT COUNT(*) AS total FROM pet_studies WHERE pet_id = ? AND status = ?')
+      .bind(atomicPet.id, 'requested').first()).total).toBe(1);
 
     const receptionEmail = `recepcion-${crypto.randomUUID()}@example.com`;
     const receptionPassword = 'otra-clave-segura';

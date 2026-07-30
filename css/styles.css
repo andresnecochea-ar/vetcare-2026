@@ -1830,6 +1830,45 @@ html, body { max-width:100%; overflow-x:hidden; }
   .followup-actions .btn { flex: 1; }
 }
 
+/* Continuidad clinica en la vista Hoy */
+.today-followup {
+  margin-bottom: 20px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-alt);
+}
+.today-followup .today-col-head { margin-bottom: 12px; }
+.today-followup .today-col-head .followup-chips { flex-shrink: 0; }
+.today-followup.is-clear .today-col-head .ico { color: var(--text-mute); }
+.today-followup .empty-state { padding: 18px 8px; font-size: var(--fs-sm); }
+.today-followup .followup-item { background: var(--bg-soft); }
+.today-followup-list { display: flex; flex-direction: column; }
+.today-followup-rest {
+  margin-top: 4px;
+  color: var(--text-mute);
+  font-size: var(--fs-xs);
+}
+
+/* Pendientes en el listado de pacientes */
+.pet-alert { white-space: nowrap; }
+.pet-alert-clear { color: var(--text-mute); font-size: var(--fs-xs); }
+
+/* Estudios pedidos desde el cierre de la consulta */
+.close-review-studies { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.close-study-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 140px) auto;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.close-study-row select,
+.close-study-row input { min-width: 0; }
+@media (max-width: 768px) {
+  .close-study-row { grid-template-columns: 1fr 1fr; }
+  .close-study-row .close-study-title { grid-column: 1 / -1; }
+}
+
 /* Consulta clinica como espacio de trabajo */
 .encounter-page { max-width: 1260px; margin: 0 auto; }
 .encounter-header {

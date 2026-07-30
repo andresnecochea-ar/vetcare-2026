@@ -176,6 +176,7 @@ function renderToday() {
       <div class="title"><small>${new Date().toLocaleDateString('es-ES',{weekday:'long'})}</small><h1>Hoy</h1></div>
       <div style="font-size:var(--fs-sm);color:var(--text-soft)">${new Date().toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'})}</div>
     </div>
+    ${renderTodayFollowUp()}
     <div class="today-grid">
       <div class="today-col">
         <div class="today-col-head"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"> <rect x="4" y="4.5" width="16" height="15.5" rx="3"/> <path d="M8 3v3M16 3v3M4 8.5h16"/> <path d="M8.2 14l2.2 2.2 5.2-5.2"/> </svg><h3>Turnos clínicos</h3><span class="count">${dayAppts.length}</span></div>
