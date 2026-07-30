@@ -474,7 +474,10 @@ async function getPetsFull(env: Env): Promise<JsonObject[]> {
       vaccines: (vaccines[id] ?? []).map(withoutPetId),
       dewormings: (dewormings[id] ?? []).map(withoutPetId),
       images: (images[id] ?? []).map(withoutPetId),
-      studies: (studies[id] ?? []).map(withoutPetId),
+      studies: (studies[id] ?? []).map(withoutPetId).map((study) => ({
+        ...study,
+        results: parseJson(study.results, {}),
+      })),
       ownerIds: (owners[id] ?? []).map((row) => stringValue(row.owner_id)).filter(Boolean),
     };
   });
@@ -485,6 +488,7 @@ type PetChildConfig = {
   table: string;
   columns: readonly string[];
   defaults?: Readonly<Record<string, string>>;
+  jsonColumns?: readonly string[];
 };
 
 const PET_CHILDREN: readonly PetChildConfig[] = [
@@ -516,8 +520,9 @@ const PET_CHILDREN: readonly PetChildConfig[] = [
   {
     bodyKey: 'studies',
     table: 'pet_studies',
-    columns: ['type', 'title', 'date', 'url', 'status'],
+    columns: ['type', 'title', 'date', 'url', 'status', 'panel', 'results'],
     defaults: { status: 'received' },
+    jsonColumns: ['results'],
   },
 ];
 
@@ -545,7 +550,9 @@ function gatedPetChildren(
       const values = [
         rowId,
         petId,
-        ...config.columns.map((column) => stringValue(row[column], config.defaults?.[column] ?? '')),
+        ...config.columns.map((column) => (config.jsonColumns?.includes(column)
+          ? JSON.stringify(row[column] ?? {})
+          : stringValue(row[column], config.defaults?.[column] ?? ''))),
       ];
       statements.push(
         env.DB.prepare(
@@ -1182,8 +1189,8 @@ async function health(env: Env): Promise<{
         AND (
           SELECT COUNT(*)
           FROM pragma_table_info('pet_studies')
-          WHERE name = 'status'
-        ) = 1
+          WHERE name IN ('status', 'panel', 'results')
+        ) = 3
         AND (
           SELECT COUNT(*)
           FROM pragma_table_info('pet_vaccines')
@@ -1213,7 +1220,7 @@ async function health(env: Env): Promise<{
     status: ready ? 'ok' : 'degraded',
     version: stringValue(env.APP_VERSION, 'unknown'),
     database: ready ? 'ready' : 'migrations-pending',
-    schemaVersion: ready ? 12 : 0,
+    schemaVersion: ready ? 13 : 0,
   };
 }
 

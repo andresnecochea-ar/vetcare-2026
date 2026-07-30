@@ -67,8 +67,8 @@ describe('VetCare Worker', () => {
     expect(body).toMatchObject({
       status: 'ok',
       database: 'ready',
-      version: '2.10.0',
-      schemaVersion: 12,
+      version: '2.11.0',
+      schemaVersion: 13,
     });
 
     // Los estudios cargados antes de 0011 siguen contando como resultado recibido.
@@ -158,6 +158,41 @@ describe('VetCare Worker', () => {
     expect(alerts.some(row => row.pet.id === alDia.id)).toBe(false);
   });
 
+  it('compara resultados de laboratorio contra los valores de referencia', async () => {
+    globalThis.db = { settings: {} };
+    await import('../../js/labs.js');
+    const labs = globalThis.VetCareLabs;
+
+    expect(labs.species({ species: 'Perro' })).toBe('dog');
+    expect(labs.species({ species: 'Felino común' })).toBe('cat');
+    expect(labs.species({ species: 'Conejo' })).toBe('');
+
+    // Canino: hematocrito bajo, leucocitos altos, glucosa normal.
+    const rows = labs.evaluate('hemogram', { hto: '30', wbc: '21000', hb: '' }, 'dog');
+    const byKey = Object.fromEntries(rows.map(row => [row.key, row]));
+    expect(byKey.hto).toMatchObject({ status: 'low', filled: true });
+    expect(byKey.wbc).toMatchObject({ status: 'high' });
+    expect(byKey.hb).toMatchObject({ filled: false, status: '' });
+
+    // El mismo hematocrito es normal en un felino.
+    expect(labs.evaluate('hemogram', { hto: '30' }, 'cat').find(r => r.key === 'hto').status).toBe('normal');
+    // Sin especie conocida no se compara nada.
+    expect(labs.evaluate('hemogram', { hto: '30' }, '').find(r => r.key === 'hto').status).toBe('');
+    // Los campos de texto y de cruces nunca se marcan.
+    expect(labs.evaluate('urine', { color: 'Ámbar', proteinas: '++' }, 'dog')
+      .filter(row => row.filled).every(row => row.status === '')).toBe(true);
+
+    const study = { panel: 'hemogram', results: { hto: '30', wbc: '21000' } };
+    expect(labs.hasResults(study)).toBe(true);
+    expect(labs.outOfRange(study, 'dog').map(row => row.key)).toEqual(['hto', 'wbc']);
+    expect(labs.hasResults({ panel: 'hemogram', results: {} })).toBe(false);
+
+    // Un rango editado en Opciones pisa al orientativo.
+    globalThis.db.settings.labRanges = { 'hemogram.hto.dog': [25, 60] };
+    expect(labs.evaluate('hemogram', { hto: '30' }, 'dog').find(r => r.key === 'hto').status).toBe('normal');
+    globalThis.db.settings = {};
+  });
+
   it('calcula el plan sanitario y sus vencimientos', async () => {
     const dayKey = (offset) => {
       const date = new Date();
@@ -221,6 +256,9 @@ describe('VetCare Worker', () => {
     globalThis.studyIsPending = (study) => (study && study.status) === 'requested';
     globalThis.followUpDaysUntil = () => 0;
     globalThis.followUpWhen = () => 'Hoy';
+    globalThis.labSpecies = () => 'dog';
+    globalThis.labSummaryHTML = () => '';
+    globalThis.LAB_PANELS = globalThis.VetCareLabs?.panels || {};
     const pet = {
       id: 'pet-tl',
       name: 'Nube',
@@ -385,6 +423,8 @@ describe('VetCare Worker', () => {
         date: '2026-07-03',
         url: 'https://drive.google.com/example',
         status: 'received',
+        panel: 'hemogram',
+        results: { hto: '30', wbc: '21000' },
       }, {
         id: crypto.randomUUID(),
         type: 'Análisis de laboratorio',
@@ -392,6 +432,8 @@ describe('VetCare Worker', () => {
         date: '2026-08-05',
         url: '',
         status: 'requested',
+        panel: '',
+        results: {},
       }],
     };
     const savedPet = await jsonResponse('/api/pets', {

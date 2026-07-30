@@ -409,8 +409,9 @@ function renderPetDetailLegacy(id) {
                 ${s.url
                   ? `<a href="${escapeAttr(s.url)}" target="_blank" rel="noopener" class="study-title">${escapeHtml(s.title || s.type || 'Estudio')}</a>`
                   : `<span class="study-title">${escapeHtml(s.title || s.type || 'Estudio')}</span>`}
-                <div class="study-meta">${studyIsPending(s) ? '<span class="study-pending-tag">Pendiente</span>' : ''}${escapeHtml(s.type || 'Estudio')}${s.date ? ' · ' + formatDate(s.date) : ''}</div>
+                <div class="study-meta">${studyIsPending(s) ? '<span class="study-pending-tag">Pendiente</span>' : ''}${escapeHtml(s.type || 'Estudio')}${s.date ? ' · ' + formatDate(s.date) : ''}${s.panel ? ' · ' + escapeHtml(LAB_PANELS[s.panel]?.label || '') : ''} ${labSummaryHTML(s, labSpecies(pet))}</div>
               </div>
+              ${s.panel ? `<button class="btn btn-sm" onclick="openStudyResults('${pet.id}','${s.id}')">${labHasResults(s) ? 'Ver resultados' : 'Cargar resultados'}</button>` : ''}
               ${canEditClinical() ? `${studyIsPending(s) ? `<button class="btn btn-sm" onclick="markStudyReceived('${pet.id}','${s.id}')">Marcar recibido</button>` : ''}
               <button class="btn btn-sm" onclick="editStudyLink('${pet.id}','${s.id}')">Editar</button>
               <button class="img-x study-x" onclick="deleteStudyLink('${pet.id}','${s.id}')">×</button>` : ''}
@@ -580,6 +581,10 @@ function studyModal(petId, study, studyId) {
           <option value="received" ${pending?'':'selected'}>Resultado disponible</option>
         </select></div>
       </div>
+      <div class="form-group"><label>Panel de laboratorio</label><select id="studyPanel">
+        <option value="">Sin panel (solo link o informe)</option>
+        ${Object.entries(LAB_PANELS).map(([key, panel]) => `<option value="${key}" ${study.panel===key?'selected':''}>${escapeHtml(panel.label)}</option>`).join('')}
+      </select><small style="color:var(--text-mute)">Si eleg&iacute;s un panel vas a poder cargar los valores y compararlos con las referencias.</small></div>
       <div class="form-row">
         <div class="form-group"><label>Fecha ${pending ? 'prevista' : 'del estudio'}</label><input type="date" id="studyDate" value="${study.date||''}"></div>
         <div class="form-group"><label>Título / descripción</label><input type="text" id="studyTitle" value="${escapeAttr(study.title||'')}" placeholder="Ej: Rx tórax control"></div>
@@ -644,13 +649,14 @@ function saveStudyLink(petId, studyId) {
     title: document.getElementById('studyTitle').value.trim(),
     date: document.getElementById('studyDate').value,
     url,
-    status
+    status,
+    panel: document.getElementById('studyPanel').value
   };
   if (studyId) {
     const s = pet.studies.find(x => x.id === studyId);
     Object.assign(s, data);
   } else {
-    pet.studies.push({ id: uid(), ...data });
+    pet.studies.push({ id: uid(), results: {}, ...data });
   }
   saveDB(studyId ? 'Estudio actualizado' : (status === 'requested' ? 'Estudio solicitado' : 'Estudio agregado'));
   closeModal();

@@ -73,6 +73,7 @@ function petTimelineEvents(pet) {
     });
   });
 
+  const species = labSpecies(pet);
   (pet.studies || []).forEach(study => {
     const pending = studyIsPending(study);
     events.push({
@@ -80,11 +81,13 @@ function petTimelineEvents(pet) {
       kind: 'study',
       date: study.date,
       title: study.title || study.type || 'Estudio',
-      subtitle: study.type || 'Estudio',
+      subtitle: [study.type || 'Estudio', study.panel ? LAB_PANELS[study.panel]?.label : ''].filter(Boolean).join(' · '),
       status: pending ? 'pending' : 'done',
       statusLabel: pending ? 'Pendiente' : 'Resultado disponible',
       statusClass: pending ? 'encounter-status-pending-results' : 'encounter-status-closed',
-      url: study.url || ''
+      url: study.url || '',
+      panel: study.panel || '',
+      labSummary: labSummaryHTML(study, species)
     });
   });
 
@@ -172,8 +175,9 @@ function timelineEventHTML(pet, event) {
     if (event.nextControl) details.push(`<p class="tl-next">Pr&oacute;ximo control: ${formatDate(event.nextControl)}</p>`);
     if (event.vet) details.push(`<p class="tl-vet">${escapeHtml(event.vet)}</p>`);
   }
-  if (event.kind === 'study' && event.url) {
-    details.push(`<p><a href="${escapeAttr(event.url)}" target="_blank" rel="noopener">Ver resultado</a></p>`);
+  if (event.kind === 'study') {
+    if (event.labSummary) details.push(`<p>${event.labSummary}</p>`);
+    if (event.url) details.push(`<p><a href="${escapeAttr(event.url)}" target="_blank" rel="noopener">Ver resultado</a></p>`);
   }
 
   const actions = [];
@@ -186,8 +190,9 @@ function timelineEventHTML(pet, event) {
       actions.push(`<button class="btn btn-sm btn-danger" onclick="deleteHistory('${pet.id}','${event.id}')" title="Eliminar consulta">${iconX()}</button>`);
     }
   }
-  if (event.kind === 'study' && canEditClinical()) {
-    actions.push(`<button class="btn btn-sm" onclick="editStudyLink('${pet.id}','${event.id}')">Editar</button>`);
+  if (event.kind === 'study') {
+    if (event.panel) actions.push(`<button class="btn btn-sm" onclick="openStudyResults('${pet.id}','${event.id}')">Resultados</button>`);
+    if (canEditClinical()) actions.push(`<button class="btn btn-sm" onclick="editStudyLink('${pet.id}','${event.id}')">Editar</button>`);
   }
 
   return `

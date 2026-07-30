@@ -1,0 +1,2 @@
+ALTER TABLE pet_studies ADD COLUMN panel TEXT NOT NULL DEFAULT '';
+ALTER TABLE pet_studies ADD COLUMN results TEXT NOT NULL DEFAULT '{}';
