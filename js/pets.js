@@ -818,7 +818,13 @@ function renderEncounter() {
           </div>
           <div class="encounter-section">
             <div class="encounter-section-heading"><span>3</span><div><h2>Evaluaci&oacute;n y plan</h2><p>Hallazgos, diagn&oacute;stico, tratamiento e indicaciones.</p></div></div>
-            <div class="form-group"><label for="hExam">Examen f&iacute;sico</label><textarea id="hExam" rows="4" placeholder="Hallazgos del examen f&iacute;sico">${textValue('exam')}</textarea></div>
+            <div class="form-group">
+              <div class="exam-template-bar">
+                <label for="hExam">Examen f&iacute;sico</label>
+                <span><select id="hExamTemplate" aria-label="Plantilla de examen">${examTemplateOptionsHTML()}</select><button class="btn btn-sm" type="button" onclick="applyExamTemplate()">Usar plantilla</button></span>
+              </div>
+              <textarea id="hExam" rows="6" placeholder="Hallazgos del examen f&iacute;sico">${textValue('exam')}</textarea>
+            </div>
             <div class="form-group"><label for="hDiag">Diagn&oacute;stico</label><input type="text" id="hDiag" value="${attrValue('diagnosis')}" placeholder="Presuntivo o definitivo"></div>
             <div class="form-group"><label for="hTreat">Tratamiento e indicaciones</label><textarea id="hTreat" rows="4" placeholder="Medicamentos, dosis, duraci&oacute;n e indicaciones">${textValue('treatment')}</textarea></div>
             <div class="form-row"><div class="form-group"><label for="hNext">Pr&oacute;ximo control</label><input type="date" id="hNext" value="${attrValue('nextControl')}"></div><div class="form-group"><label for="hDesc">Observaciones</label><input type="text" id="hDesc" value="${attrValue('description')}" placeholder="Notas adicionales"></div></div>
@@ -1222,18 +1228,9 @@ function printHistEntry(petId, hId) {
   const pet = db.pets.find(p => p.id === petId);
   const h = (pet&&pet.history)?pet.history.find(x=>x.id===hId):null;
   if (!pet||!h) return;
-  const owner = pet.ownerIds&&pet.ownerIds[0]?db.owners.find(o=>o.id===pet.ownerIds[0]):null;
-  const w = window.open('','_blank');
-  w.document.write('<!DOCTYPE html><html><head><title>Historia Clinica</title>'
-    +'<style>body{font-family:Georgia,serif;padding:40px;max-width:680px;margin:auto;color:#1a1a1a}'
-    +'h1{font-size:1.5rem;margin-bottom:4px}h2{font-size:.95rem;margin:18px 0 5px;border-bottom:1px solid #ddd;padding-bottom:3px;text-transform:uppercase;letter-spacing:.05em;color:#555}'
-    +'.meta{color:#666;font-size:.9rem;margin-bottom:20px;padding:10px;background:#f9f9f9;border-radius:4px}'
-    +'.vitals{display:flex;gap:20px;background:#f1e7fb;padding:12px;border-radius:6px;margin:12px 0}'
-    +'.vit{text-align:center}.vit strong{display:block;font-size:1.2rem}.vit small{color:#666;font-size:.8rem}'
-    +'p{margin:6px 0;line-height:1.7}@media print{button{display:none}}</style></head><body>'
-    +'<h1>'+escapeHtml(db.clinicName||'VetCare')+' \u2014 Historia Cl\u00ednica</h1>'
-    +'<div class="meta">Paciente: <strong>'+escapeHtml(pet.name)+'</strong> \u00b7 '+(pet.species||'')+' '+(pet.breed||'')+'<br>'
-    +'Tutor: '+(owner?escapeHtml(owner.name):'\u2014')+' \u00b7 Fecha: '+formatDate(h.date)+' \u00b7 Tipo: '+(h.type||'Consulta')+' \u00b7 Prof: '+(h.vet||'\u2014')+'</div>'
+  printDocument('Historia cl\u00ednica',
+    documentPatientMeta(pet)
+    +'<p style="color:#666;font-size:.9rem">Fecha: '+formatDate(h.date)+' \u00b7 Tipo: '+escapeHtml(h.type||'Consulta')+' \u00b7 Profesional: '+escapeHtml(h.vet||'\u2014')+'</p>'
     +((h.weight||h.temp||h.hr)?('<div class="vitals">'
       +(h.weight?'<div class="vit"><strong>'+h.weight+' kg</strong><small>Peso</small></div>':'')
       +(h.temp?'<div class="vit"><strong>'+h.temp+' \u00b0C</strong><small>Temperatura</small></div>':'')
@@ -1245,8 +1242,7 @@ function printHistEntry(petId, hId) {
     +(h.treatment?'<h2>Tratamiento</h2><p>'+escapeHtml(h.treatment)+'</p>':'')
     +(h.description?'<h2>Observaciones</h2><p>'+escapeHtml(h.description)+'</p>':'')
     +(h.nextControl?'<h2>Pr\u00f3ximo control</h2><p>'+formatDate(h.nextControl)+'</p>':'')
-    +'<br><button onclick="window.print()">\uD83D\uDDB8 Imprimir</button></body></html>');
-  w.document.close();
+    +'<div class="sign">'+escapeHtml(h.vet||'Profesional actuante')+'</div>');
 }
 
 function deleteHistory(petId, hId) {

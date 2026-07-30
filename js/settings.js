@@ -4,7 +4,7 @@
    y de los recibos, y acceso al respaldo.
    ===================================================================== */
 
-var APP_VERSION = '2.11.0';
+var APP_VERSION = '2.12.0';
 
 function _ensureSettings(){
   if(!db.settings) db.settings = {};
@@ -14,6 +14,12 @@ function _ensureSettings(){
   if(db.settings.receiptAddress === undefined) db.settings.receiptAddress = '';
   if(db.settings.receiptPhone === undefined) db.settings.receiptPhone = '';
   if(db.settings.receiptTaxId === undefined) db.settings.receiptTaxId = '';
+  // Los datos de la clinica encabezan todos los impresos; las instalaciones que
+  // ya tenian direccion y telefono de recibos los heredan.
+  if(db.settings.clinicAddress === undefined) db.settings.clinicAddress = db.settings.receiptAddress || '';
+  if(db.settings.clinicPhone === undefined) db.settings.clinicPhone = db.settings.receiptPhone || '';
+  if(db.settings.clinicEmail === undefined) db.settings.clinicEmail = '';
+  if(db.settings.clinicLicense === undefined) db.settings.clinicLicense = '';
 }
 
 function openSettings(){
@@ -43,16 +49,27 @@ function openSettings(){
 
     + '<div class="settings-section">'
     + '  <div class="settings-label">Datos de la clinica</div>'
-    + '  <input class="input" id="setClinicName" placeholder="Nombre de la clinica" value="' + escapeAttr(s.clinicName) + '"' + (admin?'':' disabled') + '>'
+    + '  <input class="input" id="setClinicName" placeholder="Nombre de la clinica" value="' + escapeAttr(s.clinicName) + '" style="margin-bottom:8px"' + (admin?'':' disabled') + '>'
+    + '  <input class="input" id="setClinicAddress" placeholder="Direccion" value="' + escapeAttr(s.clinicAddress) + '" style="margin-bottom:8px"' + (admin?'':' disabled') + '>'
+    + '  <input class="input" id="setClinicPhone" placeholder="Telefono" value="' + escapeAttr(s.clinicPhone) + '" style="margin-bottom:8px"' + (admin?'':' disabled') + '>'
+    + '  <input class="input" id="setClinicEmail" placeholder="Email" value="' + escapeAttr(s.clinicEmail) + '" style="margin-bottom:8px"' + (admin?'':' disabled') + '>'
+    + '  <input class="input" id="setClinicLicense" placeholder="Matricula profesional" value="' + escapeAttr(s.clinicLicense) + '"' + (admin?'':' disabled') + '>'
+    + '  <small style="color:var(--text-mute);display:block;margin-top:6px">Encabezan la historia clinica, los certificados, el plan sanitario, los resultados de laboratorio y los recibos.</small>'
+    + (admin ? '  <button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="saveSettings()">Guardar datos</button>' : '')
+    + '</div>'
+
+    + '<div class="settings-section">'
+    + '  <div class="settings-label">Documentos clinicos</div>'
+    + '  <button class="btn btn-secondary" style="width:100%;margin-bottom:8px" onclick="openCertificateTemplate()">Texto del certificado medico</button>'
+    + '  <button class="btn btn-secondary" style="width:100%" onclick="openExamTemplates()">Plantillas de examen fisico</button>'
     + '</div>'
 
     + '<div class="settings-section">'
     + '  <div class="settings-label">Recibos (opcional)</div>'
     + '  <label class="settings-toggle"><input type="checkbox" id="setReceiptsEnabled"' + (s.receiptsEnabled?' checked':'') + (admin?'':' disabled') + ' onchange="toggleReceiptSettingsFields(this.checked)"><span><strong>Mostrar módulo de recibos</strong><small>La atención clínica funciona normalmente aunque esté desactivado.</small></span></label>'
     + '  <div id="receiptSettingsFields"' + (s.receiptsEnabled?'':' hidden') + '>'
-    + '    <input class="input" id="setRecAddr" placeholder="Direccion" value="' + escapeAttr(s.receiptAddress) + '" style="margin-bottom:8px"' + (admin?'':' disabled') + '>'
-    + '    <input class="input" id="setRecPhone" placeholder="Telefono" value="' + escapeAttr(s.receiptPhone) + '" style="margin-bottom:8px"' + (admin?'':' disabled') + '>'
     + '    <input class="input" id="setRecTax" placeholder="CUIT" value="' + escapeAttr(s.receiptTaxId) + '"' + (admin?'':' disabled') + '>'
+    + '    <small style="color:var(--text-mute);display:block;margin-top:6px">La direccion y el telefono del recibo salen de los datos de la clinica.</small>'
     + '  </div>'
     + (admin
       ? '  <button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="saveSettings()">Guardar datos</button>'
@@ -97,6 +114,10 @@ function saveSettings(){
   _ensureSettings();
   var byId = function(id){ return document.getElementById(id); };
   if(byId('setClinicName')) db.settings.clinicName = byId('setClinicName').value.trim();
+  if(byId('setClinicAddress')) db.settings.clinicAddress = byId('setClinicAddress').value.trim();
+  if(byId('setClinicPhone')) db.settings.clinicPhone = byId('setClinicPhone').value.trim();
+  if(byId('setClinicEmail')) db.settings.clinicEmail = byId('setClinicEmail').value.trim();
+  if(byId('setClinicLicense')) db.settings.clinicLicense = byId('setClinicLicense').value.trim();
   if(byId('setReceiptsEnabled')) db.settings.receiptsEnabled = byId('setReceiptsEnabled').checked;
   if(byId('setRecAddr')) db.settings.receiptAddress = byId('setRecAddr').value.trim();
   if(byId('setRecPhone')) db.settings.receiptPhone = byId('setRecPhone').value.trim();
