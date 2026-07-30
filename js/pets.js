@@ -435,18 +435,7 @@ function renderPetDetailLegacy(id) {
       </div>
 
       <div id="tab-vacc" class="tab-content">
-        <div class="section-title">
-          <h3>Vacunas aplicadas</h3>
-          ${canEditClinical() ? `<button class="btn btn-sm btn-primary" onclick="addVaccine('${pet.id}')">+ Vacuna</button>` : '<span class="tag">Solo lectura</span>'}
-        </div>
-        ${(pet.vaccines||[]).length === 0 ? '<div class="empty-state">Sin vacunas registradas</div>' : pet.vaccines.map(v => `
-          <div class="history-entry">
-            ${canEditClinical() ? `<button class="close-btn delete-x" onclick="deleteVaccine('${pet.id}','${v.id}')">&times;</button>` : ''}
-            <div class="date">${formatDate(v.date)}</div>
-            <div class="title">${escapeHtml(v.name)}</div>
-            ${v.nextDose ? `<div class="desc">Próxima dosis: ${formatDate(v.nextDose)}</div>` : ''}
-          </div>
-        `).join('')}
+        ${renderSanitaryTab(pet)}
       </div>
 
       <div id="tab-info" class="tab-content">
@@ -1269,62 +1258,9 @@ function deleteHistory(petId, hId) {
 });
 }
 
-function addVaccine(petId) {
-  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
-  showModal(`
-    <div class="modal-header"><h2>Registrar vacuna</h2><button class="close-btn" onclick="closeModal()">&times;</button></div>
-    <div class="modal-body">
-      <div class="form-group"><label>Vacuna</label><input type="text" id="vName" placeholder="Ej: Antirrábica"></div>
-      <div class="form-row">
-        <div class="form-group"><label>Fecha aplicación</label><input type="date" id="vDate" value="${localDateKey()}"></div>
-        <div class="form-group"><label>Próxima dosis</label><input type="date" id="vNext"></div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveVaccine('${petId}')">Guardar</button>
-    </div>
-  `);
-}
-
-function saveVaccine(petId) {
-  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
-  const pet = db.pets.find(p => p.id === petId);
-  pet.vaccines = pet.vaccines || [];
-  const next = document.getElementById('vNext').value;
-  const name = document.getElementById('vName').value;
-  pet.vaccines.push({
-    id: uid(),
-    name,
-    date: document.getElementById('vDate').value,
-    nextDose: next
-  });
-  if (next) {
-    db.reminders.push({
-      id: uid(),
-      title: `Refuerzo de ${name}`,
-      petId,
-      date: next,
-      type: 'vaccine',
-      completed: false,
-      notes: 'Recordatorio automático de vacuna'
-    });
-  }
-  saveDB('Vacuna registrada' + (next ? ' y recordatorio creado' : ''));
-  closeModal();
-  openPetDetail(petId);
-}
-
-function deleteVaccine(petId, vId) {
-  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
-  showConfirm('¿Eliminar este registro de vacuna?', () => {
-  const pet = db.pets.find(p => p.id === petId);
-  pet.vaccines = pet.vaccines.filter(v => v.id !== vId);
-  saveDB('Vacuna eliminada');
-  closeModal();
-  openPetDetail(petId);
-});
-}
+// El plan sanitario vive en sanitary.js; esto mantiene los accesos existentes.
+function addVaccine(petId) { openSanitaryModal(petId, 'vaccine'); }
+function addDeworming(petId) { openSanitaryModal(petId, 'deworming'); }
 
 // ========================================
 // [12] VISTA: TUTORES (OWNERS)

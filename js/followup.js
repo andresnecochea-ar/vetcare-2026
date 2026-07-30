@@ -97,19 +97,21 @@ function petFollowUpItems(pet) {
     });
   });
 
-  (pet.vaccines || []).forEach(vaccine => {
-    if (!vaccine.nextDose) return;
-    const days = followUpDaysUntil(vaccine.nextDose);
-    if (days === null || days > FOLLOWUP_HORIZON_DAYS) return;
-    items.push({
-      kind: 'vaccine',
-      label: 'Próxima dosis',
-      title: vaccine.name || 'Vacuna',
-      detail: 'Última aplicación: ' + formatDate(vaccine.date),
-      date: vaccine.nextDose,
-      days,
-      state: followUpState(days),
-      actions: clinical ? [{ label: 'Registrar aplicación', onclick: `addVaccine('${pet.id}')` }] : []
+  [['vaccine', pet.vaccines], ['deworming', pet.dewormings]].forEach(([kind, collection]) => {
+    (collection || []).forEach(record => {
+      if (!sanitaryHasPendingDose(record)) return;
+      const days = followUpDaysUntil(record.nextDose);
+      if (days === null || days > FOLLOWUP_HORIZON_DAYS) return;
+      items.push({
+        kind,
+        label: kind === 'vaccine' ? 'Próxima dosis' : 'Próxima desparasitación',
+        title: record.name || (kind === 'vaccine' ? 'Vacuna' : 'Antiparasitario'),
+        detail: 'Última aplicación: ' + formatDate(record.date),
+        date: record.nextDose,
+        days,
+        state: followUpState(days),
+        actions: clinical ? [{ label: 'Registrar aplicación', onclick: `openSanitaryModal('${pet.id}','${kind}')` }] : []
+      });
     });
   });
 

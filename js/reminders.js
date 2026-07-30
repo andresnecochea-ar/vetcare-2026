@@ -6,6 +6,7 @@ function renderReminders() {
       <div class="title"><small>Recordatorios para profesionales</small><h1>Avisos a pacientes</h1></div>
       <button class="btn btn-primary" onclick="openReminderModal()">+ Nuevo aviso</button>
     </div>
+    ${renderSanitaryDue()}
     <h3 style="margin-bottom:10px">Pendientes (${pending.length})</h3>
     ${pending.length === 0 ? '<div class="empty-state">Sin avisos pendientes</div>' : pending.map(r => {
       const pet = db.pets.find(p=>p.id===r.petId);

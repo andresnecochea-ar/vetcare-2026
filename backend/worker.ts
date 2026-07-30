@@ -448,9 +448,10 @@ function groupBy(rows: JsonObject[], key: string): Record<string, JsonObject[]> 
 
 async function getPetsFull(env: Env): Promise<JsonObject[]> {
   const pets = await listEntity(env, 'pets');
-  const [historyResult, vaccineResult, imageResult, studyResult, ownerResult] = await Promise.all([
+  const [historyResult, vaccineResult, dewormingResult, imageResult, studyResult, ownerResult] = await Promise.all([
     env.DB.prepare('SELECT * FROM pet_history').all<JsonObject>(),
     env.DB.prepare('SELECT * FROM pet_vaccines').all<JsonObject>(),
+    env.DB.prepare('SELECT * FROM pet_dewormings').all<JsonObject>(),
     env.DB.prepare('SELECT * FROM pet_images').all<JsonObject>(),
     env.DB.prepare('SELECT * FROM pet_studies').all<JsonObject>(),
     env.DB.prepare('SELECT * FROM pet_owners').all<JsonObject>(),
@@ -458,6 +459,7 @@ async function getPetsFull(env: Env): Promise<JsonObject[]> {
 
   const history = groupBy(historyResult.results ?? [], 'pet_id');
   const vaccines = groupBy(vaccineResult.results ?? [], 'pet_id');
+  const dewormings = groupBy(dewormingResult.results ?? [], 'pet_id');
   const images = groupBy(imageResult.results ?? [], 'pet_id');
   const studies = groupBy(studyResult.results ?? [], 'pet_id');
   const owners = groupBy(ownerResult.results ?? [], 'pet_id');
@@ -470,6 +472,7 @@ async function getPetsFull(env: Env): Promise<JsonObject[]> {
       ...publicPet,
       history: (history[id] ?? []).map(withoutPetId),
       vaccines: (vaccines[id] ?? []).map(withoutPetId),
+      dewormings: (dewormings[id] ?? []).map(withoutPetId),
       images: (images[id] ?? []).map(withoutPetId),
       studies: (studies[id] ?? []).map(withoutPetId),
       ownerIds: (owners[id] ?? []).map((row) => stringValue(row.owner_id)).filter(Boolean),
@@ -498,7 +501,12 @@ const PET_CHILDREN: readonly PetChildConfig[] = [
   {
     bodyKey: 'vaccines',
     table: 'pet_vaccines',
-    columns: ['name', 'date', 'nextDose'],
+    columns: ['name', 'date', 'nextDose', 'lot', 'vet', 'intervalDays', 'cancelled', 'notifiedAt'],
+  },
+  {
+    bodyKey: 'dewormings',
+    table: 'pet_dewormings',
+    columns: ['name', 'date', 'nextDose', 'lot', 'vet', 'intervalDays', 'cancelled', 'notifiedAt'],
   },
   {
     bodyKey: 'images',
@@ -666,6 +674,7 @@ async function deletePetFull(
   const results = await env.DB.batch([
     gatedDelete('pet_history', 'pet_id'),
     gatedDelete('pet_vaccines', 'pet_id'),
+    gatedDelete('pet_dewormings', 'pet_id'),
     gatedDelete('pet_images', 'pet_id'),
     gatedDelete('pet_studies', 'pet_id'),
     gatedDelete('pet_owners', 'pet_id'),
@@ -1127,12 +1136,12 @@ async function health(env: Env): Promise<{
          WHERE type = 'table'
            AND name IN (
              'users', 'sessions', 'owners', 'pets', 'pet_owners',
-             'pet_history', 'pet_vaccines', 'pet_images', 'pet_studies',
+             'pet_history', 'pet_vaccines', 'pet_dewormings', 'pet_images', 'pet_studies',
              'appointments', 'groomingAppointments', 'reminders',
              'inventory', 'invoices', 'app_settings', 'invoice_sequence',
              'audit_log', 'clinical_close_operations'
            )
-       ) = 18
+       ) = 19
        AND (SELECT COUNT(*) FROM pragma_table_info('owners') WHERE name IN ('dni', 'notes')) = 2
        AND (
          SELECT COUNT(*)
@@ -1175,6 +1184,11 @@ async function health(env: Env): Promise<{
           FROM pragma_table_info('pet_studies')
           WHERE name = 'status'
         ) = 1
+        AND (
+          SELECT COUNT(*)
+          FROM pragma_table_info('pet_vaccines')
+          WHERE name IN ('lot', 'vet', 'intervalDays', 'cancelled', 'notifiedAt')
+        ) = 5
        AND (
          SELECT COUNT(*)
          FROM pragma_table_info('audit_log')
@@ -1199,7 +1213,7 @@ async function health(env: Env): Promise<{
     status: ready ? 'ok' : 'degraded',
     version: stringValue(env.APP_VERSION, 'unknown'),
     database: ready ? 'ready' : 'migrations-pending',
-    schemaVersion: ready ? 11 : 0,
+    schemaVersion: ready ? 12 : 0,
   };
 }
 

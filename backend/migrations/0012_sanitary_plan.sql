@@ -1,0 +1,21 @@
+ALTER TABLE pet_vaccines ADD COLUMN lot TEXT NOT NULL DEFAULT '';
+ALTER TABLE pet_vaccines ADD COLUMN vet TEXT NOT NULL DEFAULT '';
+ALTER TABLE pet_vaccines ADD COLUMN intervalDays TEXT NOT NULL DEFAULT '';
+ALTER TABLE pet_vaccines ADD COLUMN cancelled TEXT NOT NULL DEFAULT '';
+ALTER TABLE pet_vaccines ADD COLUMN notifiedAt TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS pet_dewormings (
+  id TEXT PRIMARY KEY,
+  pet_id TEXT NOT NULL,
+  name TEXT NOT NULL DEFAULT '',
+  date TEXT NOT NULL DEFAULT '',
+  nextDose TEXT NOT NULL DEFAULT '',
+  lot TEXT NOT NULL DEFAULT '',
+  vet TEXT NOT NULL DEFAULT '',
+  intervalDays TEXT NOT NULL DEFAULT '',
+  cancelled TEXT NOT NULL DEFAULT '',
+  notifiedAt TEXT NOT NULL DEFAULT '',
+  FOREIGN KEY (pet_id) REFERENCES pets(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_pet_dewormings_pet ON pet_dewormings(pet_id);
