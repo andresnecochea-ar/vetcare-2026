@@ -15,6 +15,7 @@ function resetTimelineState() {
 const TIMELINE_KINDS = {
   encounter: 'Consulta',
   vaccine: 'Vacuna',
+  deworming: 'Antiparasitario',
   study: 'Estudio',
   control: 'Control'
 };
@@ -54,16 +55,21 @@ function petTimelineEvents(pet) {
     });
   });
 
-  (pet.vaccines || []).forEach(vaccine => {
-    events.push({
-      id: vaccine.id,
-      kind: 'vaccine',
-      date: vaccine.date,
-      title: vaccine.name || 'Vacuna',
-      subtitle: vaccine.nextDose ? 'Próxima dosis: ' + formatDate(vaccine.nextDose) : 'Sin próxima dosis registrada',
-      status: 'done',
-      statusLabel: 'Aplicada',
-      statusClass: 'encounter-status-closed'
+  [['vaccine', pet.vaccines, 'Aplicada'], ['deworming', pet.dewormings, 'Administrado']].forEach(([kind, collection, label]) => {
+    (collection || []).forEach(record => {
+      const next = record.cancelled
+        ? 'Próxima dosis anulada'
+        : record.nextDose ? 'Próxima dosis: ' + formatDate(record.nextDose) : 'Sin próxima dosis registrada';
+      events.push({
+        id: record.id,
+        kind,
+        date: record.date,
+        title: record.name || (kind === 'vaccine' ? 'Vacuna' : 'Antiparasitario'),
+        subtitle: [next, record.lot ? 'Lote ' + record.lot : ''].filter(Boolean).join(' · '),
+        status: 'done',
+        statusLabel: label,
+        statusClass: 'encounter-status-closed'
+      });
     });
   });
 
@@ -241,6 +247,7 @@ function renderPetTimeline(pet) {
             ${chip('', 'Todo')}
             ${chip('encounter', 'Consultas')}
             ${chip('vaccine', 'Vacunas')}
+            ${chip('deworming', 'Antiparasitarios')}
             ${chip('study', 'Estudios')}
             ${chip('control', 'Controles')}
           </div>

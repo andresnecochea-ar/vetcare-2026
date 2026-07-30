@@ -52,7 +52,7 @@ function exportBackup(type) {
       data = { ...db, _meta: meta };
       break;
     case 'basic':
-      data = { pets: db.pets.map(p => ({...p, history: [], images: [], vaccines: p.vaccines||[]})), owners: db.owners, _meta: meta };
+      data = { pets: db.pets.map(p => ({...p, history: [], images: [], vaccines: p.vaccines||[], dewormings: p.dewormings||[]})), owners: db.owners, _meta: meta };
       break;
     case 'agenda':
       data = { appointments: db.appointments, groomingAppointments: db.groomingAppointments, reminders: db.reminders, _meta: meta };

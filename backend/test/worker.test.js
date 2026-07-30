@@ -67,8 +67,8 @@ describe('VetCare Worker', () => {
     expect(body).toMatchObject({
       status: 'ok',
       database: 'ready',
-      version: '2.9.0',
-      schemaVersion: 11,
+      version: '2.10.0',
+      schemaVersion: 12,
     });
 
     // Los estudios cargados antes de 0011 siguen contando como resultado recibido.
@@ -94,6 +94,7 @@ describe('VetCare Worker', () => {
     globalThis.formatDate = (value) => value || '—';
     globalThis.canEditClinical = () => true;
     globalThis.appointmentIsTerminal = (appointment) => ['completed', 'cancelled', 'no_show'].includes(appointment.status);
+    globalThis.sanitaryHasPendingDose = (record) => Boolean(record && record.nextDose && !record.cancelled);
     const pet = {
       id: 'pet-1',
       history: [
@@ -155,6 +156,62 @@ describe('VetCare Worker', () => {
     ]);
     expect(alerts.every(row => row.item.state !== 'soon')).toBe(true);
     expect(alerts.some(row => row.pet.id === alDia.id)).toBe(false);
+  });
+
+  it('calcula el plan sanitario y sus vencimientos', async () => {
+    const dayKey = (offset) => {
+      const date = new Date();
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() + offset);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    };
+    globalThis.localDateKey = (value) => {
+      if (!value) return dayKey(0);
+      return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+    };
+    globalThis.followUpDaysUntil = () => 0;
+
+    const pet = {
+      id: 'pet-san',
+      name: 'Tita',
+      vaccines: [
+        { id: 'vac-1', name: 'Antirrábica', date: dayKey(-360), nextDose: dayKey(5), lot: 'A-1', cancelled: '' },
+        { id: 'vac-2', name: 'Séxtuple', date: dayKey(-400), nextDose: dayKey(-30), cancelled: '1' },
+      ],
+      dewormings: [
+        { id: 'atp-1', name: 'Pipeta', date: dayKey(-30), nextDose: dayKey(1), cancelled: '' },
+      ],
+    };
+    globalThis.db = { pets: [pet], reminders: [], owners: [] };
+
+    await import('../../js/sanitary.js');
+    const sanitary = globalThis.VetCareSanitary;
+
+    // El intervalo calcula la próxima dosis sobre el calendario local.
+    expect(sanitary.addDays('2026-07-29', 365)).toBe('2027-07-29');
+    expect(sanitary.addDays('2026-02-27', 2)).toBe('2026-03-01');
+    expect(sanitary.addDays('', 30)).toBe('');
+
+    // Una dosis anulada deja de contar como pendiente pero no se pierde.
+    expect(sanitary.hasPendingDose(pet.vaccines[0])).toBe(true);
+    expect(sanitary.hasPendingDose(pet.vaccines[1])).toBe(false);
+    expect(sanitary.records(pet).map(record => record.kind)).toEqual(['deworming', 'vaccine', 'vaccine']);
+
+    sanitary.setRange(dayKey(-7), dayKey(30));
+    expect(sanitary.due().map(row => row.record.id)).toEqual(['atp-1', 'vac-1']);
+    sanitary.setRange(dayKey(-7), dayKey(2));
+    expect(sanitary.due().map(row => row.record.id)).toEqual(['atp-1']);
+
+    // El aviso de la próxima dosis sigue al registro: se crea, se actualiza y se
+    // da por cumplido al anular.
+    sanitary.syncReminder('pet-san', 'vaccine', pet.vaccines[0]);
+    const reminderId = sanitary.reminderId('vac-1');
+    expect(globalThis.db.reminders).toHaveLength(1);
+    expect(globalThis.db.reminders[0]).toMatchObject({ id: reminderId, date: dayKey(5), completed: false });
+    pet.vaccines[0].cancelled = '1';
+    sanitary.syncReminder('pet-san', 'vaccine', pet.vaccines[0]);
+    expect(globalThis.db.reminders).toHaveLength(1);
+    expect(globalThis.db.reminders[0].completed).toBe(true);
   });
 
   it('arma la historia clínica como línea de tiempo y compara consultas', async () => {
@@ -298,7 +355,28 @@ describe('VetCare Worker', () => {
         reopenedReason: '',
         appointmentId: '',
       }],
-      vaccines: [{ id: crypto.randomUUID(), name: 'Antirrábica', date: '2026-07-02', nextDose: '2027-07-02' }],
+      vaccines: [{
+        id: crypto.randomUUID(),
+        name: 'Antirrábica',
+        date: '2026-07-02',
+        nextDose: '2027-07-02',
+        lot: 'L-2026-14',
+        vet: 'Dra. Test',
+        intervalDays: '365',
+        cancelled: '',
+        notifiedAt: '',
+      }],
+      dewormings: [{
+        id: crypto.randomUUID(),
+        name: 'Pipeta antiparasitaria',
+        date: '2026-07-02',
+        nextDose: '2026-08-02',
+        lot: '',
+        vet: 'Dra. Test',
+        intervalDays: '31',
+        cancelled: '',
+        notifiedAt: '',
+      }],
       images: [{ id: crypto.randomUUID(), data: 'data:image/png;base64,dGVzdA==', caption: 'Foto' }],
       studies: [{
         id: crypto.randomUUID(),
@@ -452,6 +530,8 @@ describe('VetCare Worker', () => {
     expect(snapshot.body.pets[0].history).toEqual(pet.history);
     expect(snapshot.body.appointments[0]).toMatchObject(appointment);
     expect(snapshot.body.pets[0].studies).toEqual(pet.studies);
+    expect(snapshot.body.pets[0].vaccines).toEqual(pet.vaccines);
+    expect(snapshot.body.pets[0].dewormings).toEqual(pet.dewormings);
     expect(snapshot.body.pets[0].ownerIds).toEqual([owner.id]);
     expect(snapshot.body.groomingAppointments[0]).toMatchObject({
       reminder: grooming.reminder,
