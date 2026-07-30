@@ -277,7 +277,7 @@ function openPetDetail(id) {
     petDetailReturnView = currentView || 'pets';
     petDetailReturnScrollY = window.scrollY || 0;
   }
-  if (currentPetId !== id) petDetailActiveTab = 'tab-followup';
+  if (currentPetId !== id) { petDetailActiveTab = 'tab-followup'; resetTimelineState(); }
   currentPetId = id;
   currentView = 'pet-detail';
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -383,24 +383,7 @@ function renderPetDetailLegacy(id) {
       </div>
 
       <div id="tab-history" class="tab-content">
-        <div class="section-title">
-          <h3>Registros clínicos</h3>
-          ${canEditClinical() ? `<button class="btn btn-sm btn-primary" onclick="addHistoryEntry('${pet.id}')">+ Nueva consulta</button>` : '<span class="tag">Solo lectura</span>'}
-        </div>
-        ${(pet.history||[]).length === 0 ? '<div class="empty-state">Sin registros aún</div>' :
-          [...pet.history].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(h => `
-            <div class="history-entry">
-              ${canEditClinical() ? `<button class="close-btn delete-x" onclick="deleteHistory('${pet.id}','${h.id}')">&times;</button>` : ''}
-              <div class="history-entry-toolbar"><span class="encounter-status ${encounterStatusClass(h.status)}">${encounterStatusLabel(h.status)}</span><div class="history-entry-actions">${encounterInvoiceActionHTML(h.id)}${canEditClinical() ? `<button class="btn btn-sm" onclick="addHistoryEntry('${pet.id}','${h.id}')">Abrir consulta</button>` : ''}</div></div>
-              <div class="date">${formatDate(h.date)} · ${escapeHtml(h.type||'Consulta')}</div>
-              <div class="title">${escapeHtml(h.title||'')}</div>
-              ${(h.weight||h.temp||h.hr) ? `<div class="history-vitals">${h.weight?`<span>${escapeHtml(h.weight)} kg</span>`:''}${h.temp?`<span>${escapeHtml(h.temp)} &deg;C</span>`:''}${h.hr?`<span>${escapeHtml(h.hr)} lpm</span>`:''}</div>` : ''}
-              <div class="desc">${escapeHtml(h.description||'').replace(/\n/g,'<br>')}</div>
-              ${h.treatment ? `<div class="desc" style="margin-top:6px"><strong>Tratamiento:</strong> ${escapeHtml(h.treatment)}</div>` : ''}
-              ${h.vet ? `<div class="desc" style="margin-top:4px;font-size:var(--fs-2xs);color:var(--text-mute)">Profesional: ${escapeHtml(h.vet)}</div>` : ''}
-            </div>
-          `).join('')
-        }
+        ${renderPetTimeline(pet)}
       </div>
 
       <div id="tab-owners" class="tab-content">

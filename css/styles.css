@@ -1830,6 +1830,155 @@ html, body { max-width:100%; overflow-x:hidden; }
   .followup-actions .btn { flex: 1; }
 }
 
+/* Historia clinica como linea de tiempo */
+.timeline-trend {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  color: var(--accent);
+}
+.timeline-trend-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; color: var(--text); }
+.timeline-trend-head span {
+  color: var(--text-mute);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.timeline-trend-head strong { font-family: var(--font-display); font-size: var(--fs-lg); }
+.timeline-trend-head small { color: var(--text-soft); font-size: var(--fs-xs); }
+.timeline-trend-head small.is-up { color: var(--danger); }
+.timeline-trend-head small.is-down { color: var(--info); }
+.timeline-sparkline { display: block; width: 100%; height: 34px; margin: 6px 0 2px; overflow: visible; }
+.timeline-trend-foot {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-mute);
+  font-size: var(--fs-2xs);
+}
+.timeline-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.tl-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.tl-chip {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-alt);
+  color: var(--text-soft);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.tl-chip:hover { border-color: var(--border-strong); }
+.tl-chip.is-active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: var(--fw-bold); }
+.tl-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.tl-filters select, .tl-filters input { width: auto; min-width: 170px; }
+.tl-compare-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  font-size: var(--fs-sm);
+}
+.tl-compare-bar > div { display: flex; gap: 6px; }
+.tl-group { margin-bottom: 10px; }
+.tl-year {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+}
+.tl-year span { color: var(--text-mute); font-family: var(--font-body); font-size: var(--fs-2xs); font-weight: var(--fw-normal); }
+.tl-event { position: relative; padding: 0 0 14px 26px; }
+.tl-event::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  bottom: -6px;
+  left: 5px;
+  width: 2px;
+  background: var(--border);
+}
+.tl-group .tl-event:last-child::before { display: none; }
+.tl-marker {
+  position: absolute;
+  top: 6px;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--bg-alt);
+  border-radius: 50%;
+  background: var(--accent);
+}
+.tl-vaccine .tl-marker { background: var(--info); }
+.tl-study .tl-marker { background: var(--highlight); }
+.tl-control .tl-marker { background: var(--color-coral); }
+.tl-card {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-alt);
+}
+.tl-event.is-selected .tl-card { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.tl-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.tl-head-main { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.tl-kind {
+  color: var(--text-mute);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.tl-date { color: var(--text-soft); font-size: var(--fs-xs); }
+.tl-card h4 { margin: 6px 0 2px; font-size: var(--fs-base); }
+.tl-subtitle { color: var(--text-soft); font-size: var(--fs-sm); }
+.tl-details { margin-top: 8px; font-size: var(--fs-sm); }
+.tl-details p { margin: 4px 0; }
+.tl-details .tl-next { color: var(--accent); }
+.tl-details .tl-vet { color: var(--text-mute); font-size: var(--fs-2xs); }
+.tl-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.tl-compare {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.tl-compare input { width: auto; margin: 0; }
+.comparison-table th[scope="row"] { width: 132px; color: var(--text-soft); font-weight: var(--fw-medium); text-align: left; }
+.comparison-table tr.is-long td { white-space: pre-line; }
+.comparison-table td.is-up { color: var(--danger); font-weight: var(--fw-bold); }
+.comparison-table td.is-down { color: var(--info); font-weight: var(--fw-bold); }
+
+@media (max-width: 768px) {
+  .timeline-toolbar { align-items: stretch; }
+  .tl-chips, .tl-filters { flex: 1 1 100%; }
+  .tl-filters { flex-direction: column; }
+  .tl-filters select, .tl-filters input { width: 100%; min-width: 0; }
+  .tl-compare-bar { align-items: flex-start; }
+  .tl-compare-bar > div { width: 100%; }
+  .tl-compare-bar > div .btn { flex: 1; }
+}
+
 /* Continuidad clinica en la vista Hoy */
 .today-followup {
   margin-bottom: 20px;
