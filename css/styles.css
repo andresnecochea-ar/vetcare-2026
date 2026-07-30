@@ -1717,6 +1717,119 @@ html, body { max-width:100%; overflow-x:hidden; }
   .pet-detail-page .tab-content { min-height: 180px; }
 }
 
+/* Seguimiento clinico: que debe suceder despues de la consulta */
+.followup-headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+}
+.followup-headline > div:first-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.followup-headline strong { font-size: var(--fs-md); }
+.followup-headline small { color: var(--text-soft); }
+.followup-headline.is-overdue { border-left-color: var(--danger); background: var(--color-coral-soft); }
+.followup-headline.is-today { border-left-color: var(--highlight); background: var(--highlight-soft); }
+.followup-headline.is-open { border-left-color: var(--accent); background: var(--accent-soft); }
+.followup-headline.is-clear { border-left-color: #8cc8b0; }
+.followup-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.followup-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-alt);
+  color: var(--text-soft);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  white-space: nowrap;
+}
+.followup-chip.is-overdue { border-color: #efb0b3; background: var(--color-coral-soft); color: var(--danger); }
+.followup-chip.is-today { border-color: var(--highlight); background: var(--highlight-soft); color: var(--text); }
+.followup-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--bg-alt);
+}
+.followup-item.followup-overdue { border-left-color: var(--danger); }
+.followup-item.followup-today { border-left-color: var(--highlight); }
+.followup-item.followup-soon { border-left-color: var(--accent); }
+.followup-item.followup-open { border-left-color: var(--info, var(--accent)); }
+.followup-when {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 0 0 132px;
+  min-width: 0;
+}
+.followup-when strong { font-size: var(--fs-sm); }
+.followup-when small { color: var(--text-mute); font-size: var(--fs-2xs); }
+.followup-overdue .followup-when strong { color: var(--danger); }
+.followup-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.followup-body small { color: var(--text-soft); font-size: var(--fs-xs); }
+.followup-kind {
+  color: var(--text-mute);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.followup-actions { display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
+.followup-treatment {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-soft);
+}
+.followup-treatment p { margin: 6px 0; white-space: pre-line; }
+.followup-treatment small { color: var(--text-soft); font-size: var(--fs-xs); }
+.followup-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  line-height: 1;
+}
+.followup-tab-badge.is-overdue { background: var(--danger); }
+.section-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.study-item.is-pending { border-style: dashed; background: var(--bg-soft); }
+.study-pending-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border: 1px solid var(--highlight);
+  border-radius: 999px;
+  background: var(--highlight-soft);
+  color: var(--text);
+  font-weight: var(--fw-bold);
+}
+
+@media (max-width: 768px) {
+  .followup-item { align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+  .followup-when { flex: 0 0 100%; flex-direction: row; align-items: baseline; gap: 8px; }
+  .followup-actions { flex: 0 0 100%; }
+  .followup-actions .btn { flex: 1; }
+}
+
 /* Consulta clinica como espacio de trabajo */
 .encounter-page { max-width: 1260px; margin: 0 auto; }
 .encounter-header {

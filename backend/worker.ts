@@ -481,6 +481,7 @@ type PetChildConfig = {
   bodyKey: string;
   table: string;
   columns: readonly string[];
+  defaults?: Readonly<Record<string, string>>;
 };
 
 const PET_CHILDREN: readonly PetChildConfig[] = [
@@ -492,6 +493,7 @@ const PET_CHILDREN: readonly PetChildConfig[] = [
       'weight', 'temp', 'hr', 'exam', 'diagnosis', 'nextControl',
       'status', 'startedAt', 'closedAt', 'reopenedReason', 'appointmentId',
     ],
+    defaults: { status: 'closed' },
   },
   {
     bodyKey: 'vaccines',
@@ -506,7 +508,8 @@ const PET_CHILDREN: readonly PetChildConfig[] = [
   {
     bodyKey: 'studies',
     table: 'pet_studies',
-    columns: ['type', 'title', 'date', 'url'],
+    columns: ['type', 'title', 'date', 'url', 'status'],
+    defaults: { status: 'received' },
   },
 ];
 
@@ -534,9 +537,7 @@ function gatedPetChildren(
       const values = [
         rowId,
         petId,
-        ...config.columns.map((column) => config.table === 'pet_history' && column === 'status'
-          ? stringValue(row[column], 'closed')
-          : stringValue(row[column])),
+        ...config.columns.map((column) => stringValue(row[column], config.defaults?.[column] ?? '')),
       ];
       statements.push(
         env.DB.prepare(
@@ -1131,6 +1132,11 @@ async function health(env: Env): Promise<{
           FROM sqlite_master
           WHERE type = 'index' AND name = 'idx_invoices_encounter'
         ) = 1
+        AND (
+          SELECT COUNT(*)
+          FROM pragma_table_info('pet_studies')
+          WHERE name = 'status'
+        ) = 1
        AND (
          SELECT COUNT(*)
          FROM pragma_table_info('audit_log')
@@ -1155,7 +1161,7 @@ async function health(env: Env): Promise<{
     status: ready ? 'ok' : 'degraded',
     version: stringValue(env.APP_VERSION, 'unknown'),
     database: ready ? 'ready' : 'migrations-pending',
-    schemaVersion: ready ? 10 : 0,
+    schemaVersion: ready ? 11 : 0,
   };
 }
 
