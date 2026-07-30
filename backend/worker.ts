@@ -140,6 +140,22 @@ function comparableJson(value: unknown): string {
   return JSON.stringify(value ?? null);
 }
 
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as JsonObject)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+async function sha256(value: string): Promise<string> {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 async function ensureReceptionPetUpdateAllowed(env: Env, body: JsonObject): Promise<void> {
   const id = optionalString(body.id);
   const existing = id
@@ -760,6 +776,283 @@ async function saveInvoice(env: Env, body: JsonObject): Promise<JsonObject> {
   return deserializeRow(stored, config);
 }
 
+type ClinicalCloseOperation = {
+  idempotency_key: string;
+  request_hash: string;
+  pet_id: string;
+  encounter_id: string;
+  appointment_id: string;
+  reminder_id: string;
+  invoice_id: string;
+  result_revision: number;
+  invoice_number: string;
+  completed_at: string;
+};
+
+function clinicalCloseResult(operation: ClinicalCloseOperation, replayed: boolean): JsonObject {
+  return {
+    idempotencyKey: operation.idempotency_key,
+    petId: operation.pet_id,
+    encounterId: operation.encounter_id,
+    appointmentId: operation.appointment_id,
+    reminderId: operation.reminder_id,
+    invoiceId: operation.invoice_id,
+    invoiceNumber: operation.invoice_number,
+    petRevision: operation.result_revision,
+    replayed,
+  };
+}
+
+async function closeClinicalEncounter(
+  env: Env,
+  user: JsonObject,
+  body: JsonObject,
+): Promise<JsonObject> {
+  if (userRole(user) === 'reception') {
+    throw new HttpError('Tu rol no permite cerrar consultas clínicas', 403);
+  }
+
+  const idempotencyKey = optionalString(body.idempotencyKey);
+  const petId = optionalString(body.petId);
+  const encounter = asObject(body.encounter);
+  const encounterId = optionalString(encounter.id);
+  if (!idempotencyKey || idempotencyKey.length > 160) {
+    throw new HttpError('La clave de idempotencia del cierre no es válida');
+  }
+  if (!petId || !encounterId) throw new HttpError('Falta identificar paciente o consulta');
+  if (stringValue(encounter.status) !== 'closed') {
+    throw new HttpError('La operación solo admite consultas cerradas');
+  }
+  if (!stringValue(encounter.date) || !stringValue(encounter.title)) {
+    throw new HttpError('La consulta debe tener fecha y motivo');
+  }
+
+  const expectedRevision = revisionValue(body.expectedRevision);
+  const appointment = body.appointment ? asObject(body.appointment) : {};
+  const reminder = body.reminder ? asObject(body.reminder) : {};
+  const invoice = body.invoice ? asObject(body.invoice) : {};
+  const appointmentId = optionalString(appointment.id) ?? '';
+  const reminderId = optionalString(reminder.id) ?? '';
+  const invoiceId = optionalString(invoice.id) ?? '';
+  const ownerId = invoiceId ? optionalString(invoice.ownerId) ?? '' : '';
+  const claimToken = uid();
+  const now = new Date().toISOString();
+  const requestHash = await sha256(stableJson(body));
+
+  if (invoiceId) {
+    if (!ownerId) throw new HttpError('Seleccioná un tutor para generar el recibo');
+    if (stringValue(invoice.petId) !== petId || stringValue(invoice.encounterId) !== encounterId) {
+      throw new HttpError('El recibo no corresponde a esta consulta');
+    }
+    const items = arrayOfObjects(invoice.items);
+    const total = Number(invoice.total);
+    if (!items.length || !Number.isFinite(total) || total <= 0) {
+      throw new HttpError('El recibo debe tener al menos un cargo con importe');
+    }
+  }
+
+  const historyColumns = [
+    'date', 'type', 'title', 'description', 'treatment', 'vet',
+    'weight', 'temp', 'hr', 'exam', 'diagnosis', 'nextControl',
+    'status', 'startedAt', 'closedAt', 'reopenedReason', 'appointmentId',
+  ] as const;
+  const operationInsert = env.DB.prepare(
+    `INSERT INTO clinical_close_operations (
+       idempotency_key,request_hash,claim_token,pet_id,encounter_id,
+       appointment_id,reminder_id,invoice_id,created_at
+     )
+     SELECT ?,?,?,?,?,?,?,?,?
+     WHERE EXISTS (SELECT 1 FROM pets WHERE id = ? AND revision = ?)
+       AND NOT EXISTS (
+         SELECT 1 FROM pet_history WHERE id = ? AND pet_id <> ?
+       )
+       AND (? = '' OR EXISTS (
+         SELECT 1 FROM appointments WHERE id = ? AND petId = ?
+       ))
+       AND (? = '' OR EXISTS (
+         SELECT 1 FROM pet_owners WHERE owner_id = ? AND pet_id = ?
+       ))
+       AND (? = '' OR NOT EXISTS (
+         SELECT 1 FROM invoices WHERE encounterId = ? AND id <> ?
+       ))
+     ON CONFLICT(idempotency_key) DO NOTHING`,
+  ).bind(
+    idempotencyKey, requestHash, claimToken, petId, encounterId,
+    appointmentId, reminderId, invoiceId, now,
+    petId, expectedRevision,
+    encounterId, petId,
+    appointmentId, appointmentId, petId,
+    ownerId, ownerId, petId,
+    invoiceId, encounterId, invoiceId,
+  );
+
+  const statements: D1PreparedStatement[] = [
+    operationInsert,
+    env.DB.prepare(
+      `UPDATE pets
+       SET weight = ?, revision = revision + 1, syncToken = ?
+       WHERE id = ? AND revision = ?
+         AND EXISTS (
+           SELECT 1 FROM clinical_close_operations
+           WHERE idempotency_key = ? AND claim_token = ?
+         )`,
+    ).bind(stringValue(body.petWeight), claimToken, petId, expectedRevision, idempotencyKey, claimToken),
+  ];
+
+  const historyValues = historyColumns.map((column) => column === 'status'
+    ? stringValue(encounter[column], 'closed')
+    : stringValue(encounter[column]));
+  const historyUpdates = historyColumns.map((column) => `${column}=excluded.${column}`).join(',');
+  statements.push(
+    env.DB.prepare(
+      `INSERT INTO pet_history (id,pet_id,${historyColumns.join(',')})
+       SELECT ?,?,${historyColumns.map(() => '?').join(',')}
+       WHERE EXISTS (
+         SELECT 1 FROM clinical_close_operations
+         WHERE idempotency_key = ? AND claim_token = ?
+       )
+       ON CONFLICT(id) DO UPDATE SET ${historyUpdates}`,
+    ).bind(encounterId, petId, ...historyValues, idempotencyKey, claimToken),
+  );
+
+  if (appointmentId) {
+    statements.push(
+      env.DB.prepare(
+        `UPDATE appointments
+         SET status='completed', startedAt=?, completedAt=?
+         WHERE id=? AND petId=?
+           AND EXISTS (
+             SELECT 1 FROM clinical_close_operations
+             WHERE idempotency_key=? AND claim_token=?
+           )`,
+      ).bind(
+        stringValue(appointment.startedAt),
+        stringValue(appointment.completedAt, now),
+        appointmentId,
+        petId,
+        idempotencyKey,
+        claimToken,
+      ),
+    );
+  }
+
+  if (reminderId) {
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO reminders (id,title,petId,date,notes,completed)
+         SELECT ?,?,?,?,?,?
+         WHERE EXISTS (
+           SELECT 1 FROM clinical_close_operations
+           WHERE idempotency_key=? AND claim_token=?
+         )
+         ON CONFLICT(id) DO UPDATE SET
+           title=excluded.title,petId=excluded.petId,date=excluded.date,
+           notes=excluded.notes,completed=excluded.completed`,
+      ).bind(
+        reminderId,
+        stringValue(reminder.title),
+        petId,
+        stringValue(reminder.date),
+        stringValue(reminder.notes),
+        reminder.completed ? 1 : 0,
+        idempotencyKey,
+        claimToken,
+      ),
+    );
+  }
+
+  if (invoiceId) {
+    statements.push(
+      env.DB.prepare(
+        `UPDATE invoice_sequence SET lastNumber=lastNumber+1
+         WHERE id='singleton'
+           AND NOT EXISTS (SELECT 1 FROM invoices WHERE id=?)
+           AND EXISTS (
+             SELECT 1 FROM clinical_close_operations
+             WHERE idempotency_key=? AND claim_token=?
+           )`,
+      ).bind(invoiceId, idempotencyKey, claimToken),
+      env.DB.prepare(
+        `INSERT INTO invoices (
+           id,number,date,ownerId,petId,items,total,status,notes,encounterId
+         )
+         SELECT ?,printf('%04d',(SELECT lastNumber FROM invoice_sequence)),?,?,?,?,?,?,?,?
+         WHERE EXISTS (
+           SELECT 1 FROM clinical_close_operations
+           WHERE idempotency_key=? AND claim_token=?
+         )
+         ON CONFLICT(id) DO NOTHING`,
+      ).bind(
+        invoiceId,
+        stringValue(invoice.date, stringValue(encounter.date)),
+        ownerId,
+        petId,
+        JSON.stringify(arrayOfObjects(invoice.items)),
+        Number(invoice.total),
+        stringValue(invoice.status, 'pending'),
+        stringValue(invoice.notes),
+        encounterId,
+        idempotencyKey,
+        claimToken,
+      ),
+    );
+  }
+
+  statements.push(
+    env.DB.prepare(
+      `UPDATE clinical_close_operations
+       SET result_revision=(SELECT revision FROM pets WHERE id=?),
+           invoice_number=COALESCE((SELECT number FROM invoices WHERE id=?),''),
+           completed_at=?
+       WHERE idempotency_key=? AND claim_token=?`,
+    ).bind(petId, invoiceId, now, idempotencyKey, claimToken),
+    env.DB.prepare(
+      `INSERT INTO audit_log (
+         id,user_id,user_email,user_name,action,entity_type,entity_id,fields,created_at
+       )
+       SELECT ?,?,?,?,?,?,?,?,?
+       WHERE EXISTS (
+         SELECT 1 FROM clinical_close_operations
+         WHERE idempotency_key=? AND claim_token=?
+       )`,
+    ).bind(
+      uid(),
+      stringValue(user.id),
+      stringValue(user.email),
+      stringValue(user.name),
+      'close',
+      'clinical_encounter',
+      encounterId,
+      JSON.stringify(['encounter', 'appointment', ...(reminderId ? ['reminder'] : []), ...(invoiceId ? ['invoice'] : [])]),
+      now,
+      idempotencyKey,
+      claimToken,
+    ),
+  );
+
+  const results = await env.DB.batch(statements);
+  const operation = await env.DB.prepare(
+    'SELECT * FROM clinical_close_operations WHERE idempotency_key = ?',
+  ).bind(idempotencyKey).first<ClinicalCloseOperation>();
+
+  if (results[0]?.meta.changes !== 1) {
+    if (!operation) {
+      throw new HttpError(
+        'La ficha cambió o una relación del cierre ya no es válida. Recargá antes de reintentar.',
+        409,
+      );
+    }
+    if (operation.request_hash !== requestHash) {
+      throw new HttpError('La clave de cierre ya fue usada con otros datos', 409);
+    }
+    if (!operation.completed_at) throw new HttpError('El cierre todavía está en proceso', 409);
+    return clinicalCloseResult(operation, true);
+  }
+
+  if (!operation?.completed_at) throw new Error('No se pudo confirmar el cierre clínico');
+  return clinicalCloseResult(operation, false);
+}
+
 async function getAppSettings(env: Env): Promise<{ clinicName: string; settings: JsonObject }> {
   const row = await env.DB.prepare(
     "SELECT clinicName, settings FROM app_settings WHERE id = 'singleton'",
@@ -798,9 +1091,9 @@ async function health(env: Env): Promise<{
              'pet_history', 'pet_vaccines', 'pet_images', 'pet_studies',
              'appointments', 'groomingAppointments', 'reminders',
              'inventory', 'invoices', 'app_settings', 'invoice_sequence',
-             'audit_log'
+             'audit_log', 'clinical_close_operations'
            )
-       ) = 17
+       ) = 18
        AND (SELECT COUNT(*) FROM pragma_table_info('owners') WHERE name IN ('dni', 'notes')) = 2
        AND (
          SELECT COUNT(*)
@@ -846,6 +1139,14 @@ async function health(env: Env): Promise<{
            'entity_type', 'entity_id', 'fields', 'created_at'
          )
        ) = 8
+       AND (
+         SELECT COUNT(*)
+         FROM pragma_table_info('clinical_close_operations')
+         WHERE name IN (
+           'idempotency_key', 'request_hash', 'claim_token', 'pet_id',
+           'encounter_id', 'result_revision', 'completed_at'
+         )
+       ) = 7
        AS ready`,
   ).first<{ ready: number }>();
   const ready = schema?.ready === 1;
@@ -854,7 +1155,7 @@ async function health(env: Env): Promise<{
     status: ready ? 'ok' : 'degraded',
     version: stringValue(env.APP_VERSION, 'unknown'),
     database: ready ? 'ready' : 'migrations-pending',
-    schemaVersion: ready ? 9 : 0,
+    schemaVersion: ready ? 10 : 0,
   };
 }
 
@@ -1002,6 +1303,12 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       await writeAudit(env, user, 'update', 'settings', 'singleton', auditFields(body));
       return json(result, 200, origin, env);
     }
+  }
+
+  if (path === '/api/clinical-close' && request.method === 'POST') {
+    requireMutationPermission(user, 'pets', 'write');
+    const body = asObject(await request.json<unknown>());
+    return json(await closeClinicalEncounter(env, user, body), 200, origin, env);
   }
 
   const match = path.match(/^\/api\/([a-zA-Z]+)(?:\/([^/]+))?$/);

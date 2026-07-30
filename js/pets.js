@@ -841,6 +841,8 @@ function openEncounterCloseReview(petId, editId) {
   if (!date || !title) { toast('Completá fecha y motivo antes de cerrar', 'error'); return; }
 
   const encounterId = editId || uid();
+  const closeOperationId = uid();
+  const closeTimestamp = new Date().toISOString();
   const existingInvoice = encounterInvoice(encounterId);
   const canUseReceipts = receiptsEnabled();
   const owners = (pet.ownerIds || []).map(id => db.owners.find(owner => owner.id === id)).filter(Boolean);
@@ -909,7 +911,7 @@ function openEncounterCloseReview(petId, editId) {
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeModal()">Volver a editar</button>
-      <button class="btn btn-success" id="finalizeEncounterCloseButton" onclick="finalizeEncounterClose('${petId}','${editId}','${encounterId}')">Cerrar consulta</button>
+      <button class="btn btn-success" id="finalizeEncounterCloseButton" onclick="finalizeEncounterClose('${petId}','${editId}','${encounterId}','${closeOperationId}','${closeTimestamp}')">Cerrar consulta</button>
     </div>
   `, true);
   if (!existingInvoice) {
@@ -945,7 +947,7 @@ function updateEncounterCloseTotal() {
   return total;
 }
 
-function finalizeEncounterClose(petId, editId, encounterId) {
+async function finalizeEncounterClose(petId, editId, encounterId, closeOperationId, closeTimestamp) {
   const createInvoice = Boolean(document.getElementById('closeCreateInvoice')?.checked);
   let invoice = null;
   if (createInvoice) {
@@ -967,17 +969,35 @@ function finalizeEncounterClose(petId, editId, encounterId) {
     }
     invoice = { ownerId, items, total };
   }
-  saveHistory(petId, editId, 'closed', { encounterId, invoice });
+  const closeButton = document.getElementById('finalizeEncounterCloseButton');
+  if (closeButton) {
+    closeButton.disabled = true;
+    closeButton.textContent = 'Confirmando cierre...';
+  }
+  try {
+    await saveHistory(petId, editId, 'closed', {
+      encounterId,
+      idempotencyKey: `clinical-close:${closeOperationId}`,
+      closedAt: closeTimestamp,
+      invoice,
+    });
+  } finally {
+    const pendingButton = document.getElementById('finalizeEncounterCloseButton');
+    if (pendingButton) {
+      pendingButton.disabled = false;
+      pendingButton.textContent = 'Cerrar consulta';
+    }
+  }
 }
 
-function saveHistory(petId, editId, forcedStatus, closeBundle) {
+async function saveHistory(petId, editId, forcedStatus, closeBundle) {
   if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
   const date = document.getElementById('hDate').value;
   const title = document.getElementById('hTitle').value.trim();
   const statusField = document.getElementById('hStatus');
   const status = forcedStatus || (statusField ? statusField.value : 'closed');
   const existing = editId ? (db.pets.find(p => p.id === petId)?.history || []).find(h => h.id === editId) : null;
-  const now = new Date().toISOString();
+  const now = closeBundle?.closedAt || new Date().toISOString();
   const linkedAppointmentId = existing?.appointmentId || currentEncounterAppointmentId || '';
   const reopenedReason = (document.getElementById('hReopen')?.value || '').trim();
   if (status === 'reopened' && !reopenedReason) { toast('Completa el motivo de reapertura', 'error'); return; }
@@ -989,6 +1009,8 @@ function saveHistory(petId, editId, forcedStatus, closeBundle) {
   }
   const pet = db.pets.find(p => p.id === petId);
   if (!pet) return;
+  const atomicRemoteClose = Boolean(closeBundle && apiConfigured() && authToken);
+  const beforeAtomicClose = atomicRemoteClose ? _cloneSyncValue(db) : null;
   pet.history = pet.history || [];
   const weight = document.getElementById('hWeight').value;
   const temp = document.getElementById('hTemp').value;
@@ -1021,23 +1043,34 @@ function saveHistory(petId, editId, forcedStatus, closeBundle) {
   }
   const latestWeight = [...pet.history].sort((a,b) => String(b.date||'').localeCompare(String(a.date||''))).find(h => h.weight);
   if (latestWeight) pet.weight = latestWeight.weight;
+  let createdReminder = null;
   if (entry.nextControl && status === 'closed' && (!existing || existing.status !== 'closed')) {
-    db.reminders.push({id:uid(),title:'Control: '+title,petId,date:entry.nextControl,type:'control',completed:false});
+    createdReminder = {
+      id: closeBundle?.idempotencyKey ? `${closeBundle.idempotencyKey}:reminder` : uid(),
+      title:'Control: '+title,
+      petId,
+      date:entry.nextControl,
+      type:'control',
+      completed:false
+    };
+    db.reminders.push(createdReminder);
   }
+  let linkedAppointment = null;
   if (linkedAppointmentId) {
-    const appointment = db.appointments.find(a => a.id === linkedAppointmentId);
-    if (appointment) {
-      appointment.status = status === 'closed' ? 'completed' : 'in_consultation';
-      if (!appointment.startedAt) appointment.startedAt = now;
-      appointment.completedAt = status === 'closed' ? (appointment.completedAt || now) : '';
+    linkedAppointment = db.appointments.find(a => a.id === linkedAppointmentId);
+    if (linkedAppointment) {
+      linkedAppointment.status = status === 'closed' ? 'completed' : 'in_consultation';
+      if (!linkedAppointment.startedAt) linkedAppointment.startedAt = now;
+      linkedAppointment.completedAt = status === 'closed' ? (linkedAppointment.completedAt || now) : '';
     }
   }
   let receiptCreated = false;
+  let createdInvoice = null;
   if (closeBundle?.invoice && !encounterInvoice(entry.id)) {
     const invoiceData = closeBundle.invoice;
     db.invoices = db.invoices || [];
-    db.invoices.push({
-      id: uid(),
+    createdInvoice = {
+      id: `${entry.id}-receipt`,
       number: nextLocalInvoiceNumber(),
       date,
       ownerId: invoiceData.ownerId,
@@ -1047,7 +1080,8 @@ function saveHistory(petId, editId, forcedStatus, closeBundle) {
       status: 'pending',
       notes: 'Generado desde consulta: ' + title,
       encounterId: entry.id,
-    });
+    };
+    db.invoices.push(createdInvoice);
     receiptCreated = true;
   }
   const message = receiptCreated
@@ -1055,7 +1089,49 @@ function saveHistory(petId, editId, forcedStatus, closeBundle) {
     : (status === 'closed' && closeBundle
       ? 'Consulta cerrada'
       : (editId ? 'Consulta actualizada' : 'Consulta registrada'));
-  saveDB(message);
+  if (atomicRemoteClose) {
+    try {
+      const result = await api('/api/clinical-close', {
+        method: 'POST',
+        body: {
+          idempotencyKey: closeBundle.idempotencyKey,
+          petId,
+          expectedRevision: Number.isInteger(pet.revision) ? pet.revision : 0,
+          petWeight: pet.weight || '',
+          encounter: entry,
+          appointment: linkedAppointment,
+          reminder: createdReminder,
+          invoice: createdInvoice,
+        },
+      });
+      pet.revision = result.petRevision;
+      if (createdInvoice && result.invoiceNumber) createdInvoice.number = result.invoiceNumber;
+      _snapshotUpsert('pets', _cloneSyncValue(pet));
+      if (linkedAppointment) _snapshotUpsert('appointments', _cloneSyncValue(linkedAppointment));
+      if (createdReminder) _snapshotUpsert('reminders', _cloneSyncValue(createdReminder));
+      if (createdInvoice) _snapshotUpsert('invoices', _cloneSyncValue(createdInvoice));
+      await saveIDB();
+      if (_hasPendingChanges()) {
+        _setSyncState('queued', null);
+        if (typeof _syncTimer !== 'undefined') {
+          clearTimeout(_syncTimer);
+          _syncTimer = setTimeout(syncToAPI, 0);
+        }
+      } else {
+        _markSyncConfirmed();
+      }
+      toast(message);
+    } catch (error) {
+      db = beforeAtomicClose;
+      const conflict = error && error.status === 409;
+      toast(conflict
+        ? 'La ficha cambió en otro equipo. Recargá antes de volver a cerrar.'
+        : 'No se pudo confirmar el cierre. La consulta sigue abierta para reintentar.');
+      return;
+    }
+  } else {
+    saveDB(message);
+  }
   closeModal();
   closeEncounter();
 }

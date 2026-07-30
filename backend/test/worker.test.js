@@ -67,8 +67,8 @@ describe('VetCare Worker', () => {
     expect(body).toMatchObject({
       status: 'ok',
       database: 'ready',
-      version: '2.5.1',
-      schemaVersion: 9,
+      version: '2.6.0',
+      schemaVersion: 10,
     });
   });
 
@@ -440,6 +440,189 @@ describe('VetCare Worker', () => {
       'SELECT ownerId FROM invoices WHERE id = ?',
     ).bind(ownerOnlyInvoice.body.id).first();
     expect(invoiceAfterOwnerDelete.ownerId).toBe('');
+
+    const atomicPet = {
+      id: crypto.randomUUID(),
+      name: 'Paciente atómico',
+      species: 'Perro',
+      ownerIds: [owner.id],
+      history: [],
+      vaccines: [],
+      images: [],
+      studies: [],
+    };
+    const savedAtomicPet = await jsonResponse('/api/pets', {
+      method: 'POST',
+      headers: authenticated,
+      body: atomicPet,
+    });
+    expect(savedAtomicPet.response.status).toBe(200);
+    const atomicAppointment = {
+      id: crypto.randomUUID(),
+      petId: atomicPet.id,
+      date: '2026-07-29',
+      time: '15:00',
+      type: 'Control',
+      status: 'in_consultation',
+      startedAt: '2026-07-29T18:00:00.000Z',
+      completedAt: '',
+    };
+    expect((await request('/api/appointments', {
+      method: 'POST',
+      headers: authenticated,
+      body: atomicAppointment,
+    })).status).toBe(200);
+
+    const atomicEncounterId = crypto.randomUUID();
+    const atomicReminderId = crypto.randomUUID();
+    const atomicClose = {
+      idempotencyKey: `close-${crypto.randomUUID()}`,
+      petId: atomicPet.id,
+      expectedRevision: 1,
+      petWeight: '12.4',
+      encounter: {
+        id: atomicEncounterId,
+        date: '2026-07-29',
+        type: 'Consulta general',
+        title: 'Control atómico',
+        description: '',
+        treatment: 'Continuar plan',
+        vet: 'Dra. Test',
+        weight: '12.4',
+        temp: '38.5',
+        hr: '90',
+        exam: 'Sin particularidades',
+        diagnosis: 'Estable',
+        nextControl: '2026-08-29',
+        status: 'closed',
+        startedAt: '2026-07-29T18:00:00.000Z',
+        closedAt: '2026-07-29T18:30:00.000Z',
+        reopenedReason: '',
+        appointmentId: atomicAppointment.id,
+      },
+      appointment: {
+        ...atomicAppointment,
+        status: 'completed',
+        completedAt: '2026-07-29T18:30:00.000Z',
+      },
+      reminder: {
+        id: atomicReminderId,
+        title: 'Control: Control atómico',
+        petId: atomicPet.id,
+        date: '2026-08-29',
+        completed: false,
+      },
+      invoice: null,
+    };
+    const firstAtomicClose = await jsonResponse('/api/clinical-close', {
+      method: 'POST',
+      headers: authenticated,
+      body: atomicClose,
+    });
+    expect(firstAtomicClose.response.status).toBe(200);
+    expect(firstAtomicClose.body).toMatchObject({
+      petRevision: 2,
+      encounterId: atomicEncounterId,
+      reminderId: atomicReminderId,
+      invoiceId: '',
+      replayed: false,
+    });
+    const replayedAtomicClose = await jsonResponse('/api/clinical-close', {
+      method: 'POST',
+      headers: authenticated,
+      body: atomicClose,
+    });
+    expect(replayedAtomicClose.response.status).toBe(200);
+    expect(replayedAtomicClose.body).toMatchObject({
+      petRevision: 2,
+      encounterId: atomicEncounterId,
+      replayed: true,
+    });
+    const reusedKeyWithOtherData = await jsonResponse('/api/clinical-close', {
+      method: 'POST',
+      headers: authenticated,
+      body: {
+        ...atomicClose,
+        encounter: { ...atomicClose.encounter, title: 'Datos diferentes' },
+      },
+    });
+    expect(reusedKeyWithOtherData.response.status).toBe(409);
+    expect(reusedKeyWithOtherData.body.error).toContain('usada con otros datos');
+    expect((await env.DB.prepare('SELECT COUNT(*) AS total FROM pet_history WHERE id = ?')
+      .bind(atomicEncounterId).first()).total).toBe(1);
+    expect((await env.DB.prepare('SELECT COUNT(*) AS total FROM reminders WHERE id = ?')
+      .bind(atomicReminderId).first()).total).toBe(1);
+    expect((await env.DB.prepare('SELECT status FROM appointments WHERE id = ?')
+      .bind(atomicAppointment.id).first()).status).toBe('completed');
+
+    const rejectedEncounterId = crypto.randomUUID();
+    const rejectedClose = await jsonResponse('/api/clinical-close', {
+      method: 'POST',
+      headers: authenticated,
+      body: {
+        ...atomicClose,
+        idempotencyKey: `close-${crypto.randomUUID()}`,
+        expectedRevision: 1,
+        encounter: { ...atomicClose.encounter, id: rejectedEncounterId },
+        appointment: null,
+        reminder: null,
+      },
+    });
+    expect(rejectedClose.response.status).toBe(409);
+    expect((await env.DB.prepare('SELECT COUNT(*) AS total FROM pet_history WHERE id = ?')
+      .bind(rejectedEncounterId).first()).total).toBe(0);
+
+    const invoicedEncounterId = crypto.randomUUID();
+    const atomicInvoiceId = crypto.randomUUID();
+    const invoicedClose = {
+      ...atomicClose,
+      idempotencyKey: `close-${crypto.randomUUID()}`,
+      expectedRevision: 2,
+      encounter: {
+        ...atomicClose.encounter,
+        id: invoicedEncounterId,
+        appointmentId: '',
+        title: 'Consulta con recibo opcional',
+      },
+      appointment: null,
+      reminder: null,
+      invoice: {
+        id: atomicInvoiceId,
+        date: '2026-07-29',
+        ownerId: owner.id,
+        petId: atomicPet.id,
+        encounterId: invoicedEncounterId,
+        items: [{ desc: 'Consulta', qty: 1, price: 2000 }],
+        total: 2000,
+        status: 'pending',
+        notes: 'Recibo opcional',
+      },
+    };
+    const firstInvoicedClose = await jsonResponse('/api/clinical-close', {
+      method: 'POST',
+      headers: authenticated,
+      body: invoicedClose,
+    });
+    expect(firstInvoicedClose.response.status).toBe(200);
+    expect(firstInvoicedClose.body).toMatchObject({
+      petRevision: 3,
+      invoiceId: atomicInvoiceId,
+      invoiceNumber: '0006',
+      replayed: false,
+    });
+    const replayedInvoicedClose = await jsonResponse('/api/clinical-close', {
+      method: 'POST',
+      headers: authenticated,
+      body: invoicedClose,
+    });
+    expect(replayedInvoicedClose.response.status).toBe(200);
+    expect(replayedInvoicedClose.body).toMatchObject({
+      invoiceId: atomicInvoiceId,
+      invoiceNumber: '0006',
+      replayed: true,
+    });
+    expect((await env.DB.prepare('SELECT COUNT(*) AS total FROM invoices WHERE encounterId = ?')
+      .bind(invoicedEncounterId).first()).total).toBe(1);
 
     const receptionEmail = `recepcion-${crypto.randomUUID()}@example.com`;
     const receptionPassword = 'otra-clave-segura';
