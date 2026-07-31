@@ -88,6 +88,7 @@
     /* Fondo de los campos de formulario (en oscuro NO es blanco) */
     --field-bg:      #ffffff;
     --brand-whatsapp: #147c3c;
+    --on-whatsapp:   #ffffff;   /* texto sobre el verde pleno de WhatsApp */
     /* ── ELEVACIÓN: tres niveles y nada más ── */
     --shadow-sm: 0 1px 2px rgba(42,34,51,.05);
     --shadow:    0 1px 3px rgba(42,34,51,.06), 0 4px 12px rgba(42,34,51,.05);
@@ -138,6 +139,28 @@
     --dur-base: .2s;
     --dur-slow: .32s;
     --ease: cubic-bezier(.2, .8, .3, 1);
+    /* ── INTERACCIÓN: un solo vocabulario para todo lo clickeable ──
+       Antes cada pieza inventaba su respuesta: .btn cambiaba fondo y borde,
+       .tl-chip solo el borde, las pestañas solo el color, y .img-item,
+       .cal-week-col y .cal-day-row no hacían nada pese a tener onclick y
+       cursor:pointer. El "presionado" existía únicamente en .btn, así que en
+       el teléfono —donde no hay hover— la mayoría de los controles no
+       acusaba recibo del toque.
+
+       Los cuatro roles y su respuesta:
+         sólido      relleno pleno (btn-primary, btn-warm) → aclara/oscurece
+         contorno    caja con borde (btn, chips, contact-btn) → se tiñe
+         tinta       texto sin caja (link-inline, study-title) → subraya
+         superficie  fila o tarjeta clickeable → fondo tenue (+ elevación)
+       Los cuatro comparten hundido al presionar y la misma transición. */
+    --press-shift: 1px;    /* cuánto baja lo que se presiona */
+    --hover-lift: -2px;    /* cuánto sube una tarjeta al pasar por encima */
+    /* Nunca `transition: all`: animar `all` incluye transform y width, y hace
+       que el hundido del :active llegue tarde. Solo lo que cambia de color. */
+    --transition-ui: background-color var(--dur-fast) var(--ease),
+                     border-color var(--dur-fast) var(--ease),
+                     color var(--dur-fast) var(--ease),
+                     box-shadow var(--dur-fast) var(--ease);
     /* ── ICONOS: tres tamaños ── */
     --icon-sm: 16px;
     --icon-md: 20px;
@@ -252,6 +275,7 @@
     --on-highlight:  #4a3410;
     --field-bg:      #1f1a27;
     --brand-whatsapp: #4ade8a;
+    --on-whatsapp:   #0d2b1f;   /* el verde se aclara en oscuro: texto oscuro encima */
     --shadow-sm: 0 1px 2px rgba(0,0,0,.3);
     --shadow: 0 1px 3px rgba(0,0,0,.35), 0 4px 12px rgba(0,0,0,.25);
     --shadow-lg: 0 12px 32px rgba(0,0,0,.5);
@@ -274,6 +298,10 @@
      hacia adentro en vez de hacia afuera. */
   .tabs :focus-visible,
   .table-wrap :focus-visible { outline-offset: -2px; }
+
+  /* El soporte de `prefers-reduced-motion` ya existe y es global: está al
+     final del archivo, para ganar la cascada. Los hundidos y elevaciones que
+     agrega el sistema de interacción quedan cubiertos por esa misma regla. */
 
   body {
     font-family: var(--font-body);
@@ -391,13 +419,14 @@
     font-size: var(--fs-sm);
     font-weight: var(--fw-medium);
     font-family: var(--font-body);
-    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+    transition: var(--transition-ui);
     margin-bottom: 1px;
     border: 1px solid transparent;
     background: transparent;
     position: relative;
   }
   .nav-item:hover { background: var(--sidebar-item-active); color: var(--text); }
+  .nav-item:active { background: var(--accent-soft); color: var(--accent); }
   .nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .nav-item.active { background: var(--sidebar-item-active); color: var(--accent); font-weight: var(--fw-bold); box-shadow: var(--shadow); }
   .nav-item.active::before {
@@ -430,9 +459,10 @@
     gap: var(--space-2);
     font-size: var(--fs-sm);
     font-family: var(--font-body);
-    transition: all var(--dur-fast) var(--ease);
+    transition: var(--transition-ui), transform var(--dur-fast) var(--ease);
   }
-  .theme-toggle:hover { background: var(--bg-soft); }
+  .theme-toggle:hover { background: var(--bg-soft); border-color: var(--text-mute); }
+  .theme-toggle:active { transform: translateY(var(--press-shift)); }
 
   /* ── RETÍCULA DE CONTENIDO ──
      Un solo ancho máximo para toda la app (--content-max) y un padding que
@@ -480,22 +510,34 @@
     font-size: var(--fs-sm);
     font-weight: var(--fw-medium);
     font-family: var(--font-body);
-    transition: all var(--dur-fast) var(--ease);
+    transition: var(--transition-ui), transform var(--dur-fast) var(--ease);
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
   }
   .btn:hover { background: var(--bg-soft); border-color: var(--text-mute); }
-  .btn:active { transform: translateY(1px); }
-  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn:active { transform: translateY(var(--press-shift)); }
+  /* El anillo de foco lo pone la regla global de arriba; acá estaba repetido
+     con los mismos valores. */
   .btn:disabled { opacity: .5; cursor: not-allowed; }
+  /* Deshabilitado no responde: sin hover, sin hundido. Antes el :hover seguía
+     tiñendo un botón que no hacía nada. */
+  .btn:disabled:hover { background: var(--surface); border-color: var(--border-strong); }
+  .btn-primary:disabled:hover { background: var(--accent); border-color: var(--accent); }
+  .btn:disabled:active { transform: none; }
   /* Jerarquía de botones:
      btn-primary = acción principal · btn-warm = destacado (Nuevo turno)
      btn (defecto) = secundario · btn-danger = destructivo */
   .btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
   .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--on-accent); }
   .btn-danger { background: var(--surface); color: var(--danger-strong); border-color: var(--danger-border); }
-  .btn-danger:hover { background: var(--danger-strong); border-color: var(--danger-strong); color: #fff; }
+  /* El relleno usa --danger-fill y no --danger-strong: en modo oscuro
+     --danger-strong es un rosa claro (#ff9ea1) y con texto blanco encima
+     daba 1,97:1, ilegible justo en el botón de eliminar. El par
+     --danger-fill / --on-danger se invierte con el tema y da 5,9:1 en los
+     dos. (Era el mismo problema que el comentario de --danger-fill ya
+     describía para los rellenos plenos.) */
+  .btn-danger:hover { background: var(--danger-fill); border-color: var(--danger-fill); color: var(--on-danger); }
   .btn-warm { background: var(--highlight); color: var(--on-highlight); border-color: var(--highlight); font-weight: var(--fw-bold); }
   .btn-warm:hover { background: var(--highlight-hover); border-color: var(--highlight-hover); color: var(--on-highlight); }
   .btn-sm { padding: var(--space-1) var(--space-3); font-size: var(--fs-xs); }
@@ -516,7 +558,7 @@
     .close-btn { min-width: 44px; min-height: 44px; }
     /* Controles propios de la ficha y la línea de tiempo, que no son .btn */
     .pet-detail-back { min-height: 44px; }
-    .tl-chip, .followup-chip { min-height: 40px; display: inline-flex; align-items: center; }
+    .tl-chip, .followup-chip, .tag-link { min-height: 40px; display: inline-flex; align-items: center; }
     /* Enlaces sueltos dentro de una tarjeta (por ejemplo "Ver resultado"):
        en escritorio son texto en línea, en el teléfono necesitan área propia.
        inline-block y no inline-flex: flex no deja que el texto se parta y el
@@ -663,7 +705,46 @@
     text-align: left;
     cursor: pointer;
   }
-  .link-cell:hover { text-decoration: underline; }
+  /* ── ROL "TINTA": texto clickeable sin caja ──
+     Tres piezas hacían lo mismo de tres formas: .link-cell (nombre en la
+     celda de una tabla), .study-title (nombre de un estudio) y, sobre todo,
+     los enlaces en línea que el JS escribía con
+     style="display:inline;padding:0;font:inherit" repetido en quince
+     lugares. Ahora es una clase, .link-inline, y el subrayado se declara
+     siempre presente pero transparente: al aparecer no empuja la línea de
+     base ni cambia la altura del renglón, solo se tiñe. */
+  .link-cell,
+  .link-inline,
+  .study-title {
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 2px;
+    transition: text-decoration-color var(--dur-fast) var(--ease),
+                color var(--dur-fast) var(--ease);
+  }
+  .link-cell:hover,
+  .link-inline:hover,
+  .study-title:hover { text-decoration-color: currentColor; }
+  /* El rol tinta no se hunde: mover una palabra dentro de una frase sacude
+     el renglón. Acusa el toque con el subrayado y un cambio de color, que en
+     el teléfono (donde no hay hover) es la única señal disponible. */
+  .link-cell:active,
+  .link-inline:active,
+  .study-title:active { color: var(--accent-hover); text-decoration-color: currentColor; }
+  /* Enlace dentro de un texto: hereda tipografía y peso de lo que lo rodea
+     (un <strong>, un <small> o un <h4>), y solo aporta el color de acento. */
+  .link-inline {
+    display: inline;
+    width: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: var(--accent);
+    text-align: inherit;
+    cursor: pointer;
+  }
 
   /* Pet cards grid */
   .pets-grid {
@@ -677,9 +758,18 @@
     border-radius: var(--radius);
     overflow: hidden;
     cursor: pointer;
-    transition: all var(--dur-base) var(--ease);
+    transition: var(--transition-ui), transform var(--dur-base) var(--ease);
   }
-  .pet-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--accent); }
+  .pet-card:hover { transform: translateY(var(--hover-lift)); box-shadow: var(--shadow); border-color: var(--accent); }
+  /* Al presionar, la tarjeta vuelve a apoyarse: es el gesto de "hundir" del
+     rol superficie, el mismo que el de los botones pero desde arriba. */
+  .pet-card:active { transform: translateY(var(--press-shift)); box-shadow: var(--shadow-sm); }
+  /* La grilla de tutores reusa .pet-card, pero ahí la tarjeta NO se abre: lo
+     clickeable son los chips de mascota y los botones de contacto. Antes se
+     elevaba igual y prometía un clic que no existía. */
+  .pet-card.is-static { cursor: default; }
+  .pet-card.is-static:hover,
+  .pet-card.is-static:active { transform: none; box-shadow: none; border-color: var(--border); }
   .pet-photo {
     width: 100%;
     height: 160px;
@@ -696,9 +786,15 @@
   .pet-card-body .meta { font-size: var(--fs-xs); color: var(--text-soft); }
   .pet-card-body .tags { display: flex; gap: var(--space-2); margin-top: 8px; flex-wrap: wrap; }
 
-  /* Etiqueta redonda. Definición única: antes había una segunda más abajo
-     que la pisaba con otro radio, otro tamaño y otro peso. */
-  .tag {
+  /* ── CHIP: una sola geometría para todas las etiquetas ──
+     Definición única: antes había una segunda .tag más abajo que la pisaba
+     con otro radio, otro tamaño y otro peso. Ahora además absorbe a
+     .followup-chip (contadores de seguimiento) y .lab-chip (marcas de
+     laboratorio), que eran copias de la misma píldora con divergencias sin
+     motivo: la de laboratorio no tenía padding vertical y usaba un borde más
+     fuerte, y las tres declaraban por separado el mismo tipo de letra.
+     Acá va la forma; cada familia aporta solo su color. */
+  .tag, .followup-chip, .lab-chip {
     display: inline-block;
     padding: var(--space-1) var(--space-3);
     border-radius: var(--radius-pill);
@@ -714,9 +810,31 @@
   .tag.danger { background: var(--danger-soft); color: var(--danger-strong); border-color: var(--danger-border); }
   .tag.success { background: var(--success-soft); color: var(--success-strong); border-color: var(--success-border); }
   /* Chip que navega a otra ficha (ej: mascota desde la tarjeta del tutor).
-     Botón real por la misma razón que .link-cell: accesible por teclado. */
-  .tag-link { font: inherit; cursor: pointer; }
-  .tag-link:hover { text-decoration: underline; }
+     Botón real por la misma razón que .link-cell: accesible por teclado.
+     Acá había `font: inherit`, el shorthand: reseteaba también el font-size
+     y el font-weight de .tag, así que el chip salía en 16px peso normal, con
+     el fondo neutro de un chip estático y el subrayado del hover como única
+     pista de que era clickeable — un hipervínculo dentro de una píldora.
+     Ahora hereda solo la familia tipográfica y el resalte lo dan el color y
+     el fondo, igual que en el resto de los chips. */
+  .tag-link {
+    font-family: inherit;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-color: var(--accent-border);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease),
+                border-color var(--dur-fast) var(--ease),
+                color var(--dur-fast) var(--ease);
+  }
+  /* Relleno pleno al pasar por encima: el mismo lenguaje que .btn-primary,
+     sin subrayado. --on-accent se invierte en modo oscuro. */
+  .tag-link:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
+  }
+  .tag-link:active { background: var(--accent-hover); border-color: var(--accent-hover); }
 
   /* Modal */
   .modal-overlay {
@@ -773,8 +891,10 @@
     line-height: 1;
     padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-sm);
+    transition: var(--transition-ui), transform var(--dur-fast) var(--ease);
   }
   .close-btn:hover { background: var(--bg-soft); color: var(--text); }
+  .close-btn:active { transform: translateY(var(--press-shift)); }
 
   /* Tabs */
   .tabs {
@@ -799,10 +919,14 @@
     border-radius: 0;
     margin-bottom: -1px;
     white-space: nowrap;
-    transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+    transition: var(--transition-ui);
   }
-  .tab:hover { color: var(--text); }
+  /* Antes el hover solo cambiaba el color del texto: en una fila de pestañas
+     apagadas no se distinguía cuál estaba por debajo del puntero. */
+  .tab:hover { color: var(--text); background: var(--bg-soft); }
+  .tab:active { color: var(--accent); }
   .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: var(--fw-bold); }
+  .tab.active:hover { background: var(--accent-soft); }
   .tab-content { display: none; }
   .tab-content.active { display: block; }
 
@@ -870,13 +994,16 @@
     border: 1px solid var(--border-strong);
     color: var(--text);
     background: var(--surface);
-    transition: all var(--dur-fast) var(--ease);
+    transition: var(--transition-ui), transform var(--dur-fast) var(--ease);
     cursor: pointer;
   }
   .contact-btn:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .contact-btn:active { transform: translateY(var(--press-shift)); }
   /* Verde de marca de WhatsApp: identidad ajena, no parte de la paleta. */
   .contact-btn.wa { color: var(--brand-whatsapp); border-color: var(--brand-whatsapp); }
-  .contact-btn.wa:hover { background: var(--brand-whatsapp); color: #fff; }
+  /* Mismo caso que el botón de eliminar: en oscuro el verde de WhatsApp se
+     aclara a #4ade8a y el blanco encima daba 1,73:1. */
+  .contact-btn.wa:hover { background: var(--brand-whatsapp); color: var(--on-whatsapp); }
   .contact-btn.mail { color: var(--accent); border-color: var(--accent-border); }
   .contact-btn.mail:hover { background: var(--accent); color: var(--on-accent); }
 
@@ -905,7 +1032,8 @@
     transition: background var(--dur-fast) var(--ease);
     position: relative;
   }
-  .cal-day:hover { background: var(--bg-soft); }
+  .cal-day:hover { background: var(--bg-soft); box-shadow: inset 0 0 0 1px var(--accent-border); }
+  .cal-day:active { background: var(--accent-soft); }
   .cal-day.other-month { opacity: .35; }
   .cal-day.today { background: var(--accent-soft); }
   .cal-day .num { font-weight: var(--fw-bold); font-size: var(--fs-sm); margin-bottom: var(--space-1); }
@@ -939,7 +1067,12 @@
     border: 1px solid var(--border);
     background: var(--bg-soft);
     cursor: pointer;
+    transition: var(--transition-ui), transform var(--dur-fast) var(--ease);
   }
+  /* Tenía cursor:pointer y abría el visor, pero no respondía de ninguna
+     manera: en la grilla de fotos no se veía cuál se iba a abrir. */
+  .img-item:hover { border-color: var(--accent); box-shadow: var(--shadow); }
+  .img-item:active { transform: translateY(var(--press-shift)); }
   .img-item img { width: 100%; height: 100%; object-fit: cover; }
   .img-item .img-label {
     position: absolute;
@@ -967,7 +1100,15 @@
     cursor: pointer;
     font-size: var(--fs-xs);
     line-height: 1;
+    transition: var(--transition-ui), transform var(--dur-fast) var(--ease);
   }
+  /* Los botones de borrar (foto y estudio) no daban ninguna señal al pasar
+     por encima: borrar es irreversible y conviene que se note antes de
+     soltar el clic, no después. */
+  .img-item .img-x:hover,
+  .study-item .study-x:hover { background: var(--danger-fill); color: var(--on-danger); }
+  .img-item .img-x:active,
+  .study-item .study-x:active { transform: scale(.92); }
 
   /* Study links */
   .study-list { display: flex; flex-direction: column; gap: var(--space-2); margin-top: 10px; }
@@ -983,8 +1124,9 @@
   .study-icon { display: inline-flex; flex-shrink: 0; color: var(--accent); }
   .study-icon .ico { width: var(--icon-lg); height: var(--icon-lg); }
   .study-body { flex: 1; min-width: 0; }
-  .study-title { font-weight: var(--fw-bold); color: var(--text); text-decoration: none; display: block; }
-  .study-title:hover { text-decoration: underline; }
+  /* El subrayado y su hover vienen del rol "tinta" (bloque .link-inline);
+     acá estaba `text-decoration:none`, que lo pisaba por venir después. */
+  .study-title { font-weight: var(--fw-bold); color: var(--text); display: block; }
   .study-meta { font-size: var(--fs-xs); color: var(--text-mute); margin-top: 2px; }
   .study-x { position: static; width: 22px; height: 22px; flex-shrink: 0; }
 
@@ -1028,7 +1170,7 @@
     transform: translateY(20px);
     opacity: 0;
     pointer-events: none;   /* invisible NO debe bloquear toques (tapaba el bottom-nav) */
-    transition: all var(--dur-slow) var(--ease);
+    transition: transform var(--dur-slow) var(--ease), opacity var(--dur-slow) var(--ease);
     font-weight: var(--fw-medium);
     font-size: var(--fs-sm);
   }
@@ -1331,9 +1473,11 @@
     display: flex;
     gap: var(--space-3);
     align-items: center;
+    transition: var(--transition-ui);
   }
   .gs-item:last-child { border-bottom: none; }
   .gs-item:hover { background: var(--bg-soft); }
+  .gs-item:active { background: var(--accent-soft); }
   .gs-item .gs-label { font-weight: var(--fw-bold); }
   .gs-item .gs-sub { font-size: var(--fs-2xs); color: var(--text-mute); }
 
@@ -1751,7 +1895,8 @@
 .camera-controls{position:absolute;bottom:max(32px,env(safe-area-inset-bottom));left:0;right:0;display:flex;align-items:center;justify-content:space-around;padding:0 32px;}
 .cam-shutter{width:74px;height:74px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.55);cursor:pointer;box-shadow:0 0 0 3px #6F2DBD inset;transition:transform var(--dur-fast) var(--ease);}
 .cam-shutter:active{transform:scale(.92);}
-.cam-btn{width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);}
+.cam-btn{width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);transition:transform var(--dur-fast) var(--ease),background var(--dur-fast) var(--ease);}
+.cam-btn:active{transform:scale(.92);background:rgba(255,255,255,.3);}
 .cam-btn:active{background:rgba(255,255,255,.32);}
 
 /* ===== Footer del menu lateral: Opciones + Salir =====
@@ -1770,8 +1915,10 @@
   padding:var(--space-3) var(--space-4); border-radius:var(--radius-sm); cursor:pointer;
   color:var(--text-soft); font-size:var(--fs-base); font-weight:var(--fw-medium);
   background:transparent; border:none; font-family:inherit;
+  transition:var(--transition-ui);
 }
 .footer-btn:hover { background:var(--surface); color:var(--text); }
+.footer-btn:active { background:var(--accent-soft); color:var(--accent); }
 .footer-btn .ico { width:var(--icon-lg); height:var(--icon-lg); flex-shrink:0; }
 
 /* ===== Menu lateral mas grande (aprox +30%) ===== */
@@ -1849,9 +1996,10 @@ html, body { max-width:100%; overflow-x:hidden; }
 .assoc-picker { border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; }
 .assoc-search { border:none !important; border-bottom:1px solid var(--border) !important; border-radius:0 !important; }
 .assoc-list { max-height:180px; overflow-y:auto; background:var(--field-bg); }
-.assoc-row { display:flex; align-items:center; gap:var(--space-3); padding:var(--space-2) var(--space-3); cursor:pointer; border-bottom:1px solid var(--border); color:var(--text); }
+.assoc-row { display:flex; align-items:center; gap:var(--space-3); padding:var(--space-2) var(--space-3); cursor:pointer; border-bottom:1px solid var(--border); color:var(--text); transition:var(--transition-ui); }
 .assoc-row:last-child { border-bottom:none; }
 .assoc-row:hover { background:var(--bg-soft); }
+.assoc-row:active { background:var(--accent-soft); }
 .assoc-row input[type=checkbox] { width:auto; margin:0; flex:none; }
 .assoc-empty { padding:var(--space-4); text-align:center; color:var(--text-mute); font-size:var(--fs-sm); }
 
@@ -1859,7 +2007,10 @@ html, body { max-width:100%; overflow-x:hidden; }
 .cal-view-switch { display:inline-flex; gap:var(--space-1); }
 .cal-view-switch .btn.active { background:var(--accent); color:var(--on-accent); }
 .cal-week-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:var(--space-2); }
-.cal-week-col { border:1px solid var(--border); border-radius:var(--radius-sm); min-height:120px; padding:var(--space-2); cursor:pointer; background:var(--surface); }
+.cal-week-col { border:1px solid var(--border); border-radius:var(--radius-sm); min-height:120px; padding:var(--space-2); cursor:pointer; background:var(--surface); transition:var(--transition-ui), transform var(--dur-fast) var(--ease); }
+/* Abría el detalle del día y no daba ninguna señal (rol superficie). */
+.cal-week-col:hover { background:var(--bg-soft); border-color:var(--accent-border); }
+.cal-week-col:active { transform:translateY(var(--press-shift)); }
 .cal-week-col.today { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
 .cal-week-head { font-size:var(--fs-xs); font-weight:var(--fw-bold); margin-bottom:6px; color:var(--text-soft); }
 .cal-week-events { display:flex; flex-direction:column; gap:var(--space-1); }
@@ -1913,8 +2064,12 @@ html, body { max-width:100%; overflow-x:hidden; }
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
   cursor: pointer;
+  transition: var(--transition-ui), transform var(--dur-fast) var(--ease);
 }
-.pet-detail-back:hover { border-color: var(--accent); color: var(--accent); }
+/* Es un botón de contorno: responde como .btn, con el acento reservado para
+   el color del texto. */
+.pet-detail-back:hover { background: var(--bg-soft); border-color: var(--accent); color: var(--accent); }
+.pet-detail-back:active { transform: translateY(var(--press-shift)); }
 .pet-detail-back .ico { color: var(--text-soft); }
 .pet-detail-breadcrumb {
   display: flex;
@@ -2035,16 +2190,10 @@ html, body { max-width:100%; overflow-x:hidden; }
 .followup-headline.is-open { border-left-color: var(--accent); background: var(--accent-soft); }
 .followup-headline.is-clear { border-left-color: var(--success-border); }
 .followup-chips { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-.followup-chip {
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--text-soft);
-  font-size: var(--fs-2xs);
-  font-weight: var(--fw-bold);
-  white-space: nowrap;
-}
+/* Forma y tipografía: bloque "CHIP" de más arriba. Lo único propio es el
+   fondo: estos contadores se apoyan sobre .followup-headline, que ya está
+   teñido con --bg-soft, así que un chip de --bg-soft desaparecería. */
+.followup-chip { background: var(--surface); }
 .followup-chip.is-overdue { border-color: var(--danger-border); background: var(--danger-soft); color: var(--danger-strong); }
 .followup-chip.is-today { border-color: var(--highlight); background: var(--highlight-soft); color: var(--text); }
 .followup-item {
@@ -2168,18 +2317,9 @@ html, body { max-width:100%; overflow-x:hidden; }
 }
 
 /* Resultados de laboratorio */
-.lab-chip {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 0 var(--space-2);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
-  background: var(--bg-soft);
-  color: var(--text-soft);
-  font-size: var(--fs-2xs);
-  font-weight: var(--fw-bold);
-  white-space: nowrap;
-}
+/* Forma y tipografía: bloque "CHIP" de más arriba. Lo propio es que va
+   pegado a un valor dentro de una celda, de ahí la separación izquierda. */
+.lab-chip { margin-left: 6px; }
 .lab-chip.is-out { border-color: var(--danger-border); background: var(--danger-soft); color: var(--danger-strong); }
 .lab-chip.is-ok { border-color: var(--success-border); background: var(--bg-soft); color: var(--text-soft); }
 .lab-form {
@@ -2212,7 +2352,8 @@ html, body { max-width:100%; overflow-x:hidden; }
 .lab-flag.is-low { color: var(--accent); }
 .lab-out-summary { margin-top: 10px; color: var(--text-soft); font-size: var(--fs-sm); }
 .lab-ranges { margin-bottom: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); }
-.lab-ranges summary { padding: var(--space-3); cursor: pointer; font-weight: var(--fw-bold); }
+.lab-ranges summary { padding: var(--space-3); cursor: pointer; font-weight: var(--fw-bold); border-radius: var(--radius-sm); transition: var(--transition-ui); }
+.lab-ranges summary:hover { background: var(--bg-soft); color: var(--accent); }
 .lab-ranges[open] summary { border-bottom: 1px solid var(--border); }
 .lab-range-cell { white-space: nowrap; }
 .lab-range-cell input { display: inline-block; width: 78px; padding: var(--space-1) var(--space-2); }
@@ -2350,9 +2491,16 @@ html, body { max-width:100%; overflow-x:hidden; }
   font-family: inherit;
   font-size: var(--fs-sm);
   cursor: pointer;
+  transition: var(--transition-ui), transform var(--dur-fast) var(--ease);
 }
-.tl-chip:hover { border-color: var(--border-strong); }
+/* Filtro de la línea de tiempo: se prende y se apaga, así que el
+   seleccionado usa el relleno tenue del acento (no el pleno, que en este
+   sistema significa "acción principal"). El hover era solo un cambio de
+   borde, imperceptible sobre el fondo de la tarjeta. */
+.tl-chip:hover { background: var(--bg-soft); border-color: var(--border-strong); color: var(--text); }
+.tl-chip:active { transform: translateY(var(--press-shift)); }
 .tl-chip.is-active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: var(--fw-bold); }
+.tl-chip.is-active:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .tl-filters { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .tl-filters select, .tl-filters input { width: auto; min-width: 170px; }
 .tl-compare-bar {
@@ -2752,7 +2900,9 @@ html, body { max-width:100%; overflow-x:hidden; }
   border-radius: var(--radius-sm);
   background: var(--bg-soft);
   cursor: pointer;
+  transition: var(--transition-ui);
 }
+.billing-toggle:hover { border-color: var(--border-strong); }
 .billing-toggle:has(input:checked) { border-color: var(--success-border); background: var(--success-soft); }
 .billing-toggle input { flex: 0 0 auto; width: 18px; height: 18px; margin-top: 2px; }
 .billing-toggle span { display: grid; gap: var(--space-1); }
@@ -2949,6 +3099,13 @@ html, body { max-width:100%; overflow-x:hidden; }
   /* Nombre del paciente en la tabla y enlaces de la línea de tiempo */
   .link-cell { min-height: 40px; }
   .tl-details a, .tl-card a, .followup-body a, .study-title { padding-block: var(--space-3); }
+  /* Enlace en línea (nombre de mascota o tutor dentro de una frase): el
+     padding vertical agranda el área de toque sin tocar la altura del
+     renglón, porque en un elemento `inline` desborda hacia afuera.
+     Va en este bloque y no en el de objetivos táctiles de más arriba porque
+     .link-inline declara `padding: 0` después de aquel, y las media queries
+     no suman especificidad. */
+  .link-inline { padding-block: var(--space-2); }
 }
 
 @media (max-width: 480px) {

@@ -71,7 +71,7 @@ function renderUpcomingAppts() {
     const pet = db.pets.find(p => p.id === a.petId);
     return `<div class="reminder-item">
       <div class="info">
-        <strong>${pet ? `<button type="button" class="link-cell" style="display:inline;padding:0;font:inherit;font-weight:inherit" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button>` : '—'} · ${escapeHtml(a.type || (a.service ? 'Peluquería: ' + a.service : 'Consulta'))}</strong>
+        <strong>${pet ? `<button type="button" class="link-inline" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button>` : '—'} · ${escapeHtml(a.type || (a.service ? 'Peluquería: ' + a.service : 'Consulta'))}</strong>
         <small>${formatDate(a.date)} ${a.time || ''}</small>
       </div>
     </div>`;
@@ -90,7 +90,7 @@ function renderUrgentReminders() {
     return `<div class="reminder-item ${cls}">
       <div class="info">
         <strong>${escapeHtml(r.title)}</strong>
-        <small>${pet ? `<button type="button" class="link-cell" style="display:inline;padding:0;font:inherit" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button> · ` : ''}${formatDate(r.date)} ${days < 0 ? '(vencido)' : days === 0 ? '(hoy)' : `(en ${days}d)`}</small>
+        <small>${pet ? `<button type="button" class="link-inline" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button> · ` : ''}${formatDate(r.date)} ${days < 0 ? '(vencido)' : days === 0 ? '(hoy)' : `(en ${days}d)`}</small>
       </div>
       <button class="btn btn-sm" onclick="completeReminder('${r.id}')" title="Marcar como hecho" aria-label="Marcar como hecho">${icon('check','ico-sm')}</button>
     </div>`;

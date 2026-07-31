@@ -16,7 +16,7 @@ function renderOwners() {
 function ownerListCardHTML(o) {
   const pets = db.pets.filter(p => (p.ownerIds||[]).includes(o.id));
   return `
-    <div class="pet-card" style="cursor:default">
+    <div class="pet-card is-static">
       <div class="pet-card-body">
         <h3>${escapeHtml(o.name)}</h3>
         <div class="meta">${icon('phone','ico-sm')} ${escapeHtml(o.phone||'sin teléfono')}</div>
@@ -40,7 +40,7 @@ function ownerCardHTML(o, petName) {
   const mailSubj = encodeURIComponent(`Veterinaria - ${petName}`);
   return `
     <div class="owner-card">
-      <h4><button type="button" class="link-cell" style="display:inline;padding:0;font:inherit;font-weight:inherit" onclick="closeModal();openOwnerModal('${o.id}')">${escapeHtml(o.name)}</button> ${o.relationship ? `<small style="font-weight: var(--fw-normal);color:var(--text-mute)">· ${escapeHtml(o.relationship)}</small>` : ''}</h4>
+      <h4><button type="button" class="link-inline" onclick="closeModal();openOwnerModal('${o.id}')">${escapeHtml(o.name)}</button> ${o.relationship ? `<small style="font-weight: var(--fw-normal);color:var(--text-mute)">· ${escapeHtml(o.relationship)}</small>` : ''}</h4>
       <div style="font-size:var(--fs-sm);color:var(--text-soft)">
         ${o.phone ? `${icon('phone','ico-sm')} ${escapeHtml(o.phone)}<br>` : ''}
         ${o.altPhone ? `${icon('phone','ico-sm')} ${escapeHtml(o.altPhone)} <small style="color:var(--text-mute)">(alt.)</small><br>` : ''}

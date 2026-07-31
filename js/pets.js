@@ -444,7 +444,7 @@ function renderPetDetail(id) {
   summary.innerHTML = `
     <div class="pet-summary-item"><span>&Uacute;ltima atenci&oacute;n</span><strong>${history[0]?.date ? formatDate(history[0].date) : 'Sin registros'}</strong><small>${history[0]?.title ? escapeHtml(history[0].title) : 'Todavia no hay historia clinica'}</small></div>
     <div class="pet-summary-item"><span>Pr&oacute;ximo turno</span><strong>${nextAppointment ? formatDate(nextAppointment.date) : 'Sin turno'}</strong><small>${nextAppointment ? `${escapeHtml(nextAppointment.time || 'Sin hora')} &middot; ${escapeHtml(nextAppointment.type || 'Consulta')}` : 'No hay turnos programados'}</small></div>
-    <div class="pet-summary-item"><span>Tutor principal</span><strong>${owners[0] ? `<button type="button" class="link-cell" style="display:inline;padding:0;font:inherit;font-weight:inherit" onclick="closeModal();openOwnerModal('${owners[0].id}')">${escapeHtml(owners[0].name)}</button>` : 'Sin asociar'}</strong><small>${owners[0]?.phone ? escapeHtml(owners[0].phone) : `${owners.length} tutor${owners.length === 1 ? '' : 'es'} asociado${owners.length === 1 ? '' : 's'}`}</small></div>`;
+    <div class="pet-summary-item"><span>Tutor principal</span><strong>${owners[0] ? `<button type="button" class="link-inline" onclick="closeModal();openOwnerModal('${owners[0].id}')">${escapeHtml(owners[0].name)}</button>` : 'Sin asociar'}</strong><small>${owners[0]?.phone ? escapeHtml(owners[0].phone) : `${owners.length} tutor${owners.length === 1 ? '' : 'es'} asociado${owners.length === 1 ? '' : 's'}`}</small></div>`;
   if (hero) hero.insertAdjacentElement('afterend', summary);
   else body.prepend(summary);
 
