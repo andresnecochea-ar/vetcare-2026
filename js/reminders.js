@@ -16,7 +16,7 @@ function renderReminders() {
       return `<div class="reminder-item ${cls}">
         <div class="info">
           <strong>${escapeHtml(r.title)}</strong>
-          <small>${pet?`<button type="button" class="link-cell" style="display:inline;padding:0;font:inherit" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button> · `:''}${formatDate(r.date)} ${days<0?'(vencido '+(-days)+'d)':days===0?'(HOY)':'(en '+days+'d)'}</small>
+          <small>${pet?`<button type="button" class="link-inline" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button> · `:''}${formatDate(r.date)} ${days<0?'(vencido '+(-days)+'d)':days===0?'(HOY)':'(en '+days+'d)'}</small>
           ${r.notes?`<small style="display:block;margin-top:4px">${escapeHtml(r.notes)}</small>`:''}
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">

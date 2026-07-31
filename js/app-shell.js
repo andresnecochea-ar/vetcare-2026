@@ -150,7 +150,7 @@ function renderToday() {
     const pet = db.pets.find(p=>p.id===a.petId);
     return `<div class="today-slot ${cls}">
       <div class="ts-info">
-        <strong>${pet ? `<button type="button" class="link-cell" style="display:inline;padding:0;font:inherit;font-weight:inherit" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button>` : escapeHtml('Paciente')}${isClinical ? `<span class="appointment-status ${appointmentStatusClass(status)}">${appointmentStatusLabel(status)}</span>` : ''}</strong>
+        <strong>${pet ? `<button type="button" class="link-inline" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button>` : escapeHtml('Paciente')}${isClinical ? `<span class="appointment-status ${appointmentStatusClass(status)}">${appointmentStatusLabel(status)}</span>` : ''}</strong>
         <small>${a.time||'Sin hora'} &middot; ${escapeHtml(a.type||a.service||'Sin tipo')}</small>
       </div>
       <div class="today-slot-actions">
@@ -166,7 +166,7 @@ function renderToday() {
     return `<div class="today-slot reminder">
       <div class="ts-info">
         <strong>${escapeHtml(r.title)}</strong>
-        <small>${isToday ? 'Hoy' : formatDate(r.date)}${pet ? ` · <button type="button" class="link-cell" style="display:inline;padding:0;font:inherit" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button>` : ''}</small>
+        <small>${isToday ? 'Hoy' : formatDate(r.date)}${pet ? ` · <button type="button" class="link-inline" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button>` : ''}</small>
       </div>
       ${pet ? `<button class="btn btn-sm" onclick="openPetDetail('${pet.id}')">Ver</button>` : ''}
     </div>`;  }

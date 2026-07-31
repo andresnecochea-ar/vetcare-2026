@@ -56,7 +56,7 @@ function openInvoiceModal(id) {
       <button class="close-btn" onclick="closeModal()">&times;</button>
     </div>
     <div class="modal-body">
-      ${inv.encounterId ? `<div class="linked-receipt-context"><strong>Vinculado a una consulta clínica</strong><span>El paciente ${linkedPet ? `<button type="button" class="link-cell" style="display:inline;padding:0;font:inherit" onclick="closeModal();openPetDetail('${linkedPet.id}')">${escapeHtml(linkedPet.name)}</button>` : ''} queda protegido para conservar la trazabilidad.</span></div>` : ''}
+      ${inv.encounterId ? `<div class="linked-receipt-context"><strong>Vinculado a una consulta clínica</strong><span>El paciente ${linkedPet ? `<button type="button" class="link-inline" onclick="closeModal();openPetDetail('${linkedPet.id}')">${escapeHtml(linkedPet.name)}</button>` : ''} queda protegido para conservar la trazabilidad.</span></div>` : ''}
       <div class="form-row">
         <div class="form-group"><label>Tutor</label>
           <select id="invOwner" onchange="syncInvoiceRelations('owner')"><option value="">— Sin tutor —</option>${ownerOpts}</select></div>

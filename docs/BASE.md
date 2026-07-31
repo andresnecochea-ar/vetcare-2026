@@ -455,6 +455,7 @@ Las entradas viejas se resumen; el detalle está en el historial de git.
 | 30/07/2026 | 2.10.0 | Plan sanitario: vacunas y antiparasitarios con próxima dosis. Esquema 12. |
 | 30/07/2026 | 2.11.0 | Resultados de laboratorio con valores de referencia editables. Esquema 13. |
 | 30/07/2026 | 2.12.0 | Documentos clínicos unificados (un solo encabezado de impresión), certificado médico y plantillas de examen. |
+| 31/07/2026 | 2.15.0 | **Sistema de interacción** para todo lo clickeable: cuatro roles (sólido, contorno, tinta, superficie) con hover y presionado propios, tokens `--press-shift`, `--hover-lift` y `--transition-ui`. Una sola geometría de chip para `.tag`, `.followup-chip` y `.lab-chip`. Los enlaces en línea pasan a `.link-inline` (antes eran quince repeticiones de `style="display:inline;padding:0;font:inherit"`). Se repararon dos rellenos ilegibles en modo oscuro: `.btn-danger:hover` daba 1,97:1 y `.contact-btn.wa:hover` 1,73:1. |
 | 30/07/2026 | 2.13.0 | **Reescritura del sistema de diseño** (§2). Escala de espaciado base 4, tres niveles de superficie, familias semánticas de color con variante oscura, escalón de densidad tipográfica en ≥1200px, retícula con ancho máximo y canaleta compartida, sistema único de iconos en `js/icons.js`, isotipo como `<symbol>` único (`index.html` 113,8 → 18,8 KB), foco global, pestañas navegables por teclado y `prefers-reduced-motion`. Se reparó el modo oscuro, que dejaba los campos en blanco y una docena de chips sin cambiar de tema. |
 
 ---
