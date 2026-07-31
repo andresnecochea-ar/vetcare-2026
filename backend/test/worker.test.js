@@ -67,7 +67,7 @@ describe('VetCare Worker', () => {
     expect(body).toMatchObject({
       status: 'ok',
       database: 'ready',
-      version: '2.13.0',
+      version: '2.14.0',
       schemaVersion: 15,
     });
 
