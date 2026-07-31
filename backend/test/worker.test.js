@@ -68,7 +68,7 @@ describe('VetCare Worker', () => {
       status: 'ok',
       database: 'ready',
       version: '2.13.0',
-      schemaVersion: 14,
+      schemaVersion: 15,
     });
 
     // Los estudios cargados antes de 0011 siguen contando como resultado recibido.
@@ -1190,5 +1190,13 @@ describe('VetCare Worker', () => {
 
     expect(cleanPhone('')).toBe('');
     expect(cleanPhone(null)).toBe('');
+
+    const isLikelyFullPhone = globalThis.isLikelyFullPhone;
+    expect(isLikelyFullPhone('+5492262649798')).toBe(true);
+    expect(isLikelyFullPhone('5492262649798')).toBe(true);
+    // Formato viejo, local: falta código de país y área.
+    expect(isLikelyFullPhone('15649798')).toBe(false);
+    expect(isLikelyFullPhone('43-8745 15352493')).toBe(false);
+    expect(isLikelyFullPhone('')).toBe(false);
   });
 });

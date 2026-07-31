@@ -1,8 +1,13 @@
 // En movil arranca en lista (mas comodo); en desktop en grilla.
 let petViewMode = (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) ? 'list' : 'grid';
+let petsShowArchive = false;
 
 function renderPets() {
-  const species = [...new Set(db.pets.map(p=>p.species).filter(Boolean))];
+  const archivedPets = db.pets.filter(p => p.deceasedAt);
+  if (petsShowArchive) return renderPetsArchive(archivedPets);
+
+  const activePets = db.pets.filter(p => !p.deceasedAt);
+  const species = [...new Set(activePets.map(p=>p.species).filter(Boolean))];
   return `
     <div class="page-header">
       <div class="title"><small>Fichas clínicas</small><h1>Pacientes</h1></div>
@@ -33,11 +38,100 @@ function renderPets() {
         <option value="sin">Sin condición crónica</option>
       </select>
       <button class="btn btn-sm" onclick="clearPetFilters()">${iconX()} Limpiar</button>
+      ${archivedPets.length ? `<button class="btn btn-sm" style="margin-left:auto" onclick="togglePetsArchive(true)">Archivo (${archivedPets.length})</button>` : ''}
     </div>
     <div id="petsGrid">
-      ${renderPetItems(db.pets)}
+      ${renderPetItems(activePets)}
     </div>
   `;
+}
+
+function togglePetsArchive(show) {
+  petsShowArchive = show;
+  render();
+}
+
+// Antigüedad en años desde una fecha YYYY-MM-DD hasta hoy.
+function yearsSince(dateKey) {
+  const parts = String(dateKey || '').split('-').map(Number);
+  if (parts.length !== 3 || parts.some(n => !Number.isFinite(n))) return null;
+  const then = new Date(parts[0], parts[1] - 1, parts[2]);
+  return (Date.now() - then.getTime()) / (365.25 * 86400000);
+}
+
+let petsArchiveBucket = '';
+let petsArchiveSelected = new Set();
+
+function renderPetsArchive(archivedPets) {
+  const bucketMin = { '': 0, '6m': 0.5, '1y': 1, '2y': 2 }[petsArchiveBucket] || 0;
+  const filtered = archivedPets
+    .filter(p => (yearsSince(p.deceasedAt) ?? 0) >= bucketMin)
+    .sort((a,b) => String(a.deceasedAt||'').localeCompare(String(b.deceasedAt||'')));
+  const allSelected = filtered.length > 0 && filtered.every(p => petsArchiveSelected.has(p.id));
+
+  return `
+    <div class="page-header">
+      <div class="title"><small>Fichas clínicas</small><h1>Archivo de fallecidos</h1></div>
+      <button class="btn" onclick="togglePetsArchive(false)">${icon('arrowLeft','ico-sm')} Volver a pacientes activos</button>
+    </div>
+    <div class="patient-filters">
+      <select id="petsArchiveBucketSelect" onchange="setPetsArchiveBucket(this.value)">
+        <option value="" ${petsArchiveBucket===''?'selected':''}>Fallecidos hace cualquier tiempo</option>
+        <option value="6m" ${petsArchiveBucket==='6m'?'selected':''}>Fallecidos hace más de 6 meses</option>
+        <option value="1y" ${petsArchiveBucket==='1y'?'selected':''}>Fallecidos hace más de 1 año</option>
+        <option value="2y" ${petsArchiveBucket==='2y'?'selected':''}>Fallecidos hace más de 2 años</option>
+      </select>
+      <button class="btn btn-sm" onclick="togglePetsArchiveSelectAll(${!allSelected}, ${escapeAttr(JSON.stringify(filtered.map(p=>p.id)))})">${allSelected ? 'Deseleccionar todos' : 'Seleccionar todos'}</button>
+      <button class="btn btn-sm btn-danger" style="margin-left:auto" ${petsArchiveSelected.size ? '' : 'disabled'} onclick="deleteSelectedArchivedPets()">Eliminar seleccionados (${petsArchiveSelected.size})</button>
+    </div>
+    ${filtered.length === 0
+      ? '<div class="empty-state">No hay pacientes fallecidos en este rango.</div>'
+      : `<div class="table-wrap pet-list-table"><table>
+          <thead><tr><th></th><th>Nombre</th><th class="col-sec">Especie/Raza</th><th>Tutor</th><th>Fallecido</th><th></th></tr></thead>
+          <tbody>${filtered.map(p => {
+            const owners = (p.ownerIds||[]).map(id=>db.owners.find(o=>o.id===id)).filter(Boolean);
+            return `<tr>
+              <td><input type="checkbox" ${petsArchiveSelected.has(p.id)?'checked':''} onchange="togglePetsArchiveSelected('${p.id}', this.checked)"></td>
+              <td><button type="button" class="link-cell" onclick="openPetDetail('${p.id}')">${escapeHtml(p.name)}</button></td>
+              <td class="col-sec">${escapeHtml(p.species||'—')} / ${escapeHtml(p.breed||'—')}</td>
+              <td>${owners.length ? escapeHtml(owners[0].name) : '—'}</td>
+              <td>${formatDate(p.deceasedAt)}</td>
+              <td><button class="btn btn-sm" onclick="openPetModal('${p.id}')">Editar</button></td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table></div>`}
+  `;
+}
+
+function setPetsArchiveBucket(value) { petsArchiveBucket = value; render(); }
+
+function togglePetsArchiveSelected(id, checked) {
+  if (checked) petsArchiveSelected.add(id); else petsArchiveSelected.delete(id);
+  render();
+}
+
+function togglePetsArchiveSelectAll(selectAll, ids) {
+  petsArchiveSelected = selectAll ? new Set(ids) : new Set();
+  render();
+}
+
+async function deleteSelectedArchivedPets() {
+  if (!canDeleteEntity('pets')) { toast('Tu rol no permite eliminar pacientes'); return; }
+  const ids = [...petsArchiveSelected];
+  if (!ids.length) return;
+  const names = ids.map(id => (db.pets.find(p=>p.id===id)||{}).name).filter(Boolean).join(', ');
+  showConfirm(`¿Eliminar permanentemente ${ids.length} paciente${ids.length===1?'':'s'} archivado${ids.length===1?'':'s'} (${names})? Se borra toda su historia clínica. Esta acción no se puede deshacer.`, () => {
+    ids.forEach(id => {
+      db.pets = db.pets.filter(p => p.id !== id);
+      db.appointments = db.appointments.filter(a => a.petId !== id);
+      db.groomingAppointments = db.groomingAppointments.filter(a => a.petId !== id);
+      db.reminders = db.reminders.filter(r => r.petId !== id);
+    });
+    petsArchiveSelected = new Set();
+    saveDB(`${ids.length} paciente${ids.length===1?'':'s'} eliminado${ids.length===1?'':'s'}`);
+    closeModal();
+    render();
+  });
 }
 
 function setPetView(mode) {
@@ -61,6 +155,7 @@ function filterPets() {
   const sx = document.getElementById('filterSex')?.value||'';
   const ch = document.getElementById('filterChronic')?.value||'';
   const filtered = db.pets.filter(p => {
+    if (p.deceasedAt) return false;
     if (q && !p.name.toLowerCase().includes(q) && !(p.species||'').toLowerCase().includes(q) && !(p.breed||'').toLowerCase().includes(q)) return false;
     if (sp && (p.species||'') !== sp) return false;
     if (sx && (p.sex||'') !== sx) return false;
@@ -178,6 +273,15 @@ function openPetModal(id) {
         <div class="form-group"><label>Peso (kg)</label><input type="number" step="0.1" id="pWeight" value="${pet.weight||''}"${clinicalDisabled}></div>
         <div class="form-group"><label>Microchip</label><input type="text" id="pChip" value="${escapeAttr(pet.microchip||'')}"></div>
       </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="settings-toggle"><input type="checkbox" id="pDeceased" ${pet.deceasedAt ? 'checked' : ''} onchange="toggleDeceasedDateField(this.checked)"><span>Fallecido</span></label>
+        </div>
+        <div class="form-group" id="pDeceasedDateGroup" ${pet.deceasedAt ? '' : 'hidden'}>
+          <label>Fecha de fallecimiento</label>
+          <input type="date" id="pDeceasedDate" value="${pet.deceasedAt||''}">
+        </div>
+      </div>
       <div class="form-group">
         <label>Tutores asociados</label>
         ${db.owners.length ? assocPicker('petOwnersPicker', ownerItems, pet.ownerIds||[]) : '<small style="color:var(--text-mute)">No hay tutores todavía. Creá uno en la sección Tutores.</small>'}
@@ -195,10 +299,19 @@ function openPetModal(id) {
   `);
 }
 
+function toggleDeceasedDateField(checked) {
+  const group = document.getElementById('pDeceasedDateGroup');
+  if (!group) return;
+  group.hidden = !checked;
+  const dateInput = document.getElementById('pDeceasedDate');
+  if (checked && dateInput && !dateInput.value) dateInput.value = localDateKey();
+}
+
 function savePet(id, isNew) {
   const name = document.getElementById('pName').value.trim();
   if (!validateField('pName', !!name, 'El nombre es obligatorio')) return;
   const ownerIds = document.getElementById('petOwnersPicker') ? getAssocSelected('petOwnersPicker') : (id ? (db.pets.find(p=>p.id===id)||{}).ownerIds||[] : []);
+  const deceased = document.getElementById('pDeceased').checked;
   const data = {
     id,
     name,
@@ -213,6 +326,7 @@ function savePet(id, isNew) {
     allergies: document.getElementById('pAllergies').value.trim(),
     chronicConditions: document.getElementById('pChronic').value.trim(),
     notes: document.getElementById('pNotes').value.trim(),
+    deceasedAt: deceased ? (document.getElementById('pDeceasedDate').value || localDateKey()) : '',
   };
   if (isNew) {
     data.history = [];

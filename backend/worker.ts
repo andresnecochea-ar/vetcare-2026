@@ -26,7 +26,7 @@ const TABLES: Record<string, EntityConfig> = {
   pets: {
     columns: [
       'id', 'name', 'species', 'breed', 'sex', 'color', 'birthdate', 'weight',
-      'microchip', 'allergies', 'chronicConditions', 'notes', 'photo',
+      'microchip', 'allergies', 'chronicConditions', 'notes', 'photo', 'deceasedAt',
     ],
   },
   appointments: {
@@ -1196,8 +1196,8 @@ async function health(env: Env): Promise<{
        AND (
          SELECT COUNT(*)
          FROM pragma_table_info('pets')
-         WHERE name IN ('revision', 'syncToken')
-       ) = 2
+         WHERE name IN ('revision', 'syncToken', 'deceasedAt')
+       ) = 3
         AND (
           SELECT COUNT(*)
           FROM pragma_table_info('invoices')
@@ -1242,7 +1242,7 @@ async function health(env: Env): Promise<{
     status: ready ? 'ok' : 'degraded',
     version: stringValue(env.APP_VERSION, 'unknown'),
     database: ready ? 'ready' : 'migrations-pending',
-    schemaVersion: ready ? 14 : 0,
+    schemaVersion: ready ? 15 : 0,
   };
 }
 

@@ -52,6 +52,7 @@ function ownerCardHTML(o, petName) {
         ${o.phone ? `<a class="contact-btn" href="tel:${cleanPhone(o.phone)}">Llamar</a>` : ''}
         ${o.altPhone ? `<a class="contact-btn" href="tel:${cleanPhone(o.altPhone)}">Llamar (alt.)</a>` : ''}
         ${o.email ? `<a class="contact-btn mail" href="mailto:${o.email}?subject=${mailSubj}">Email</a>` : ''}
+        <button class="btn btn-sm" style="margin-left:auto" onclick="closeModal();openOwnerModal('${o.id}')">Editar tutor</button>
       </div>
     </div>
   `;
@@ -109,6 +110,21 @@ function saveOwner(id, isNew) {
     dni: document.getElementById('oDni').value.trim(),
     notes: document.getElementById('oNotes').value.trim()
   };
+  // No se adivina el código de país/área (ver isLikelyFullPhone): si falta,
+  // se avisa para que quien carga el dato lo corrija con el número real,
+  // en vez de que quede un botón de WhatsApp roto sin que nadie se entere.
+  if (data.phone && !isLikelyFullPhone(data.phone)) {
+    showConfirm(
+      `El celular "${data.phone}" no parece tener el código de país y área completo (formato esperado: +5492262649798). Sin eso, el botón de WhatsApp no va a funcionar. ¿Guardar igual?`,
+      () => persistOwner(id, isNew, data),
+      { okLabel: 'Guardar igual', okClass: 'btn-primary' }
+    );
+    return;
+  }
+  persistOwner(id, isNew, data);
+}
+
+function persistOwner(id, isNew, data) {
   if (isNew) db.owners.push(data);
   else { const i = db.owners.findIndex(o=>o.id===id); db.owners[i] = data; }
   if (document.getElementById('ownerPetsPicker')) {

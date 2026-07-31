@@ -13,6 +13,42 @@ const FOLLOWUP_SOON_DAYS = 30;
 const FOLLOWUP_STALE_DAYS = 365;
 let showStaleFollowUpAlerts = false;
 
+// "Archivar" un pendiente de la vista Hoy no lo resuelve (sigue en la ficha
+// del paciente, tal cual "Marcar hecho" no lo hace): solo deja de aparecer en
+// el agregado del día. Es una preferencia de qué mostrar, no un dato clínico,
+// así que se guarda local por dispositivo (no sincroniza entre equipos).
+const FOLLOWUP_DISMISS_KEY = 'vetcare_dismissed_followups';
+
+function followUpDismissKey(item) { return `${item.kind}:${item.refId}`; }
+
+function loadDismissedFollowUps() {
+  try { return new Set(JSON.parse(localStorage.getItem(FOLLOWUP_DISMISS_KEY) || '[]')); }
+  catch (e) { return new Set(); }
+}
+
+function dismissFollowUp(kind, refId) {
+  const set = loadDismissedFollowUps();
+  set.add(`${kind}:${refId}`);
+  try { localStorage.setItem(FOLLOWUP_DISMISS_KEY, JSON.stringify([...set])); } catch (e) {}
+  render();
+}
+
+function petPrimaryOwner(pet) {
+  const ownerId = (pet && pet.ownerIds || [])[0];
+  return ownerId ? (db.owners || []).find(o => o.id === ownerId) : null;
+}
+
+function followUpReminderMessage(pet, item) {
+  const when = item.date ? ` (${followUpWhen(item.days).toLowerCase()}, ${formatDate(item.date)})` : '';
+  return encodeURIComponent(`Hola, le escribimos de la veterinaria por ${pet.name}: ${followUpDetail(item)}${when}.`);
+}
+
+function followUpReminderButtonHTML(pet, item) {
+  const owner = petPrimaryOwner(pet);
+  if (!owner || !owner.phone) return '';
+  return `<a class="contact-btn wa" href="https://wa.me/${cleanPhone(owner.phone)}?text=${followUpReminderMessage(pet, item)}" target="_blank" title="Avisar a ${escapeAttr(owner.name)} por WhatsApp">Recordatorio WA</a>`;
+}
+
 // Diferencia en días entre hoy y una fecha YYYY-MM-DD, en calendario local.
 function followUpDaysUntil(dateKey) {
   const parts = String(dateKey || '').split('-').map(Number);
@@ -56,6 +92,7 @@ function petFollowUpItems(pet) {
     const days = followUpDaysUntil(reminder.date);
     items.push({
       kind: 'control',
+      refId: reminder.id,
       label: 'Control',
       title: reminder.title || 'Control',
       detail: reminder.notes || '',
@@ -76,6 +113,7 @@ function petFollowUpItems(pet) {
     if (days === null || days > FOLLOWUP_HORIZON_DAYS) return;
     items.push({
       kind: 'control',
+      refId: entry.id,
       label: 'Control indicado',
       title: entry.title || 'Próximo control',
       detail: 'Indicado en la consulta del ' + formatDate(entry.date) + ' · sin aviso creado',
@@ -90,6 +128,7 @@ function petFollowUpItems(pet) {
     const days = followUpDaysUntil(study.date);
     items.push({
       kind: 'study',
+      refId: study.id,
       label: 'Estudio solicitado',
       title: study.title || study.type || 'Estudio',
       detail: study.type || '',
@@ -110,6 +149,7 @@ function petFollowUpItems(pet) {
       if (days === null || days > FOLLOWUP_HORIZON_DAYS) return;
       items.push({
         kind,
+        refId: record.id,
         label: kind === 'vaccine' ? 'Próxima dosis' : 'Próxima desparasitación',
         title: record.name || (kind === 'vaccine' ? 'Vacuna' : 'Antiparasitario'),
         detail: 'Última aplicación: ' + formatDate(record.date),
@@ -128,6 +168,7 @@ function petFollowUpItems(pet) {
       if (days === null || days > FOLLOWUP_HORIZON_DAYS) return;
       items.push({
         kind: 'appointment',
+        refId: appointment.id,
         label: 'Turno programado',
         title: appointment.type || 'Consulta',
         detail: [appointment.time, appointment.vet].filter(Boolean).join(' · '),
@@ -207,10 +248,10 @@ function followUpTabBadge(pet) {
   return `<span class="followup-tab-badge${tone}" title="Pendientes que requieren acción">${summary.alerts}</span>`;
 }
 
-function followUpItemHTML(item) {
+function followUpItemHTML(item, pet) {
   const actions = (item.actions || [])
     .map(action => `<button class="btn btn-sm${action.primary ? ' btn-primary' : ''}" onclick="${action.onclick}">${escapeHtml(action.label)}</button>`)
-    .join('');
+    .join('') + followUpReminderButtonHTML(pet, item);
   return `
     <div class="followup-item followup-${item.state}">
       <div class="followup-when">
@@ -262,7 +303,7 @@ function renderPetFollowUp(pet) {
         ${clinical ? `<button class="btn btn-sm" onclick="requestStudy('${pet.id}')">+ Solicitar estudio</button>` : '<span class="tag">Solo lectura</span>'}
       </div>
       ${summary.items.length
-        ? summary.items.map(followUpItemHTML).join('')
+        ? summary.items.map(item => followUpItemHTML(item, pet)).join('')
         : '<div class="empty-state">No hay controles, estudios ni turnos pendientes para este paciente.</div>'}
 
       ${treatment ? `
@@ -283,7 +324,7 @@ function renderPetFollowUp(pet) {
 // al que pertenecen. Alimenta la vista Hoy.
 function clinicFollowUpAlerts() {
   const rows = [];
-  (db.pets || []).forEach(pet => {
+  (db.pets || []).filter(pet => !pet.deceasedAt).forEach(pet => {
     const summary = petFollowUpSummary(pet);
     summary.items
       .filter(item => item.state === 'overdue' || item.state === 'today')
@@ -292,6 +333,7 @@ function clinicFollowUpAlerts() {
       pet,
       item: {
         kind: 'encounter',
+        refId: entry.id,
         label: 'Consulta sin cerrar',
         title: entry.title || 'Sin motivo registrado',
         detail: encounterStatusLabel(entry.status),
@@ -314,6 +356,9 @@ function toggleStaleFollowUpAlerts() {
 }
 
 function followUpAlertItemHTML({ pet, item }) {
+  // Las consultas sin cerrar no se pueden archivar: es trabajo pendiente real
+  // del equipo, no un aviso vencido que se pueda decidir posponer.
+  const canArchive = item.kind !== 'encounter' && item.refId;
   return `
     <div class="followup-item followup-${item.state}">
       <div class="followup-when">
@@ -324,12 +369,17 @@ function followUpAlertItemHTML({ pet, item }) {
         <span class="followup-kind">${escapeHtml(pet.name)} &middot; ${escapeHtml(item.label)}</span>
         <strong>${escapeHtml(item.title)}</strong>
       </div>
-      <div class="followup-actions"><button class="btn btn-sm" onclick="openPetDetail('${pet.id}')">Abrir ficha</button></div>
+      <div class="followup-actions">
+        <button class="btn btn-sm" onclick="openPetDetail('${pet.id}')">Abrir ficha</button>
+        ${followUpReminderButtonHTML(pet, item)}
+        ${canArchive ? `<button class="btn btn-sm" title="Dejar de mostrar en Hoy; sigue en la ficha" onclick="dismissFollowUp('${item.kind}','${item.refId}')">Archivar</button>` : ''}
+      </div>
     </div>`;
 }
 
 function renderTodayFollowUp(limit = 6) {
-  const allRows = clinicFollowUpAlerts();
+  const dismissed = loadDismissedFollowUps();
+  const allRows = clinicFollowUpAlerts().filter(r => !dismissed.has(followUpDismissKey(r.item)));
   // Un vencido de hace años (típicamente historial migrado) no es "trabajo de
   // hoy": se separa para no tapar lo reciente, pero sigue disponible atrás del botón.
   const rows = allRows.filter(r => !(r.item.state === 'overdue' && -r.item.days > FOLLOWUP_STALE_DAYS));

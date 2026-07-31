@@ -20,12 +20,19 @@ function validateField(fieldId, isValid, message) {
 }
 
 let _confirmCb = null;
-function showConfirm(message, onConfirm) {
+// options.okLabel/okClass permiten reusar el mismo diálogo para confirmaciones
+// que no son un borrado (ej: "Guardar igual"); por defecto se comporta como
+// siempre ("Eliminar" en rojo), así que los usos existentes no cambian.
+function showConfirm(message, onConfirm, options) {
+  const opts = options || {};
   _confirmCb = onConfirm;
   const ov = document.getElementById('confirmOverlay');
   document.getElementById('confirmMsg').textContent = message;
   ov.classList.add('show');
-  document.getElementById('confirmOk').onclick = () => {
+  const okBtn = document.getElementById('confirmOk');
+  okBtn.textContent = opts.okLabel || 'Eliminar';
+  okBtn.className = 'btn ' + (opts.okClass || 'btn-danger');
+  okBtn.onclick = () => {
     ov.classList.remove('show');
     const cb = _confirmCb; _confirmCb = null;
     if (cb) cb();
@@ -68,12 +75,24 @@ function cleanPhone(p) {
   }
   return raw.replace(/\D/g, '');
 }
+
+// No adivinamos código de país/área: si un cliente es de otra localidad y lo
+// reconstruimos mal, el mensaje de WhatsApp podría llegarle a un desconocido.
+// Solo detectamos si el celular YA tiene pinta de formato completo
+// (+54 9 código de área + número, ej: +5492262649798) para poder avisar
+// cuando falta, y que una persona lo corrija a mano con el dato real.
+function isLikelyFullPhone(p) {
+  const digits = cleanPhone(p);
+  return digits.length >= 12 && digits.startsWith('54');
+}
+
 function escapeHtml(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
 function escapeAttr(s) { return escapeHtml(s); }
 
 // Como <script> suelto en el navegador estas funciones ya quedan en window;
 // esta asignación solo hace falta para poder importarlas como módulo en tests.
 globalThis.cleanPhone = cleanPhone;
+globalThis.isLikelyFullPhone = isLikelyFullPhone;
 
 // ========================================
 // [23] SEED DEMO DATA — datos de ejemplo (solo primer arranque)
