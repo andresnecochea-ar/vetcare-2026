@@ -69,7 +69,7 @@ function renderAppointments() {
     return `<tr>
       <td>${formatDate(a.date)}</td>
       <td>${a.time||'—'}</td>
-      <td>${pet ? escapeHtml(pet.name) : '—'}</td>
+      <td>${pet ? `<button type="button" class="link-cell" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button>` : '—'}</td>
       <td class="col-sec">${escapeHtml(a.type||'—')}</td>
       <td class="col-sec">${escapeHtml(a.vet||'—')}</td>
       <td class="col-sec"><span${notesFull.length>40?' data-tip="'+escapeAttr(notesFull)+'"':''} style="white-space:nowrap">${escapeHtml(notesShort)}</span></td>
@@ -185,7 +185,7 @@ function renderGrooming() {
             return `<tr>
               <td>${formatDate(a.date)}</td>
               <td>${a.time||'—'}</td>
-              <td>${pet ? escapeHtml(pet.name) : '—'}</td>
+              <td>${pet ? `<button type="button" class="link-cell" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button>` : '—'}</td>
               <td class="col-sec">${escapeHtml(a.service||'—')}</td>
               <td class="col-sec">${escapeHtml(a.groomer||'—')}</td>
               <td class="col-sec">${a.price ? '$'+a.price : '—'}</td>
@@ -427,11 +427,11 @@ function openDayDetail(dateStr) {
     <div class="modal-body">
       ${appts.length === 0 && groom.length === 0 && rems.length === 0 ? '<div class="empty-state">Sin eventos este día</div>' : ''}
       ${appts.length ? '<h3 style="margin-bottom:8px">Turnos médicos</h3>' : ''}
-      ${appts.map(a => { const p = db.pets.find(x=>x.id===a.petId); return `<div class="reminder-item"><div class="info"><strong>${a.time||''} · ${p?escapeHtml(p.name):''}</strong><small>${escapeHtml(a.type||'')} ${a.vet?'· '+escapeHtml(a.vet):''}</small></div></div>`; }).join('')}
+      ${appts.map(a => { const p = db.pets.find(x=>x.id===a.petId); return `<div class="reminder-item"><div class="info"><strong>${a.time||''} · ${p?`<button type="button" class="link-cell" style="display:inline;padding:0;font:inherit;font-weight:inherit" onclick="closeModal();openPetDetail('${p.id}')">${escapeHtml(p.name)}</button>`:''}</strong><small>${escapeHtml(a.type||'')} ${a.vet?'· '+escapeHtml(a.vet):''}</small></div></div>`; }).join('')}
       ${groom.length ? '<h3 style="margin:12px 0 8px">Peluquería</h3>' : ''}
-      ${groom.map(a => { const p = db.pets.find(x=>x.id===a.petId); return `<div class="reminder-item"><div class="info"><strong>${a.time||''} · ${p?escapeHtml(p.name):''}</strong><small>${escapeHtml(a.service||'')} ${a.groomer?'· '+escapeHtml(a.groomer):''}</small></div></div>`; }).join('')}
+      ${groom.map(a => { const p = db.pets.find(x=>x.id===a.petId); return `<div class="reminder-item"><div class="info"><strong>${a.time||''} · ${p?`<button type="button" class="link-cell" style="display:inline;padding:0;font:inherit;font-weight:inherit" onclick="closeModal();openPetDetail('${p.id}')">${escapeHtml(p.name)}</button>`:''}</strong><small>${escapeHtml(a.service||'')} ${a.groomer?'· '+escapeHtml(a.groomer):''}</small></div></div>`; }).join('')}
       ${rems.length ? '<h3 style="margin:12px 0 8px">Avisos</h3>' : ''}
-      ${rems.map(r => { const p = db.pets.find(x=>x.id===r.petId); return `<div class="reminder-item soon"><div class="info"><strong>${escapeHtml(r.title)}</strong><small>${p?escapeHtml(p.name)+' · ':''}${escapeHtml(r.notes||'')}</small></div><button class="btn btn-sm" onclick="completeReminder('${r.id}')">✓</button></div>`; }).join('')}
+      ${rems.map(r => { const p = db.pets.find(x=>x.id===r.petId); return `<div class="reminder-item soon"><div class="info"><strong>${escapeHtml(r.title)}</strong><small>${p?`<button type="button" class="link-cell" style="display:inline;padding:0;font:inherit" onclick="closeModal();openPetDetail('${p.id}')">${escapeHtml(p.name)}</button> · `:''}${escapeHtml(r.notes||'')}</small></div><button class="btn btn-sm" onclick="completeReminder('${r.id}')">✓</button></div>`; }).join('')}
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeModal();openReminderModal(null,'${dateStr}')">+ Aviso</button>

@@ -16,7 +16,7 @@ function renderReminders() {
       return `<div class="reminder-item ${cls}">
         <div class="info">
           <strong>${escapeHtml(r.title)}</strong>
-          <small>${pet?escapeHtml(pet.name)+' · ':''}${formatDate(r.date)} ${days<0?'(vencido '+(-days)+'d)':days===0?'(HOY)':'(en '+days+'d)'}</small>
+          <small>${pet?`<button type="button" class="link-cell" style="display:inline;padding:0;font:inherit" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button> · `:''}${formatDate(r.date)} ${days<0?'(vencido '+(-days)+'d)':days===0?'(HOY)':'(en '+days+'d)'}</small>
           ${r.notes?`<small style="display:block;margin-top:4px">${escapeHtml(r.notes)}</small>`:''}
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -129,13 +129,13 @@ function renderBirthdays() {
         ${upcoming.map(pet => {
           const owners = (pet.ownerIds||[]).map(id => db.owners.find(o=>o.id===id)).filter(Boolean);
           const promoMsg = encodeURIComponent(fillBirthdayMsg(pet));
-          return `<div class="pet-card" style="cursor:default">
+          return `<div class="pet-card" onclick="openPetDetail('${pet.id}')">
             <div class="pet-photo${pet.photo?'':' is-silhouette'}" style="${petPhotoStyle(pet)}"></div>
             <div class="pet-card-body">
               <h3>${escapeHtml(pet.name)}</h3>
               <div class="meta">${pet.daysUntil === 0 ? `${icon('cake','ico-sm')} ¡HOY cumple ` + pet.age + '!' : `Cumple ${pet.age} años en ${pet.daysUntil} día${pet.daysUntil>1?'s':''}`}</div>
               <div class="meta">${formatDate(localDateKey(pet.nextBirthday))}</div>
-              <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+              <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap" onclick="event.stopPropagation()">
                 ${owners.map(o => o.phone ? `<a class="contact-btn wa" href="https://wa.me/${cleanPhone(o.phone)}?text=${promoMsg}" target="_blank">WhatsApp ${escapeHtml(o.name.split(' ')[0])}</a>` : '').join('')}
                 ${owners.map(o => o.email ? `<a class="contact-btn mail" href="mailto:${o.email}?subject=${encodeURIComponent('¡Feliz cumpleaños '+pet.name+'!')}&body=${promoMsg}">Email</a>` : '').join('')}
               </div>

@@ -296,9 +296,9 @@ function sanitaryDueListHTML() {
           <small>${formatDate(record.nextDose)}</small>
         </div>
         <div class="sanitary-due-main">
-          <span class="followup-kind">${escapeHtml(pet.name)} &middot; ${escapeHtml(SANITARY_KINDS[kind].label)}</span>
+          <span class="followup-kind"><button type="button" class="link-cell" style="display:inline;padding:0;font:inherit" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button> &middot; ${escapeHtml(SANITARY_KINDS[kind].label)}</span>
           <strong>${escapeHtml(record.name)}</strong>
-          ${record.notifiedAt ? `<small>Avisado el ${formatDate(record.notifiedAt)}</small>` : (owner ? `<small>${escapeHtml(owner.name)}${owner.phone ? ' · ' + escapeHtml(owner.phone) : ''}</small>` : '<small>Sin tutor asociado</small>')}
+          ${record.notifiedAt ? `<small>Avisado el ${formatDate(record.notifiedAt)}</small>` : (owner ? `<small><button type="button" class="link-cell" style="display:inline;padding:0;font:inherit" onclick="openOwnerModal('${owner.id}')">${escapeHtml(owner.name)}</button>${owner.phone ? ' · ' + escapeHtml(owner.phone) : ''}</small>` : '<small>Sin tutor asociado</small>')}
         </div>
         <div class="sanitary-due-actions">
           ${owner && owner.phone ? `<a class="contact-btn wa" href="https://wa.me/${cleanPhone(owner.phone)}?text=${encodeURIComponent(message)}" target="_blank" rel="noopener" title="Avisar por WhatsApp">WA</a>` : ''}

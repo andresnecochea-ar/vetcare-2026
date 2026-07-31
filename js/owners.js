@@ -23,7 +23,7 @@ function ownerListCardHTML(o) {
         ${o.altPhone ? `<div class="meta">${icon('phone','ico-sm')} ${escapeHtml(o.altPhone)} <small style="color:var(--text-mute)">(alt.)</small></div>` : ''}
         <div class="meta">${icon('mail','ico-sm')} ${escapeHtml(o.email||'sin email')}</div>
         <div class="tags">
-          ${pets.map(p => `<span class="tag">${escapeHtml(p.name)}</span>`).join('') || '<span class="tag">Sin mascotas</span>'}
+          ${pets.map(p => `<button type="button" class="tag tag-link" onclick="openPetDetail('${p.id}')">${escapeHtml(p.name)}</button>`).join('') || '<span class="tag">Sin mascotas</span>'}
         </div>
         <div class="contact-links">
           ${o.phone ? `<a class="contact-btn wa" href="https://wa.me/${cleanPhone(o.phone)}" target="_blank">WhatsApp</a>` : ''}
@@ -40,7 +40,7 @@ function ownerCardHTML(o, petName) {
   const mailSubj = encodeURIComponent(`Veterinaria - ${petName}`);
   return `
     <div class="owner-card">
-      <h4>${escapeHtml(o.name)} ${o.relationship ? `<small style="font-weight: var(--fw-normal);color:var(--text-mute)">· ${escapeHtml(o.relationship)}</small>` : ''}</h4>
+      <h4><button type="button" class="link-cell" style="display:inline;padding:0;font:inherit;font-weight:inherit" onclick="closeModal();openOwnerModal('${o.id}')">${escapeHtml(o.name)}</button> ${o.relationship ? `<small style="font-weight: var(--fw-normal);color:var(--text-mute)">· ${escapeHtml(o.relationship)}</small>` : ''}</h4>
       <div style="font-size:var(--fs-sm);color:var(--text-soft)">
         ${o.phone ? `${icon('phone','ico-sm')} ${escapeHtml(o.phone)}<br>` : ''}
         ${o.altPhone ? `${icon('phone','ico-sm')} ${escapeHtml(o.altPhone)} <small style="color:var(--text-mute)">(alt.)</small><br>` : ''}

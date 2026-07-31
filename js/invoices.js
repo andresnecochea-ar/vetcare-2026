@@ -25,8 +25,8 @@ function renderInvoices() {
               const sc=inv.status==='paid'?'tag-success':inv.status==='cancelled'?'tag-mute':'tag-warning';
               return `<tr>
                 <td><strong>#${inv.number||inv.id.slice(-4).toUpperCase()}</strong></td>
-                <td>${owner?escapeHtml(owner.name):'—'}</td>
-                <td class="col-sec">${pet?escapeHtml(pet.name):'—'}</td>
+                <td>${owner?`<button type="button" class="link-cell" onclick="openOwnerModal('${owner.id}')">${escapeHtml(owner.name)}</button>`:'—'}</td>
+                <td class="col-sec">${pet?`<button type="button" class="link-cell" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button>`:'—'}</td>
                 <td class="col-sec">${formatDate(inv.date)}</td>
                 <td><strong>$${parseFloat(inv.total||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</strong></td>
                 <td class="col-sec"><span class="tag ${sc}">${sl}</span></td>
@@ -56,7 +56,7 @@ function openInvoiceModal(id) {
       <button class="close-btn" onclick="closeModal()">&times;</button>
     </div>
     <div class="modal-body">
-      ${inv.encounterId ? `<div class="linked-receipt-context"><strong>Vinculado a una consulta clínica</strong><span>El paciente ${escapeHtml(linkedPet?.name || '')} queda protegido para conservar la trazabilidad.</span></div>` : ''}
+      ${inv.encounterId ? `<div class="linked-receipt-context"><strong>Vinculado a una consulta clínica</strong><span>El paciente ${linkedPet ? `<button type="button" class="link-cell" style="display:inline;padding:0;font:inherit" onclick="closeModal();openPetDetail('${linkedPet.id}')">${escapeHtml(linkedPet.name)}</button>` : ''} queda protegido para conservar la trazabilidad.</span></div>` : ''}
       <div class="form-row">
         <div class="form-group"><label>Tutor</label>
           <select id="invOwner" onchange="syncInvoiceRelations('owner')"><option value="">— Sin tutor —</option>${ownerOpts}</select></div>

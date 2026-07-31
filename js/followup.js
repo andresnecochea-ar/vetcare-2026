@@ -366,7 +366,7 @@ function followUpAlertItemHTML({ pet, item }) {
         <small>${item.date ? formatDate(item.date) : 'Sin fecha'}</small>
       </div>
       <div class="followup-body">
-        <span class="followup-kind">${escapeHtml(pet.name)} &middot; ${escapeHtml(item.label)}</span>
+        <span class="followup-kind"><button type="button" class="link-cell" style="display:inline;padding:0;font:inherit" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button> &middot; ${escapeHtml(item.label)}</span>
         <strong>${escapeHtml(item.title)}</strong>
       </div>
       <div class="followup-actions">

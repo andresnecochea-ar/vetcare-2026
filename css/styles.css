@@ -713,6 +713,10 @@
   .tag.warning { background: var(--warning-soft); color: var(--warning-strong); border-color: var(--warning-border); }
   .tag.danger { background: var(--danger-soft); color: var(--danger-strong); border-color: var(--danger-border); }
   .tag.success { background: var(--success-soft); color: var(--success-strong); border-color: var(--success-border); }
+  /* Chip que navega a otra ficha (ej: mascota desde la tarjeta del tutor).
+     Botón real por la misma razón que .link-cell: accesible por teclado. */
+  .tag-link { font: inherit; cursor: pointer; }
+  .tag-link:hover { text-decoration: underline; }
 
   /* Modal */
   .modal-overlay {

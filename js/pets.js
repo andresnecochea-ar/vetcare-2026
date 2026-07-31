@@ -94,7 +94,7 @@ function renderPetsArchive(archivedPets) {
               <td><input type="checkbox" ${petsArchiveSelected.has(p.id)?'checked':''} onchange="togglePetsArchiveSelected('${p.id}', this.checked)"></td>
               <td><button type="button" class="link-cell" onclick="openPetDetail('${p.id}')">${escapeHtml(p.name)}</button></td>
               <td class="col-sec">${escapeHtml(p.species||'—')} / ${escapeHtml(p.breed||'—')}</td>
-              <td>${owners.length ? escapeHtml(owners[0].name) : '—'}</td>
+              <td>${owners.length ? `<button type="button" class="link-cell" onclick="openOwnerModal('${owners[0].id}')">${escapeHtml(owners[0].name)}</button>` : '—'}</td>
               <td>${formatDate(p.deceasedAt)}</td>
               <td><button class="btn btn-sm" onclick="openPetModal('${p.id}')">Editar</button></td>
             </tr>`;
@@ -188,7 +188,7 @@ function renderPetList(pets) {
         <td class="col-sec">${escapeHtml(p.species||'—')} / ${escapeHtml(p.breed||'—')}</td>
         <td class="col-sec">${escapeHtml(p.sex||'—')}</td>
         <td class="col-sec">${age}</td>
-        <td>${owners.length ? escapeHtml(owners[0].name) : '—'}</td>
+        <td>${owners.length ? `<button type="button" class="link-cell" onclick="openOwnerModal('${owners[0].id}')">${escapeHtml(owners[0].name)}</button>` : '—'}</td>
         <td>${petAlertBadgeHTML(p) || '<span class="pet-alert-clear">Al día</span>'}</td>
         <td class="col-sec">${statusTag}</td>
         <td><div class="actions"><button class="btn btn-sm" onclick="openPetDetail('${p.id}')">Ver</button><button class="btn btn-sm" onclick="openPetModal('${p.id}')">Editar</button></div></td>
@@ -232,7 +232,7 @@ function petCardHTML(p) {
         <div class="meta">${age} ${p.sex ? '· ' + escapeHtml(p.sex) : ''}</div>
         <div class="tags">
           ${petAlertBadgeHTML(p, true)}
-          ${owners.length ? `<span class="tag">${escapeHtml(owners[0].name)}${owners.length > 1 ? ` +${owners.length-1}` : ''}</span>` : ''}
+          ${owners.length ? `<button type="button" class="tag tag-link" onclick="event.stopPropagation();openOwnerModal('${owners[0].id}')">${escapeHtml(owners[0].name)}${owners.length > 1 ? ` +${owners.length-1}` : ''}</button>` : ''}
           ${p.allergies ? '<span class="tag warning">Alergias</span>' : ''}
           ${p.chronicConditions ? '<span class="tag danger">Crónico</span>' : ''}
         </div>
@@ -444,7 +444,7 @@ function renderPetDetail(id) {
   summary.innerHTML = `
     <div class="pet-summary-item"><span>&Uacute;ltima atenci&oacute;n</span><strong>${history[0]?.date ? formatDate(history[0].date) : 'Sin registros'}</strong><small>${history[0]?.title ? escapeHtml(history[0].title) : 'Todavia no hay historia clinica'}</small></div>
     <div class="pet-summary-item"><span>Pr&oacute;ximo turno</span><strong>${nextAppointment ? formatDate(nextAppointment.date) : 'Sin turno'}</strong><small>${nextAppointment ? `${escapeHtml(nextAppointment.time || 'Sin hora')} &middot; ${escapeHtml(nextAppointment.type || 'Consulta')}` : 'No hay turnos programados'}</small></div>
-    <div class="pet-summary-item"><span>Tutor principal</span><strong>${owners[0] ? escapeHtml(owners[0].name) : 'Sin asociar'}</strong><small>${owners[0]?.phone ? escapeHtml(owners[0].phone) : `${owners.length} tutor${owners.length === 1 ? '' : 'es'} asociado${owners.length === 1 ? '' : 's'}`}</small></div>`;
+    <div class="pet-summary-item"><span>Tutor principal</span><strong>${owners[0] ? `<button type="button" class="link-cell" style="display:inline;padding:0;font:inherit;font-weight:inherit" onclick="closeModal();openOwnerModal('${owners[0].id}')">${escapeHtml(owners[0].name)}</button>` : 'Sin asociar'}</strong><small>${owners[0]?.phone ? escapeHtml(owners[0].phone) : `${owners.length} tutor${owners.length === 1 ? '' : 'es'} asociado${owners.length === 1 ? '' : 's'}`}</small></div>`;
   if (hero) hero.insertAdjacentElement('afterend', summary);
   else body.prepend(summary);
 
