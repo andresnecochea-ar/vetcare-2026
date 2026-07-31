@@ -21,7 +21,7 @@ class HttpError extends Error {
 
 const TABLES: Record<string, EntityConfig> = {
   owners: {
-    columns: ['id', 'name', 'phone', 'email', 'address', 'relationship', 'dni', 'notes'],
+    columns: ['id', 'name', 'phone', 'altPhone', 'email', 'address', 'relationship', 'dni', 'notes'],
   },
   pets: {
     columns: [
@@ -398,6 +398,28 @@ async function changeUserRole(
   await env.DB.prepare('UPDATE users SET role = ? WHERE id = ?').bind(role, targetId).run();
   await writeAudit(env, actor, 'role_change', 'users', targetId, ['role']);
   return { ...target, role };
+}
+
+async function resetUserPassword(
+  env: Env,
+  actor: JsonObject,
+  targetId: string,
+  body: JsonObject,
+): Promise<JsonObject> {
+  requireAdmin(actor);
+  const password = stringValue(body.password);
+  if (password.length < 8) throw new HttpError('La contraseña debe tener al menos 8 caracteres');
+  const target = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(targetId).first<JsonObject>();
+  if (!target) throw new HttpError('Usuario no encontrado', 404);
+
+  const { hash, salt } = await hashPassword(password);
+  await env.DB.prepare('UPDATE users SET pass_hash = ?, pass_salt = ? WHERE id = ?')
+    .bind(hash, salt, targetId).run();
+  // Se cierran las sesiones activas: si alguien perdió la contraseña, no tenía
+  // sesión válida igual; si la contraseña estaba comprometida, esto la revoca.
+  await env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(targetId).run();
+  await writeAudit(env, actor, 'password_reset', 'users', targetId, ['pass_hash']);
+  return { ok: true };
 }
 
 async function listAudit(env: Env, limit: number): Promise<JsonObject[]> {
@@ -1149,7 +1171,7 @@ async function health(env: Env): Promise<{
              'audit_log', 'clinical_close_operations'
            )
        ) = 19
-       AND (SELECT COUNT(*) FROM pragma_table_info('owners') WHERE name IN ('dni', 'notes')) = 2
+       AND (SELECT COUNT(*) FROM pragma_table_info('owners') WHERE name IN ('dni', 'notes', 'altPhone')) = 3
        AND (
          SELECT COUNT(*)
          FROM pragma_table_info('groomingAppointments')
@@ -1220,7 +1242,7 @@ async function health(env: Env): Promise<{
     status: ready ? 'ok' : 'degraded',
     version: stringValue(env.APP_VERSION, 'unknown'),
     database: ready ? 'ready' : 'migrations-pending',
-    schemaVersion: ready ? 13 : 0,
+    schemaVersion: ready ? 14 : 0,
   };
 }
 
@@ -1319,6 +1341,16 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   if (userRoleMatch && (request.method === 'PUT' || request.method === 'POST')) {
     return json(
       await changeUserRole(env, user, userRoleMatch[1], asObject(await request.json<unknown>())),
+      200,
+      origin,
+      env,
+    );
+  }
+
+  const userPasswordMatch = path.match(/^\/api\/users\/([^/]+)\/password$/);
+  if (userPasswordMatch && (request.method === 'PUT' || request.method === 'POST')) {
+    return json(
+      await resetUserPassword(env, user, userPasswordMatch[1], asObject(await request.json<unknown>())),
       200,
       origin,
       env,

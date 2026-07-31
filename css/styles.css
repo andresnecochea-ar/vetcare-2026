@@ -2469,6 +2469,12 @@ html, body { max-width:100%; overflow-x:hidden; }
   color: var(--text-mute);
   font-size: var(--fs-xs);
 }
+.today-followup-stale {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--border);
+}
+.today-followup-stale .today-followup-list { margin-top: var(--space-3); }
 
 /* Pendientes en el listado de pacientes */
 .pet-alert { white-space: nowrap; }

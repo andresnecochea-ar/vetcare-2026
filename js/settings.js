@@ -148,7 +148,8 @@ async function openAccessManagement(){
       return '<tr><td><strong>'+escapeHtml(user.name||'Sin nombre')+'</strong><br><small>'+escapeHtml(user.email||'')+(own?' · Vos':'')+'</small></td>'
         +'<td><select class="input" aria-label="Rol de '+escapeAttr(user.name||user.email||'usuario')+'" onchange="changeUserRole(\''+user.id+'\',this.value)">'
         +['admin','veterinarian','reception'].map(function(role){return '<option value="'+role+'" '+(user.role===role?'selected':'')+'>'+escapeHtml(roleLabel(role))+'</option>';}).join('')
-        +'</select></td></tr>';
+        +'</select></td>'
+        +'<td><button class="btn btn-secondary" style="white-space:nowrap" onclick="resetUserPassword(\''+user.id+'\',\''+escapeAttr(user.name||user.email||'usuario')+'\')">Restablecer contraseña</button></td></tr>';
     }).join('');
     var auditRows=entries.map(function(entry){
       var fields=(entry.fields||[]).length?' · Campos: '+escapeHtml((entry.fields||[]).join(', ')):'';
@@ -159,7 +160,7 @@ async function openAccessManagement(){
     }).join('');
     showModal('<div class="modal-header"><h3>Accesos y auditoría</h3><button class="close-btn" onclick="closeModal()">&times;</button></div>'
       +'<div class="modal-body"><div class="settings-section"><div class="settings-label">Usuarios</div>'
-      +(users.length?'<div class="table-wrap"><table><thead><tr><th>Persona</th><th>Rol</th></tr></thead><tbody>'+userRows+'</tbody></table></div>':'<div class="empty-state">Sin usuarios</div>')
+      +(users.length?'<div class="table-wrap"><table><thead><tr><th>Persona</th><th>Rol</th><th></th></tr></thead><tbody>'+userRows+'</tbody></table></div>':'<div class="empty-state">Sin usuarios</div>')
       +'</div><div class="settings-section"><div class="settings-label">Última actividad</div>'
       +(entries.length?auditRows:'<div class="empty-state">Sin actividad registrada</div>')+'</div></div>',true);
   }catch(e){
@@ -177,6 +178,18 @@ async function changeUserRole(userId,role){
   }catch(e){
     toast(e.message||'No se pudo cambiar el rol');
     await openAccessManagement();
+  }
+}
+
+async function resetUserPassword(userId,label){
+  var password=prompt('Contraseña temporal para '+label+' (mínimo 8 caracteres). Se la tenés que pasar vos por otro medio:');
+  if(password===null) return;
+  if(password.length<8){ toast('La contraseña debe tener al menos 8 caracteres'); return; }
+  try{
+    await api('/api/users/'+encodeURIComponent(userId)+'/password',{method:'PUT',body:{password:password}});
+    toast('Contraseña restablecida');
+  }catch(e){
+    toast(e.message||'No se pudo restablecer la contraseña');
   }
 }
 

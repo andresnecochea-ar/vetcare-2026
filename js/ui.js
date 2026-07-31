@@ -55,9 +55,25 @@ function calcAge(birthdate) {
   }
   return `${years} año${years>1?'s':''}`;
 }
-function cleanPhone(p) { return (p||'').replace(/\D/g, ''); }
+// El campo teléfono es texto libre y algunos registros migrados del sistema
+// anterior tienen más de un número pegado (ej: "43-8745 15352493"). Se toma
+// el primer grupo separado por espacios que tenga pinta de teléfono (6+
+// dígitos) en vez de concatenar todo, que daba un número inexistente.
+function cleanPhone(p) {
+  const raw = String(p || '');
+  const tokens = raw.split(/\s+/);
+  for (const token of tokens) {
+    const digits = token.replace(/\D/g, '');
+    if (digits.length >= 6) return digits;
+  }
+  return raw.replace(/\D/g, '');
+}
 function escapeHtml(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
 function escapeAttr(s) { return escapeHtml(s); }
+
+// Como <script> suelto en el navegador estas funciones ya quedan en window;
+// esta asignación solo hace falta para poder importarlas como módulo en tests.
+globalThis.cleanPhone = cleanPhone;
 
 // ========================================
 // [23] SEED DEMO DATA — datos de ejemplo (solo primer arranque)

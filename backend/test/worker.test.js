@@ -68,7 +68,7 @@ describe('VetCare Worker', () => {
       status: 'ok',
       database: 'ready',
       version: '2.13.0',
-      schemaVersion: 13,
+      schemaVersion: 14,
     });
 
     // Los estudios cargados antes de 0011 siguen contando como resultado recibido.
@@ -1102,6 +1102,45 @@ describe('VetCare Worker', () => {
     expect(veterinarianUpdate.response.status).toBe(200);
     expect(veterinarianUpdate.body.revision).toBe(2);
 
+    const forbiddenPasswordReset = await jsonResponse(`/api/users/${login.body.user.id}/password`, {
+      method: 'PUT',
+      headers: receptionAuth,
+      body: { password: 'no-deberia-poder-1234' },
+    });
+    expect(forbiddenPasswordReset.response.status).toBe(403);
+
+    const tooShortPasswordReset = await jsonResponse(`/api/users/${receptionRegistration.body.id}/password`, {
+      method: 'PUT',
+      headers: authenticated,
+      body: { password: 'corta' },
+    });
+    expect(tooShortPasswordReset.response.status).toBe(400);
+
+    const newReceptionPassword = 'clave-restablecida-9999';
+    const passwordReset = await jsonResponse(`/api/users/${receptionRegistration.body.id}/password`, {
+      method: 'PUT',
+      headers: authenticated,
+      body: { password: newReceptionPassword },
+    });
+    expect(passwordReset.response.status).toBe(200);
+    expect(passwordReset.body.ok).toBe(true);
+
+    // El reset revoca las sesiones activas de esa persona.
+    expect((await request('/api/me', { headers: receptionAuth })).status).toBe(401);
+
+    const oldPasswordLogin = await jsonResponse('/api/login', {
+      method: 'POST',
+      body: { email: receptionEmail, password: receptionPassword },
+    });
+    expect(oldPasswordLogin.response.status).toBe(401);
+
+    const newPasswordLogin = await jsonResponse('/api/login', {
+      method: 'POST',
+      body: { email: receptionEmail, password: newReceptionPassword },
+    });
+    expect(newPasswordLogin.response.status).toBe(200);
+    expect(newPasswordLogin.body.user.role).toBe('veterinarian');
+
     const lastAdminDemotion = await jsonResponse(`/api/users/${login.body.user.id}/role`, {
       method: 'PUT',
       headers: authenticated,
@@ -1120,11 +1159,36 @@ describe('VetCare Worker', () => {
         fields: ['role'],
       }),
       expect.objectContaining({
+        action: 'password_reset',
+        entity_type: 'users',
+        entity_id: receptionRegistration.body.id,
+      }),
+      expect.objectContaining({
         action: 'update',
         entity_type: 'pets',
         entity_id: receptionPet.id,
       }),
     ]));
     expect(JSON.stringify(audit.body.entries)).not.toContain('Paciente estable');
+    expect(JSON.stringify(audit.body.entries)).not.toContain(newReceptionPassword);
+  });
+
+  it('toma un único número plausible de un teléfono con varios pegados', async () => {
+    await import('../../js/ui.js');
+    const cleanPhone = globalThis.cleanPhone;
+
+    // Caso normal: un solo número, con o sin formato.
+    expect(cleanPhone('5491123456789')).toBe('5491123456789');
+    expect(cleanPhone('43-1032')).toBe('431032');
+
+    // Datos migrados del sistema anterior: fijo + celular pegados con espacio.
+    // Antes se concatenaban en un número inexistente; ahora se toma el primero.
+    expect(cleanPhone('43-8745 15352493')).toBe('438745');
+    expect(cleanPhone('15509680 15561417')).toBe('15509680');
+    // Con iniciales de personas mezcladas en el texto: se ignoran los tokens sin dígitos.
+    expect(cleanPhone('45-0717 SRA 15636877 JL 15591887')).toBe('450717');
+
+    expect(cleanPhone('')).toBe('');
+    expect(cleanPhone(null)).toBe('');
   });
 });

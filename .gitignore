@@ -27,6 +27,9 @@ backend/.dev.vars.*
 # ZIPs de descarga usados solo para esta recuperación
 _github/
 
+# Backup del sistema veterinario anterior (datos reales de clientes/pacientes) — NUNCA subir a un repo público
+_otros/
+
 # Sistema operativo
 .DS_Store
 Thumbs.db

@@ -6,6 +6,12 @@
 
 const FOLLOWUP_HORIZON_DAYS = 90;
 const FOLLOWUP_SOON_DAYS = 30;
+// Vencido hace más de un año: en la vista "Hoy" (agregado de toda la clínica)
+// ya no es "trabajo de hoy", así que se cuenta aparte y queda oculto por
+// defecto para no tapar lo realmente accionable. En la ficha de cada paciente
+// (renderPetFollowUp) sí se sigue mostrando todo, sin este recorte.
+const FOLLOWUP_STALE_DAYS = 365;
+let showStaleFollowUpAlerts = false;
 
 // Diferencia en días entre hoy y una fecha YYYY-MM-DD, en calendario local.
 function followUpDaysUntil(dateKey) {
@@ -302,13 +308,41 @@ function clinicFollowUpAlerts() {
     String(a.pet.name || '').localeCompare(String(b.pet.name || '')));
 }
 
+function toggleStaleFollowUpAlerts() {
+  showStaleFollowUpAlerts = !showStaleFollowUpAlerts;
+  render();
+}
+
+function followUpAlertItemHTML({ pet, item }) {
+  return `
+    <div class="followup-item followup-${item.state}">
+      <div class="followup-when">
+        <strong>${escapeHtml(item.state === 'open' ? (item.detail || 'Sin cerrar') : followUpWhen(item.days))}</strong>
+        <small>${item.date ? formatDate(item.date) : 'Sin fecha'}</small>
+      </div>
+      <div class="followup-body">
+        <span class="followup-kind">${escapeHtml(pet.name)} &middot; ${escapeHtml(item.label)}</span>
+        <strong>${escapeHtml(item.title)}</strong>
+      </div>
+      <div class="followup-actions"><button class="btn btn-sm" onclick="openPetDetail('${pet.id}')">Abrir ficha</button></div>
+    </div>`;
+}
+
 function renderTodayFollowUp(limit = 6) {
-  const rows = clinicFollowUpAlerts();
+  const allRows = clinicFollowUpAlerts();
+  // Un vencido de hace años (típicamente historial migrado) no es "trabajo de
+  // hoy": se separa para no tapar lo reciente, pero sigue disponible atrás del botón.
+  const rows = allRows.filter(r => !(r.item.state === 'overdue' && -r.item.days > FOLLOWUP_STALE_DAYS));
+  const staleRows = allRows.filter(r => r.item.state === 'overdue' && -r.item.days > FOLLOWUP_STALE_DAYS);
+
   const overdue = rows.filter(r => r.item.state === 'overdue').length;
   const today = rows.filter(r => r.item.state === 'today').length;
   const open = rows.filter(r => r.item.state === 'open').length;
   const visible = rows.slice(0, limit);
   const rest = rows.length - visible.length;
+
+  const staleVisible = staleRows.slice(0, 20);
+  const staleRest = staleRows.length - staleVisible.length;
 
   return `
     <div class="today-followup${rows.length ? '' : ' is-clear'}">
@@ -324,20 +358,21 @@ function renderTodayFollowUp(limit = 6) {
       ${rows.length === 0
         ? '<div class="empty-state">Nada vencido ni pendiente para hoy. La continuidad cl&iacute;nica est&aacute; al d&iacute;a.</div>'
         : `<div class="today-followup-list">
-            ${visible.map(({ pet, item }) => `
-              <div class="followup-item followup-${item.state}">
-                <div class="followup-when">
-                  <strong>${escapeHtml(item.state === 'open' ? (item.detail || 'Sin cerrar') : followUpWhen(item.days))}</strong>
-                  <small>${item.date ? formatDate(item.date) : 'Sin fecha'}</small>
-                </div>
-                <div class="followup-body">
-                  <span class="followup-kind">${escapeHtml(pet.name)} &middot; ${escapeHtml(item.label)}</span>
-                  <strong>${escapeHtml(item.title)}</strong>
-                </div>
-                <div class="followup-actions"><button class="btn btn-sm" onclick="openPetDetail('${pet.id}')">Abrir ficha</button></div>
-              </div>`).join('')}
+            ${visible.map(followUpAlertItemHTML).join('')}
           </div>
           ${rest > 0 ? `<div class="today-followup-rest">y ${rest} pendiente${rest === 1 ? '' : 's'} m&aacute;s en las fichas</div>` : ''}`}
+      ${staleRows.length > 0 ? `
+        <div class="today-followup-stale">
+          <button class="btn btn-sm" onclick="toggleStaleFollowUpAlerts()">
+            ${showStaleFollowUpAlerts ? 'Ocultar' : 'Revisar'} ${staleRows.length} pendiente${staleRows.length === 1 ? '' : 's'} antiguo${staleRows.length === 1 ? '' : 's'} (vencido${staleRows.length === 1 ? '' : 's'} hace m&aacute;s de un a&ntilde;o)
+          </button>
+          ${showStaleFollowUpAlerts ? `
+            <div class="today-followup-list">
+              ${staleVisible.map(followUpAlertItemHTML).join('')}
+            </div>
+            ${staleRest > 0 ? `<div class="today-followup-rest">y ${staleRest} m&aacute;s &mdash; abr&iacute; la ficha del paciente para verlos todos</div>` : ''}
+          ` : ''}
+        </div>` : ''}
     </div>`;
 }
 

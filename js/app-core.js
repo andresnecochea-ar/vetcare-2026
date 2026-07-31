@@ -51,7 +51,7 @@ function exportVetcare(type) {
     exportDate: new Date().toISOString(), type: type,
     structure: {
       pets: 'id, name, species, breed, sex, color, birthdate, weight, microchip, ownerIds[], allergies, conditions, notes, photo, images[], studies[], history[], vaccines[], dewormings[]',
-      owners: 'id, name, relationship, phone, email, address, docId, notes',
+      owners: 'id, name, relationship, phone, altPhone, email, address, dni, notes',
       appointments: 'id, petId, date, time, type, vet, notes, status, duration, checkedInAt, startedAt, completedAt',
       groomingAppointments: 'id, petId, date, time, status, reminder, notes',
       reminders: 'id, petId, title, date, type, completed',

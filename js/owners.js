@@ -20,6 +20,7 @@ function ownerListCardHTML(o) {
       <div class="pet-card-body">
         <h3>${escapeHtml(o.name)}</h3>
         <div class="meta">${icon('phone','ico-sm')} ${escapeHtml(o.phone||'sin teléfono')}</div>
+        ${o.altPhone ? `<div class="meta">${icon('phone','ico-sm')} ${escapeHtml(o.altPhone)} <small style="color:var(--text-mute)">(alt.)</small></div>` : ''}
         <div class="meta">${icon('mail','ico-sm')} ${escapeHtml(o.email||'sin email')}</div>
         <div class="tags">
           ${pets.map(p => `<span class="tag">${escapeHtml(p.name)}</span>`).join('') || '<span class="tag">Sin mascotas</span>'}
@@ -42,12 +43,14 @@ function ownerCardHTML(o, petName) {
       <h4>${escapeHtml(o.name)} ${o.relationship ? `<small style="font-weight: var(--fw-normal);color:var(--text-mute)">· ${escapeHtml(o.relationship)}</small>` : ''}</h4>
       <div style="font-size:var(--fs-sm);color:var(--text-soft)">
         ${o.phone ? `${icon('phone','ico-sm')} ${escapeHtml(o.phone)}<br>` : ''}
+        ${o.altPhone ? `${icon('phone','ico-sm')} ${escapeHtml(o.altPhone)} <small style="color:var(--text-mute)">(alt.)</small><br>` : ''}
         ${o.email ? `${icon('mail','ico-sm')} ${escapeHtml(o.email)}<br>` : ''}
         ${o.address ? `${icon('pin','ico-sm')} ${escapeHtml(o.address)}` : ''}
       </div>
       <div class="contact-links">
         ${o.phone ? `<a class="contact-btn wa" href="https://wa.me/${cleanPhone(o.phone)}?text=${waMsg}" target="_blank">WhatsApp</a>` : ''}
-        ${o.phone ? `<a class="contact-btn" href="tel:${o.phone}">Llamar</a>` : ''}
+        ${o.phone ? `<a class="contact-btn" href="tel:${cleanPhone(o.phone)}">Llamar</a>` : ''}
+        ${o.altPhone ? `<a class="contact-btn" href="tel:${cleanPhone(o.altPhone)}">Llamar (alt.)</a>` : ''}
         ${o.email ? `<a class="contact-btn mail" href="mailto:${o.email}?subject=${mailSubj}">Email</a>` : ''}
       </div>
     </div>
@@ -71,8 +74,11 @@ function openOwnerModal(id) {
         <div class="form-group"><label>Relación con mascota</label><input type="text" id="oRel" value="${escapeAttr(owner.relationship||'')}" placeholder="Tutor, hijo/a, cuidador..."></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Teléfono (con código país: 5491123456789)</label><input type="text" id="oPhone" value="${escapeAttr(owner.phone||'')}"></div>
+        <div class="form-group"><label>Celular / WhatsApp (con código país: 5491123456789)</label><input type="text" id="oPhone" value="${escapeAttr(owner.phone||'')}"></div>
         <div class="form-group"><label>Email</label><input type="email" id="oEmail" value="${escapeAttr(owner.email||'')}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Teléfono alternativo <small style="color:var(--text-mute)">(fijo u otro contacto, opcional)</small></label><input type="text" id="oPhoneAlt" value="${escapeAttr(owner.altPhone||'')}"></div>
       </div>
       <div class="form-group"><label>Dirección</label><input type="text" id="oAddress" value="${escapeAttr(owner.address||'')}"></div>
       <div class="form-group"><label>DNI / Documento</label><input type="text" id="oDni" value="${escapeAttr(owner.dni||'')}"></div>
@@ -97,6 +103,7 @@ function saveOwner(id, isNew) {
     id, name,
     relationship: document.getElementById('oRel').value.trim(),
     phone: document.getElementById('oPhone').value.trim(),
+    altPhone: document.getElementById('oPhoneAlt').value.trim(),
     email: document.getElementById('oEmail').value.trim(),
     address: document.getElementById('oAddress').value.trim(),
     dni: document.getElementById('oDni').value.trim(),

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["http-server", ".", "-p", "5500", "-c-1"],
+      "port": 5500
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/wrangler.mjs", "dev", "--config", "backend/wrangler.jsonc", "--port", "8787"],
+      "port": 8787
+    }
+  ]
+}
