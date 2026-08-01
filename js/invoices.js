@@ -12,9 +12,9 @@ function renderInvoices() {
       <div class="stat-card"><div class="stat-label">${icon('checkCircle','ico-sm')} Cobrados</div><div class="stat-val" style="color:var(--color-mint-hover)">${summary.paidCount}</div></div>
       <div class="stat-card"><div class="stat-label">${icon('receipt','ico-sm')} Comprobantes</div><div class="stat-val">${invs.length}</div></div>
     </div>
-    <div class="card" style="overflow-x:auto">
+    <div class="table-wrap as-cards">
       <table>
-        <thead><tr><th>#</th><th>Tutor</th><th class="col-sec">Paciente</th><th class="col-sec">Fecha</th><th>Total</th><th class="col-sec">Estado</th><th></th></tr></thead>
+        <thead><tr><th>Tutor</th><th>#</th><th>Paciente</th><th>Fecha</th><th>Total</th><th>Estado</th><th></th></tr></thead>
         <tbody>
         ${invs.length===0
           ?'<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-mute)">Sin recibos todavía. ¡Creá el primero!</td></tr>'
@@ -24,12 +24,12 @@ function renderInvoices() {
               const sl=inv.status==='paid'?'Cobrado':inv.status==='cancelled'?'Cancelado':'Pendiente';
               const sc=inv.status==='paid'?'tag-success':inv.status==='cancelled'?'tag-mute':'tag-warning';
               return `<tr>
-                <td><strong>#${inv.number||inv.id.slice(-4).toUpperCase()}</strong></td>
-                <td>${owner?`<button type="button" class="link-cell" onclick="openOwnerModal('${owner.id}')">${escapeHtml(owner.name)}</button>`:'—'}</td>
-                <td class="col-sec">${pet?`<button type="button" class="link-cell" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button>`:'—'}</td>
-                <td class="col-sec">${formatDate(inv.date)}</td>
-                <td><strong>$${parseFloat(inv.total||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</strong></td>
-                <td class="col-sec"><span class="tag ${sc}">${sl}</span></td>
+                <td data-primary>${owner?`<button type="button" class="link-cell" onclick="openOwnerModal('${owner.id}')">${escapeHtml(owner.name)}</button>`:'—'}</td>
+                <td data-label="Recibo"><strong>#${inv.number||inv.id.slice(-4).toUpperCase()}</strong></td>
+                <td data-label="Paciente">${pet?`<button type="button" class="link-cell" onclick="openPetDetail('${pet.id}')">${escapeHtml(petDisplayName(pet))}</button>`:'—'}</td>
+                <td data-label="Fecha">${formatDate(inv.date)}</td>
+                <td data-label="Total"><strong>$${parseFloat(inv.total||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</strong></td>
+                <td data-label="Estado"><span class="tag ${sc}">${sl}</span></td>
                 <td style="white-space:nowrap">
                   <button class="btn btn-sm" onclick="printInvoice('${inv.id}')" title="Imprimir" aria-label="Imprimir">${icon('print','ico-sm')}</button>
                   <button class="btn btn-sm" onclick="openInvoiceModal('${inv.id}')" title="Editar" aria-label="Editar">${icon('edit','ico-sm')}</button>

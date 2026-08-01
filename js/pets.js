@@ -75,6 +75,31 @@ function petPickerItems(options) {
     .sort((a, b) => compareEs(a.label, b.label));
 }
 
+// La lista no tenía orden: quedaba el de inserción de la migración, así que lo
+// primero que se veía eran fichas de 2001. "Última visita" es el orden útil en
+// el mostrador (lo que se tocó hace poco se vuelve a tocar), así que es el
+// predeterminado.
+const PET_SORTS = [
+  { id: 'recent', label: 'Última visita' },
+  { id: 'name', label: 'Nombre (A-Z)' },
+  { id: 'pending', label: 'Pendientes vencidos' }
+];
+let petSortMode = 'recent';
+
+function sortPets(pets, mode) {
+  const list = pets.slice();
+  if (mode === 'name') return list.sort((a, b) => compareEs(petDisplayName(a), petDisplayName(b)));
+  if (mode === 'pending') {
+    const overdue = p => petFollowUpItems(p).filter(i => i.state === 'overdue').length;
+    return list.sort((a, b) => overdue(b) - overdue(a) || compareEs(petDisplayName(a), petDisplayName(b)));
+  }
+  return list.sort((a, b) => {
+    const av = petLastVisit(a), bv = petLastVisit(b);
+    if (av === bv) return compareEs(petDisplayName(a), petDisplayName(b));
+    return bv.localeCompare(av);   // sin visitas ('') va al final
+  });
+}
+
 function renderPets() {
   const archivedPets = db.pets.filter(p => p.deceasedAt);
   if (petsShowArchive) return renderPetsArchive(archivedPets);
@@ -93,28 +118,31 @@ function renderPets() {
       </div>
     </div>
     <div class="search-bar">
-      <input type="text" id="petSearch" placeholder="Buscar por nombre, especie, raza..." oninput="filterPets()">
+      <input type="text" id="petSearch" placeholder="Buscar por nombre, tutor, especie o raza..." oninput="filterPets()">
     </div>
     <div class="patient-filters">
-      <select id="filterSpecies" onchange="filterPets()">
+      <select id="filterSpecies" onchange="filterPets()" aria-label="Filtrar por especie">
         <option value="">Todas las especies</option>
         ${species.map(s=>`<option value="${escapeAttr(s)}">${escapeHtml(s)}</option>`).join('')}
       </select>
-      <select id="filterSex" onchange="filterPets()">
+      <select id="filterSex" onchange="filterPets()" aria-label="Filtrar por sexo">
         <option value="">Cualquier sexo</option>
         <option value="Macho">Macho</option>
         <option value="Hembra">Hembra</option>
       </select>
-      <select id="filterChronic" onchange="filterPets()">
+      <select id="filterChronic" onchange="filterPets()" aria-label="Filtrar por condición">
         <option value="">Todas las condiciones</option>
         <option value="con">Con condición crónica</option>
         <option value="sin">Sin condición crónica</option>
+      </select>
+      <select id="petSort" onchange="filterPets()" aria-label="Ordenar pacientes">
+        ${PET_SORTS.map(s=>`<option value="${s.id}" ${petSortMode===s.id?'selected':''}>${s.label}</option>`).join('')}
       </select>
       <button class="btn btn-sm" onclick="clearPetFilters()">${iconX()} Limpiar</button>
       ${archivedPets.length ? `<button class="btn btn-sm" style="margin-left:auto" onclick="togglePetsArchive(true)">Archivo (${archivedPets.length})</button>` : ''}
     </div>
     <div id="petsGrid">
-      ${renderPetItems(activePets)}
+      ${renderPetItems(sortPets(activePets, petSortMode))}
     </div>
   `;
 }
@@ -165,7 +193,7 @@ function renderPetsArchive(archivedPets) {
             const owners = (p.ownerIds||[]).map(id=>db.owners.find(o=>o.id===id)).filter(Boolean);
             return `<tr>
               <td><input type="checkbox" ${petsArchiveSelected.has(p.id)?'checked':''} onchange="togglePetsArchiveSelected('${p.id}', this.checked)"></td>
-              <td><button type="button" class="link-cell" onclick="openPetDetail('${p.id}')">${escapeHtml(p.name)}</button></td>
+              <td><button type="button" class="link-cell" onclick="openPetDetail('${p.id}')">${escapeHtml(petDisplayName(p))}</button></td>
               <td class="col-sec">${escapeHtml(p.species||'—')} / ${escapeHtml(p.breed||'—')}</td>
               <td>${owners.length ? `<button type="button" class="link-cell" onclick="openOwnerModal('${owners[0].id}')">${escapeHtml(owners[0].name)}</button>` : '—'}</td>
               <td>${formatDate(p.deceasedAt)}</td>
@@ -209,7 +237,7 @@ async function deleteSelectedArchivedPets() {
 
 function setPetView(mode) {
   petViewMode = mode;
-  filterPets();
+  _filterPetsRun();
   document.querySelectorAll('.view-toggle button').forEach((b,i)=>{
     b.classList.toggle('active', (i===0 && mode==='grid')||(i===1 && mode==='list'));
   });
@@ -219,17 +247,33 @@ function clearPetFilters() {
   ['petSearch','filterSpecies','filterSex','filterChronic'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
-  filterPets();
+  _filterPetsRun();
 }
 
+// Se dispara en cada tecla sobre 4.734 pacientes y reconstruye toda la grilla.
+// El debounce evita rehacer 40.000 nodos mientras se escribe; en el celular la
+// diferencia se siente.
+let _petFilterTimer = null;
 function filterPets() {
-  const q = (document.getElementById('petSearch')?.value||'').toLowerCase();
+  clearTimeout(_petFilterTimer);
+  _petFilterTimer = setTimeout(_filterPetsRun, 160);
+}
+
+function _filterPetsRun() {
+  const q = (document.getElementById('petSearch')?.value||'').trim().toLowerCase();
   const sp = document.getElementById('filterSpecies')?.value||'';
   const sx = document.getElementById('filterSex')?.value||'';
   const ch = document.getElementById('filterChronic')?.value||'';
+  petSortMode = document.getElementById('petSort')?.value || petSortMode;
+  const index = ownersById();
   const filtered = db.pets.filter(p => {
     if (p.deceasedAt) return false;
-    if (q && !p.name.toLowerCase().includes(q) && !(p.species||'').toLowerCase().includes(q) && !(p.breed||'').toLowerCase().includes(q)) return false;
+    // El tutor entra en la búsqueda: en el mostrador se pregunta por "el perro
+    // de Poinsot" mucho más seguido que por la raza.
+    if (q) {
+      const hay = [p.name, p.species, p.breed, ...petOwnerNames(p, index)].filter(Boolean).join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
     if (sp && (p.species||'') !== sp) return false;
     if (sx && (p.sex||'') !== sx) return false;
     if (ch === 'con' && !p.chronicConditions) return false;
@@ -239,7 +283,7 @@ function filterPets() {
   const grid = document.getElementById('petsGrid');
   if (grid) grid.innerHTML = filtered.length === 0
     ? `<div class="empty-state"><div class="ico">${icon('ban')}</div>Sin resultados</div>`
-    : renderPetItems(filtered);
+    : renderPetItems(sortPets(filtered, petSortMode));
 }
 
 function renderPetItems(pets) {
@@ -249,21 +293,22 @@ function renderPetItems(pets) {
 
 function renderPetList(pets) {
   if (pets.length === 0) return `<div class="empty-state"><div class="ico">${icon('paw')}</div>Sin pacientes registrados.</div>`;
-  return `<div class="table-wrap pet-list-table"><table>
-    <thead><tr><th></th><th>Nombre</th><th class="col-sec">Especie/Raza</th><th class="col-sec">Sexo</th><th class="col-sec">Edad</th><th>Tutor</th><th>Pendientes</th><th class="col-sec">Estado</th><th></th></tr></thead>
+  const index = ownersById();
+  return `<div class="table-wrap pet-list-table as-cards"><table>
+    <thead><tr><th></th><th>Nombre</th><th>Especie/Raza</th><th class="col-sec">Sexo</th><th>Edad</th><th>Tutor</th><th>Pendientes</th><th class="col-sec">Estado</th><th></th></tr></thead>
     <tbody>${pets.map(p => {
-      const owners = (p.ownerIds||[]).map(id=>db.owners.find(o=>o.id===id)).filter(Boolean);
+      const owners = petOwners(p, index);
       const age = p.birthdate ? calcAge(p.birthdate) : '—';
       const statusTag = p.chronicConditions ? '<span class="tag danger">Crónico</span>' : p.allergies ? '<span class="tag warning">Alergia</span>' : '<span class="tag">OK</span>';
       return `<tr>
-        <td><div class="pet-mini-avatar${p.photo?'':' is-silhouette'}" style="${petPhotoStyle(p)}"></div></td>
-        <td><button type="button" class="link-cell" onclick="openPetDetail('${p.id}')">${escapeHtml(p.name)}</button></td>
-        <td class="col-sec">${escapeHtml(p.species||'—')} / ${escapeHtml(p.breed||'—')}</td>
-        <td class="col-sec">${escapeHtml(p.sex||'—')}</td>
-        <td class="col-sec">${age}</td>
-        <td>${owners.length ? `<button type="button" class="link-cell" onclick="openOwnerModal('${owners[0].id}')">${escapeHtml(owners[0].name)}</button>` : '—'}</td>
-        <td>${petAlertBadgeHTML(p) || '<span class="pet-alert-clear">Al día</span>'}</td>
-        <td class="col-sec">${statusTag}</td>
+        <td class="col-sec"><div class="pet-mini-avatar${p.photo?'':' is-silhouette'}" style="${petPhotoStyle(p)}"></div></td>
+        <td data-primary><button type="button" class="link-cell" onclick="openPetDetail('${p.id}')">${escapeHtml(petDisplayName(p))}</button></td>
+        <td data-label="Especie/Raza">${escapeHtml(p.species||'—')} / ${escapeHtml(p.breed||'—')}</td>
+        <td class="col-sec" data-label="Sexo">${escapeHtml(p.sex||'—')}</td>
+        <td data-label="Edad">${age}</td>
+        <td data-label="Tutor">${owners.length ? `<button type="button" class="link-cell" onclick="openOwnerModal('${owners[0].id}')">${escapeHtml(owners[0].name)}</button>` : '—'}</td>
+        <td data-label="Pendientes">${petAlertBadgeHTML(p) || '<span class="pet-alert-clear">Al día</span>'}</td>
+        <td class="col-sec" data-label="Estado">${statusTag}</td>
         <td><div class="actions"><button class="btn btn-sm" onclick="openPetDetail('${p.id}')">Ver</button><button class="btn btn-sm" onclick="openPetModal('${p.id}')">Editar</button></div></td>
       </tr>`;
     }).join('')}</tbody>
@@ -300,7 +345,7 @@ function petCardHTML(p) {
     <div class="pet-card" onclick="openPetDetail('${p.id}')">
       <div class="pet-photo${p.photo ? '' : ' is-silhouette'}" style="${petPhotoStyle(p)}"></div>
       <div class="pet-card-body">
-        <h3>${escapeHtml(p.name)}</h3>
+        <h3>${escapeHtml(petDisplayName(p))}</h3>
         <div class="meta">${escapeHtml(p.species || '—')} · ${escapeHtml(p.breed || '—')}</div>
         <div class="meta">${age} ${p.sex ? '· ' + escapeHtml(p.sex) : ''}</div>
         <div class="tags">
@@ -548,7 +593,7 @@ function renderPetDetailLegacy(id) {
       <div class="pet-header">
         <div class="pet-avatar${pet.photo ? '' : ' is-silhouette'}" style="${petPhotoStyle(pet)};cursor:pointer" title="Click para cambiar foto" onclick="choosePhotoSource('${pet.id}')"></div>
         <div class="pet-info" style="flex:1">
-          <h2>${escapeHtml(pet.name)}</h2>
+          <h2>${escapeHtml(petDisplayName(pet))}</h2>
           <div class="meta">${escapeHtml(pet.species||'—')} · ${escapeHtml(pet.breed||'—')} · ${age}</div>
           <div class="meta">${pet.sex||''} ${pet.weight ? '· '+pet.weight+'kg' : ''} ${pet.microchip ? '· chip '+pet.microchip : ''}</div>
         </div>
@@ -949,10 +994,10 @@ function renderEncounter() {
     <div class="encounter-page">
       <div class="pet-detail-topbar">
         <button class="pet-detail-back" onclick="closeEncounter()" aria-label="Volver a la ficha">${icon('arrowLeft','ico-sm')}<span>Volver a la ficha</span></button>
-        <div class="pet-detail-breadcrumb"><span>Pacientes</span><span aria-hidden="true">/</span><span>${escapeHtml(pet.name)}</span><span aria-hidden="true">/</span><strong>Consulta</strong></div>
+        <div class="pet-detail-breadcrumb"><span>Pacientes</span><span aria-hidden="true">/</span><span>${escapeHtml(petDisplayName(pet))}</span><span aria-hidden="true">/</span><strong>Consulta</strong></div>
       </div>
       <header class="encounter-header">
-        <div><div class="page-eyebrow">Atenci&oacute;n cl&iacute;nica</div><h1>${ex ? 'Editar consulta' : 'Nueva consulta'}</h1><p>${escapeHtml(pet.name)} &middot; ${escapeHtml(pet.species || 'Paciente')} ${pet.breed ? '&middot; ' + escapeHtml(pet.breed) : ''}${appointment ? ` &middot; Turno ${escapeHtml(appointment.time || 'sin hora')}` : ''}</p></div>
+        <div><div class="page-eyebrow">Atenci&oacute;n cl&iacute;nica</div><h1>${ex ? 'Editar consulta' : 'Nueva consulta'}</h1><p>${escapeHtml(petDisplayName(pet))} &middot; ${escapeHtml(pet.species || 'Paciente')} ${pet.breed ? '&middot; ' + escapeHtml(pet.breed) : ''}${appointment ? ` &middot; Turno ${escapeHtml(appointment.time || 'sin hora')}` : ''}</p></div>
         <span class="encounter-status ${encounterStatusClass(status)}">${encounterStatusLabel(status)}</span>
       </header>
       <div class="encounter-layout">
@@ -990,7 +1035,7 @@ function renderEncounter() {
         </section>
         <aside class="encounter-sidebar">
           <div class="encounter-side-card"><h3>Estado de la consulta</h3><label class="sr-only" for="hStatus">Estado</label><select id="hStatus" onchange="toggleEncounterReopenField(this.value)">${statusOptions}</select><p>El estado permite continuar el trabajo sin cerrar una atenci&oacute;n incompleta.</p><div class="encounter-reopen-field ${status==='reopened'?'is-visible':''}"><label for="hReopen">Motivo de reapertura</label><textarea id="hReopen" rows="2" placeholder="Completar al reabrir una consulta cerrada">${textValue('reopenedReason')}</textarea></div></div>
-          <div class="encounter-side-card encounter-patient-card"><h3>Paciente</h3><strong>${escapeHtml(pet.name)}</strong><span>${escapeHtml(pet.species || '')} ${pet.breed ? '&middot; ' + escapeHtml(pet.breed) : ''}</span>${pet.allergies?`<div class="encounter-alert"><b>Alergias</b>${escapeHtml(pet.allergies)}</div>`:''}${pet.chronicConditions?`<div class="encounter-alert"><b>Condici&oacute;n cr&oacute;nica</b>${escapeHtml(pet.chronicConditions)}</div>`:''}${owner?`<div class="encounter-owner"><b>${escapeHtml(owner.name)}</b><span>${escapeHtml(owner.phone || 'Sin tel&eacute;fono')}</span></div>`:''}</div>
+          <div class="encounter-side-card encounter-patient-card"><h3>Paciente</h3><strong>${escapeHtml(petDisplayName(pet))}</strong><span>${escapeHtml(pet.species || '')} ${pet.breed ? '&middot; ' + escapeHtml(pet.breed) : ''}</span>${pet.allergies?`<div class="encounter-alert"><b>Alergias</b>${escapeHtml(pet.allergies)}</div>`:''}${pet.chronicConditions?`<div class="encounter-alert"><b>Condici&oacute;n cr&oacute;nica</b>${escapeHtml(pet.chronicConditions)}</div>`:''}${owner?`<div class="encounter-owner"><b>${escapeHtml(owner.name)}</b><span>${escapeHtml(owner.phone || 'Sin tel&eacute;fono')}</span></div>`:''}</div>
           <div class="encounter-actions"><button class="btn" onclick="closeEncounter()">Cancelar</button><button class="btn btn-secondary" onclick="saveHistory('${pet.id}','${ex?ex.id:''}','draft')">Guardar borrador</button><button class="btn btn-primary" onclick="saveHistory('${pet.id}','${ex?ex.id:''}')">Guardar estado</button><button class="btn btn-success" onclick="openEncounterCloseReview('${pet.id}','${ex?ex.id:''}')">Revisar y cerrar</button></div>
         </aside>
       </div>
@@ -1094,7 +1139,7 @@ function openEncounterCloseReview(petId, editId) {
     <div class="modal-body encounter-close-review">
       <div class="close-review-grid${canUseReceipts ? '' : ' is-clinical-only'}">
         <section class="close-review-card">
-          <div class="close-review-heading"><div><small>Información clínica</small><h3>${escapeHtml(pet.name)} · ${escapeHtml(type)}</h3></div><span class="encounter-status encounter-status-closed">Por cerrar</span></div>
+          <div class="close-review-heading"><div><small>Información clínica</small><h3>${escapeHtml(petDisplayName(pet))} · ${escapeHtml(type)}</h3></div><span class="encounter-status encounter-status-closed">Por cerrar</span></div>
           <div class="clinical-review-list">
             ${clinicalItems.map(item => `
               <div class="${item.value ? 'is-complete' : 'is-missing'}">

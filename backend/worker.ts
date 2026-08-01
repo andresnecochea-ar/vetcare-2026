@@ -361,9 +361,25 @@ function buildUpsertStatement(
   return { id, row, statement };
 }
 
+// Orden alfabético para lo que se lista por nombre. Sin ORDER BY, SQLite
+// devolvía el orden de inserción de la migración: Tutores arrancaba en
+// "ZOROZA MARCELA" y Pacientes en fichas de 2001.
+const ENTITY_ORDER: Record<string, string> = {
+  owners: 'name COLLATE NOCASE',
+  pets: 'name COLLATE NOCASE',
+  inventory: 'name COLLATE NOCASE',
+  appointments: 'date DESC, time',
+  groomingAppointments: 'date DESC, time',
+  reminders: 'date',
+  invoices: 'date DESC',
+};
+
 async function listEntity(env: Env, table: string): Promise<JsonObject[]> {
   const config = tableConfig(table);
-  const { results } = await env.DB.prepare(`SELECT * FROM ${table}`).all<JsonObject>();
+  const order = ENTITY_ORDER[table];
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM ${table}${order ? ` ORDER BY ${order}` : ''}`,
+  ).all<JsonObject>();
   return (results ?? []).map((row) => deserializeRow(row, config));
 }
 

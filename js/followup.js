@@ -382,6 +382,21 @@ function followUpAlertItemHTML({ pet, item }) {
     </div>`;
 }
 
+// La continuidad clínica arranca plegada. Sobre la base migrada son 652
+// vencidos: mostrados de entrada empujaban los turnos del día abajo de todo, y
+// lo primero que veía la veterinaria al abrir la app a las 9 eran vacunas
+// vencidas en 2025 en vez de los pacientes que venían ese día.
+const FOLLOWUP_OPEN_KEY = 'vetcare_followup_open';
+let followUpExpanded = (() => {
+  try { return localStorage.getItem(FOLLOWUP_OPEN_KEY) === '1'; } catch (e) { return false; }
+})();
+
+function toggleTodayFollowUp() {
+  followUpExpanded = !followUpExpanded;
+  try { localStorage.setItem(FOLLOWUP_OPEN_KEY, followUpExpanded ? '1' : '0'); } catch (e) {}
+  render();
+}
+
 function renderTodayFollowUp(limit = 6) {
   const dismissed = loadDismissedFollowUps();
   const allRows = clinicFollowUpAlerts().filter(r => !dismissed.has(followUpDismissKey(r.item)));
@@ -399,9 +414,12 @@ function renderTodayFollowUp(limit = 6) {
   const staleVisible = staleRows.slice(0, 20);
   const staleRest = staleRows.length - staleVisible.length;
 
+  const isOpen = followUpExpanded && rows.length > 0;
+
   return `
-    <div class="today-followup${rows.length ? '' : ' is-clear'}">
-      <div class="today-col-head">
+    <div class="today-followup${rows.length ? '' : ' is-clear'}${isOpen ? ' is-open' : ''}">
+      <button type="button" class="today-followup-toggle" onclick="toggleTodayFollowUp()"
+              aria-expanded="${isOpen ? 'true' : 'false'}" ${rows.length ? '' : 'disabled'}>
         <svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.4-7 10-7 10Z"/><path d="M5.5 12.4h3l1.6-2.6 1.8 4.2 1.5-2.4h5.1"/></svg>
         <h3>Continuidad cl&iacute;nica</h3>
         <div class="followup-chips">
@@ -409,14 +427,15 @@ function renderTodayFollowUp(limit = 6) {
           <span class="followup-chip${today ? ' is-today' : ''}">${today} hoy</span>
           <span class="followup-chip">${open} sin cerrar</span>
         </div>
-      </div>
+        ${rows.length ? `<span class="today-followup-cta">${isOpen ? 'Ocultar' : 'Ver'}</span>` : ''}
+      </button>
       ${rows.length === 0
         ? '<div class="empty-state">Nada vencido ni pendiente para hoy. La continuidad cl&iacute;nica est&aacute; al d&iacute;a.</div>'
-        : `<div class="today-followup-list">
+        : (isOpen ? `<div class="today-followup-list">
             ${visible.map(followUpAlertItemHTML).join('')}
           </div>
-          ${rest > 0 ? `<div class="today-followup-rest">y ${rest} pendiente${rest === 1 ? '' : 's'} m&aacute;s en las fichas</div>` : ''}`}
-      ${staleRows.length > 0 ? `
+          ${rest > 0 ? `<div class="today-followup-rest">y ${rest} pendiente${rest === 1 ? '' : 's'} m&aacute;s en las fichas</div>` : ''}` : '')}
+      ${isOpen && staleRows.length > 0 ? `
         <div class="today-followup-stale">
           <button class="btn btn-sm" onclick="toggleStaleFollowUpAlerts()">
             ${showStaleFollowUpAlerts ? 'Ocultar' : 'Revisar'} ${staleRows.length} pendiente${staleRows.length === 1 ? '' : 's'} antiguo${staleRows.length === 1 ? '' : 's'} (vencido${staleRows.length === 1 ? '' : 's'} hace m&aacute;s de un a&ntilde;o)

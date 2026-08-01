@@ -1494,6 +1494,20 @@
   .gs-item:active { background: var(--accent-soft); }
   .gs-item .gs-label { font-weight: var(--fw-bold); }
   .gs-item .gs-sub { font-size: var(--fs-2xs); color: var(--text-mute); }
+  /* Encabezado de cada grupo de resultados (Pacientes, Tutores, Turnos…):
+     sin esto, un apellido que tambien es nombre de mascota mezclaba todo. */
+  .gs-group-label {
+    position: sticky;
+    top: 0;
+    padding: var(--space-2) var(--space-4);
+    background: var(--bg-soft);
+    border-bottom: 1px solid var(--border);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-bold);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--text-soft);
+  }
 
   /* ── Today view ── */
   .today-grid {
@@ -1865,16 +1879,68 @@
     .gs-close-btn { display: inline-flex; }
     .today-grid { grid-template-columns: 1fr; gap: var(--space-3); }
 
-    /* TABLAS EN MÓVIL — solución definitiva:
-       1) ocultamos las columnas secundarias (quedan las esenciales)
-       2) table-layout:fixed obliga a la tabla a respetar el ancho del contenedor
-          y repartir el espacio entre las columnas visibles (no se desborda nunca) */
+    /* TABLAS EN MÓVIL — se ocultan las columnas secundarias y table-layout:fixed
+       obliga a respetar el ancho del contenedor. Sirve para tablas donde lo que
+       se recorta es accesorio. */
     .col-sec { display: none; }
     .table-wrap { width: 100%; max-width: 100%; overflow-x: hidden; box-sizing: border-box; }
     .table-wrap table { width: 100%; min-width: 0; table-layout: fixed; }
     th, td { padding: 9px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     td .actions { gap: var(--space-1); }
     td .actions .btn { padding: var(--space-1) var(--space-2); }
+
+    /* TABLAS QUE NO PUEDEN PERDER COLUMNAS (turnos, peluquería, recibos,
+       pacientes). Ocultar lo secundario dejaba la agenda sin tipo, profesional
+       ni estado, y los recibos sin fecha ni "cobrado/pendiente", que es lo
+       único que se quiere saber. Acá cada fila se apila como una ficha y cada
+       dato lleva su etiqueta, tomada del data-label del <td>. */
+    .table-wrap.as-cards table,
+    .table-wrap.as-cards tbody,
+    .table-wrap.as-cards tr,
+    .table-wrap.as-cards td { display: block; width: auto; }
+    .table-wrap.as-cards thead { display: none; }
+    .table-wrap.as-cards table { table-layout: auto; }
+    .table-wrap.as-cards tr {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: var(--space-3);
+      margin-bottom: var(--space-3);
+      background: var(--surface);
+    }
+    .table-wrap.as-cards td {
+      padding: 3px 0;
+      border: none;
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: var(--space-3);
+    }
+    .table-wrap.as-cards td::before {
+      content: attr(data-label);
+      flex: none;
+      color: var(--text-mute);
+      font-size: var(--fs-2xs);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    /* La primera celda encabeza la ficha; la de acciones ocupa el ancho. */
+    .table-wrap.as-cards td[data-primary] {
+      display: block;
+      font-size: var(--fs-base);
+      font-weight: var(--fw-bold);
+      margin-bottom: var(--space-2);
+    }
+    .table-wrap.as-cards td[data-primary]::before { content: none; }
+    .table-wrap.as-cards td:not([data-label]) { display: block; }
+    .table-wrap.as-cards td:not([data-label])::before { content: none; }
+    .table-wrap.as-cards td:empty { display: none; }
+    .table-wrap.as-cards .actions { justify-content: flex-end; margin-top: var(--space-2); }
+    /* Dentro de una ficha ya no hace falta esconder lo secundario. */
+    .table-wrap.as-cards .col-sec { display: flex; }
+    .table-wrap.as-cards td.col-sec[data-primary] { display: block; }
 
     /* CALENDARIO en móvil: las 7 columnas deben entrar sí o sí.
        min-width:0 permite que 1fr funcione; el contenido se trunca. */
@@ -2653,16 +2719,44 @@ html, body { max-width:100%; overflow-x:hidden; }
 
 /* Continuidad clinica en la vista Hoy */
 .today-followup {
-  /* nivel tarjeta */
+  /* nivel tarjeta. Va debajo de los turnos del día y arranca plegada: son
+     cientos de pendientes históricos que no son el trabajo de hoy. */
+  margin-top: var(--space-5);
   margin-bottom: var(--space-5);
   padding: var(--space-4) var(--pad-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
 }
-.today-followup .today-col-head { margin-bottom: var(--space-3); }
-.today-followup .today-col-head .followup-chips { flex-shrink: 0; }
-.today-followup.is-clear .today-col-head .ico { color: var(--text-mute); }
+/* La cabecera entera es el botón que despliega. */
+.today-followup-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.today-followup-toggle:disabled { cursor: default; }
+.today-followup-toggle .ico { width: var(--icon-md); height: var(--icon-md); flex-shrink: 0; color: var(--accent); }
+.today-followup-toggle h3 { font-size: var(--fs-md); margin: 0; flex: 1; min-width: 0; }
+.today-followup-toggle .followup-chips { flex-shrink: 0; }
+.today-followup-cta {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--accent);
+  font-weight: var(--fw-bold);
+}
+.today-followup.is-open .today-followup-toggle { margin-bottom: var(--space-3); }
+.today-followup.is-clear .today-followup-toggle .ico { color: var(--text-mute); }
+/* Tutor y contacto en la tarjeta del turno del día. */
+.ts-owner { display: block; margin-top: 2px; }
+.today-slot.reminder.is-overdue { border-left-color: var(--color-coral); }
 .today-followup .empty-state { padding: var(--pad-card) var(--space-2); font-size: var(--fs-sm); }
 .today-followup .followup-item { background: var(--bg-soft); }
 .today-followup-list { display: flex; flex-direction: column; }

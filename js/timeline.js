@@ -372,7 +372,7 @@ function openEncounterComparison(petId) {
 
   showModal(`
     <div class="modal-header">
-      <div><div class="page-eyebrow">Historia cl&iacute;nica</div><h2>Comparar consultas de ${escapeHtml(pet.name)}</h2></div>
+      <div><div class="page-eyebrow">Historia cl&iacute;nica</div><h2>Comparar consultas de ${escapeHtml(petDisplayName(pet))}</h2></div>
       <button class="close-btn" onclick="closeModal()">&times;</button>
     </div>
     <div class="modal-body">

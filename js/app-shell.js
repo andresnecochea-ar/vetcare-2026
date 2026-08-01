@@ -1,7 +1,9 @@
 function updateBadges() {
   const now = new Date(); now.setHours(0,0,0,0);
-  const in7 = new Date(now.getTime() + 7*24*60*60*1000);
-  const reminderCount = db.reminders.filter(r => !r.completed && new Date(r.date) <= in7).length;
+  const in7 = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7);
+  // Cuenta vencidos + próximos 7 días, el mismo criterio que la columna de
+  // Avisos en Hoy, para que el badge y la pantalla no digan cosas distintas.
+  const reminderCount = db.reminders.filter(r => !r.completed && r.date && new Date(r.date + 'T12:00:00') <= in7).length;
   const invCount = db.inventory.filter(i => invTotalStock(i) <= parseInt(i.minStock||0)).length;
   const bR = document.getElementById('badgeReminders');
   const bI = document.getElementById('badgeInventory');
@@ -10,12 +12,15 @@ function updateBadges() {
 
   const bInv=document.getElementById('badgeInvoices');if(bInv){const pend=(db.invoices||[]).filter(i=>i.status==='pending').length;bInv.style.display=receiptsEnabled()&&pend>0?'inline':'none';bInv.textContent=pend;}
 }
-function searchInHistory(q) {
+// limit corta el recorrido apenas hay resultados suficientes: la historia
+// cl\u00ednica son 14.016 registros y el buscador se dispara mientras se escribe.
+function searchInHistory(q, limit) {
   const query = String(q || '').trim().toLowerCase();
   if (!query) return [];
+  const max = limit || 20;
   const results = [];
-  db.pets.forEach(pet => {
-    (pet.history || []).forEach(entry => {
+  for (const pet of db.pets) {
+    for (const entry of pet.history || []) {
       const searchable = [
         entry.type,
         entry.title,
@@ -28,48 +33,100 @@ function searchInHistory(q) {
         results.push({
           type: 'history',
           label: entry.title || entry.type || 'Registro cl\u00ednico',
-          sub: `${pet.name}${entry.date ? ' \u00b7 ' + formatDate(entry.date) : ''}`,
+          sub: `${petDisplayName(pet)}${entry.date ? ' \u00b7 ' + formatDate(entry.date) : ''}${entry.vet ? ' \u00b7 ' + entry.vet : ''}`,
           id: entry.id,
           petId: pet.id
         });
+        if (results.length >= max) return results;
       }
-    });
-  });
+    }
+  }
   return results;
 }
 
+// Tope por grupo. Antes se juntaba todo en una lista y se cortaba en 10: al
+// buscar un nombre frecuente los 10 lugares se los llevaban los pacientes y los
+// tutores no aparecían nunca, aunque el texto buscado fuera un apellido.
+const GS_PER_GROUP = 5;
+
+let _gsTimer = null;
+// Recorrer 4.734 pacientes con su historia (14.016 registros) y 3.473 tutores
+// tardaba 271 ms, y se hacía en cada tecla. Con el debounce se hace una vez
+// cuando la persona dejó de escribir.
 function globalSearchHandler(q) {
+  clearTimeout(_gsTimer);
   const dd = document.getElementById('gsDropdown');
-  if (q.length < 2) { dd.classList.remove('open'); return; }
-  const ql = q.toLowerCase();
-  const results = [];
-  db.pets.forEach(p => {
-    if (p.name.toLowerCase().includes(ql) || (p.species||'').toLowerCase().includes(ql) || (p.breed||'').toLowerCase().includes(ql)) {
-      results.push({ type:'pet', label: p.name, sub: (p.species||'') + (p.breed ? ' · '+p.breed : ''), id: p.id });
+  if (q.trim().length < 2) { dd.classList.remove('open'); return; }
+  _gsTimer = setTimeout(() => _globalSearchRun(q), 180);
+}
+
+function _globalSearchRun(q) {
+  const dd = document.getElementById('gsDropdown');
+  if (!dd) return;
+  const ql = q.trim().toLowerCase();
+  if (ql.length < 2) { dd.classList.remove('open'); return; }
+  const index = ownersById();
+
+  const pets = [];
+  for (const p of db.pets) {
+    if (pets.length >= GS_PER_GROUP * 4) break;
+    const hay = [p.name, p.species, p.breed, ...petOwnerNames(p, index)].filter(Boolean).join(' ').toLowerCase();
+    if (hay.includes(ql)) {
+      pets.push({ type: 'pet', label: petDisplayName(p), sub: petContextLine(p, index), id: p.id });
     }
-  });
-  db.owners.forEach(o => {
-    if (o.name.toLowerCase().includes(ql) || (o.phone||'').includes(ql)) {
-      results.push({ type:'owner', label: o.name, sub: o.phone||'', id: o.id });
+  }
+
+  const owners = [];
+  for (const o of db.owners) {
+    if (owners.length >= GS_PER_GROUP * 4) break;
+    const hay = [o.name, o.phone, o.altPhone, o.dni, o.email].filter(Boolean).join(' ').toLowerCase();
+    if (hay.includes(ql)) {
+      const petNames = db.pets.filter(p => (p.ownerIds || []).includes(o.id)).map(p => petDisplayName(p));
+      owners.push({
+        type: 'owner',
+        label: o.name,
+        sub: [o.phone || o.altPhone || 'sin teléfono', petNames.slice(0, 3).join(', ') || 'sin pacientes'].join(' · '),
+        id: o.id
+      });
     }
-  });
-  searchInHistory(q).slice(0,5).forEach(r => results.push(r));
-  db.appointments.forEach(a => {
-    const pet = db.pets.find(p=>p.id===a.petId);
-    const petName = pet ? pet.name : '';
-    if ((a.type||'').toLowerCase().includes(ql) || petName.toLowerCase().includes(ql) || (a.date||'').includes(ql)) {
-      results.push({ type:'appt', label: 'Turno: '+petName, sub: formatDate(a.date)+(a.time?' '+a.time:''), id: a.id });
+  }
+
+  const appts = [];
+  for (const a of db.appointments) {
+    if (appts.length >= GS_PER_GROUP * 4) break;
+    const pet = db.pets.find(p => p.id === a.petId);
+    const hay = [a.type, a.vet, a.date, pet ? pet.name : ''].filter(Boolean).join(' ').toLowerCase();
+    if (hay.includes(ql)) {
+      appts.push({
+        type: 'appt',
+        label: (pet ? petDisplayName(pet) : 'Turno') + ' · ' + (a.type || 'Consulta'),
+        sub: [formatDate(a.date) + (a.time ? ' ' + a.time : ''), a.vet || 'sin profesional'].join(' · '),
+        id: a.id
+      });
     }
-  });
-  if (results.length === 0) {
+  }
+
+  const history = searchInHistory(q);
+
+  const groups = [
+    { title: 'Pacientes', rows: pets, icon: icon('paw', 'ico-sm') },
+    { title: 'Tutores', rows: owners, icon: icon('users', 'ico-sm') },
+    { title: 'Turnos', rows: appts, icon: icon('calendar', 'ico-sm') },
+    { title: 'Historia clínica', rows: history, icon: icon('clipboard', 'ico-sm') }
+  ].filter(g => g.rows.length);
+
+  if (!groups.length) {
     dd.innerHTML = '<div class="gs-item"><span class="gs-label">Sin resultados</span></div>';
   } else {
-    const icons = { pet: icon('paw','ico-sm'), owner: icon('users','ico-sm'), appt: icon('calendar','ico-sm'), history: icon('clipboard','ico-sm') };
-    dd.innerHTML = results.slice(0,10).map(r => `
-      <div class="gs-item" onclick="globalSearchGo('${r.type}','${r.petId||r.id}')">
-        <span style="font-size:var(--fs-base)">${icons[r.type]}</span>
-        <span><span class="gs-label">${escapeHtml(r.label)}</span><br><span class="gs-sub">${escapeHtml(r.sub)}</span></span>
-      </div>`).join('');
+    dd.innerHTML = groups.map(g => {
+      const shown = g.rows.slice(0, GS_PER_GROUP);
+      return `<div class="gs-group-label">${escapeHtml(g.title)}${g.rows.length > shown.length ? ` · ${shown.length} de ${g.rows.length}+` : ''}</div>`
+        + shown.map(r => `
+        <div class="gs-item" onclick="globalSearchGo('${r.type}','${r.petId || r.id}')">
+          <span style="font-size:var(--fs-base)">${g.icon}</span>
+          <span><span class="gs-label">${escapeHtml(r.label)}</span><br><span class="gs-sub">${escapeHtml(r.sub)}</span></span>
+        </div>`).join('');
+    }).join('');
   }
   dd.classList.add('open');
 }
@@ -77,9 +134,12 @@ function globalSearchHandler(q) {
 function globalSearchGo(type, id) {
   document.getElementById('gsDropdown').classList.remove('open');
   document.getElementById('globalSearch').value = '';
-  if (type === 'pet' || type === 'history') { openPetDetail(id); }
-  else if (type === 'owner') { navigateTo('owners'); }
-  else if (type === 'appt') { navigateTo('appointments'); }
+  if (typeof closeMobileSearch === 'function' && window.innerWidth < 769) closeMobileSearch();
+  // Antes el id se descartaba y se navegaba a la lista completa: buscar
+  // "PERALTA" y hacer clic dejaba al usuario arriba de 3.473 tutores.
+  if (type === 'pet' || type === 'history') openPetDetail(id);
+  else if (type === 'owner') openOwnerModal(id);
+  else if (type === 'appt') openApptModal(id);
 }
 
 document.addEventListener('click', e => {
@@ -139,19 +199,34 @@ function renderToday() {
     .sort((a,b) => (a.time||'00:00').localeCompare(b.time||'00:00'));
   const dayGroom = db.groomingAppointments.filter(a => a.date === today)
     .sort((a,b) => (a.time||'00:00').localeCompare(b.time||'00:00'));
-  const in7 = new Date(now.getTime() + 7*24*60*60*1000);
-  const dayReminders = db.reminders.filter(r => !r.completed && new Date(r.date) <= in7)
-    .sort((a,b) => new Date(a.date) - new Date(b.date));
+  const in7 = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7);
+  // Antes faltaba la cota inferior: un aviso sin completar de 2024 aparecía en
+  // la columna rotulada "próximos 7 días". Se separan los vencidos, que no son
+  // lo mismo y piden otra acción.
+  const pendingReminders = db.reminders.filter(r => !r.completed);
+  const overdueReminders = pendingReminders.filter(r => r.date && r.date < today)
+    .sort((a,b) => String(b.date).localeCompare(String(a.date)));
+  const dayReminders = pendingReminders
+    .filter(r => r.date && r.date >= today && new Date(r.date + 'T12:00:00') <= in7)
+    .sort((a,b) => String(a.date).localeCompare(String(b.date)));
 
   function apptSlot(a, cls) {
     const isClinical = !String(cls || '').includes('grooming');
     const status = isClinical ? appointmentStatusValue(a) : '';
     if (status === 'in_consultation') cls += ' current';
     const pet = db.pets.find(p=>p.id===a.petId);
+    const owner = pet ? petOwners(pet)[0] : null;
+    // Con dos veterinarias rotando, saber de quién es el turno es lo primero
+    // que se necesita; y si el paciente no llega, hay que poder llamar al
+    // tutor sin salir de la pantalla.
+    const who = isClinical ? (a.vet || '') : (a.groomer || '');
+    const meta = [a.time || 'Sin hora', escapeHtml(a.type || a.service || 'Sin tipo'), who ? escapeHtml(who) : '']
+      .filter(Boolean).join(' &middot; ');
     return `<div class="today-slot ${cls}">
       <div class="ts-info">
-        <strong>${pet ? `<button type="button" class="link-inline" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button>` : escapeHtml('Paciente')}${isClinical ? `<span class="appointment-status ${appointmentStatusClass(status)}">${appointmentStatusLabel(status)}</span>` : ''}</strong>
-        <small>${a.time||'Sin hora'} &middot; ${escapeHtml(a.type||a.service||'Sin tipo')}</small>
+        <strong>${pet ? `<button type="button" class="link-inline" onclick="openPetDetail('${pet.id}')">${escapeHtml(petDisplayName(pet))}</button>` : escapeHtml('Paciente')}${isClinical ? `<span class="appointment-status ${appointmentStatusClass(status)}">${appointmentStatusLabel(status)}</span>` : ''}</strong>
+        <small>${meta}</small>
+        ${owner ? `<small class="ts-owner"><button type="button" class="link-inline" onclick="openOwnerModal('${owner.id}')">${escapeHtml(owner.name)}</button>${waPhone([owner.phone, owner.altPhone]) ? ` · <a class="link-inline" href="https://wa.me/${waPhone([owner.phone, owner.altPhone])}" target="_blank" rel="noopener">WhatsApp</a>` : ''}</small>` : ''}
       </div>
       <div class="today-slot-actions">
         ${isClinical ? appointmentPrimaryActionHTML(a, true) : ''}
@@ -160,15 +235,20 @@ function renderToday() {
     </div>`;
   }
 
-  function reminderSlot(r) {
+  function reminderSlot(r, overdue) {
     const pet = r.petId ? db.pets.find(p=>p.id===r.petId) : null;
     const isToday = r.date === today;
-    return `<div class="today-slot reminder">
+    const days = followUpDaysUntil(r.date);
+    const when = overdue ? `Vencido hace ${-days} d&iacute;a${days === -1 ? '' : 's'}` : (isToday ? 'Hoy' : formatDate(r.date));
+    return `<div class="today-slot reminder${overdue ? ' is-overdue' : ''}">
       <div class="ts-info">
         <strong>${escapeHtml(r.title)}</strong>
-        <small>${isToday ? 'Hoy' : formatDate(r.date)}${pet ? ` · <button type="button" class="link-inline" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button>` : ''}</small>
+        <small>${when}${pet ? ` · <button type="button" class="link-inline" onclick="openPetDetail('${pet.id}')">${escapeHtml(petDisplayName(pet))}</button>` : ''}</small>
       </div>
-      ${pet ? `<button class="btn btn-sm" onclick="openPetDetail('${pet.id}')">Ver</button>` : ''}
+      <div class="today-slot-actions">
+        <button class="btn btn-sm" onclick="completeReminder('${r.id}')" title="Marcar como hecho" aria-label="Marcar como hecho">${icon('check','ico-sm')}</button>
+        ${pet ? `<button class="btn btn-sm" onclick="openPetDetail('${pet.id}')">Ver</button>` : ''}
+      </div>
     </div>`;  }
 
   return `
@@ -176,7 +256,6 @@ function renderToday() {
       <div class="title"><small>${new Date().toLocaleDateString('es-ES',{weekday:'long'})}</small><h1>Hoy</h1></div>
       <div style="font-size:var(--fs-sm);color:var(--text-soft)">${new Date().toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'})}</div>
     </div>
-    ${renderTodayFollowUp()}
     <div class="today-grid">
       <div class="today-col">
         <div class="today-col-head"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"> <rect x="4" y="4.5" width="16" height="15.5" rx="3"/> <path d="M8 3v3M16 3v3M4 8.5h16"/> <path d="M8.2 14l2.2 2.2 5.2-5.2"/> </svg><h3>Turnos clínicos</h3><span class="count">${dayAppts.length}</span></div>
@@ -187,10 +266,13 @@ function renderToday() {
         ${dayGroom.length === 0 ? '<div class="empty-state">Sin turnos para hoy</div>' : dayGroom.map(a=>apptSlot(a,'grooming')).join('')}
       </div>
       <div class="today-col">
-        <div class="today-col-head"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"> <path d="M18 10.5c0-3.5-2.2-6-6-6s-6 2.5-6 6v3.3l-1.7 2.8h15.4L18 13.8v-3.3Z"/> <path d="M10 19c.4 1 1.1 1.5 2 1.5s1.6-.5 2-1.5"/> <circle cx="18.5" cy="5.2" r="1.4"/> </svg><h3>Avisos</h3><span class="count">${dayReminders.length}</span></div>
-        ${dayReminders.length === 0 ? '<div class="empty-state">Sin avisos en los próximos 7 días</div>' : dayReminders.map(r=>reminderSlot(r)).join('')}
+        <div class="today-col-head"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"> <path d="M18 10.5c0-3.5-2.2-6-6-6s-6 2.5-6 6v3.3l-1.7 2.8h15.4L18 13.8v-3.3Z"/> <path d="M10 19c.4 1 1.1 1.5 2 1.5s1.6-.5 2-1.5"/> <circle cx="18.5" cy="5.2" r="1.4"/> </svg><h3>Avisos</h3><span class="count">${dayReminders.length + overdueReminders.length}</span></div>
+        ${overdueReminders.map(r=>reminderSlot(r, true)).join('')}
+        ${dayReminders.map(r=>reminderSlot(r, false)).join('')}
+        ${dayReminders.length + overdueReminders.length === 0 ? '<div class="empty-state">Sin avisos vencidos ni en los próximos 7 días</div>' : ''}
       </div>
     </div>
+    ${renderTodayFollowUp()}
   `;
 }
 // Fin del script principal de VetCare

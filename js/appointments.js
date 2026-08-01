@@ -66,15 +66,17 @@ function renderAppointments() {
     const terminal = appointmentIsTerminal(a);
     const momentLabel = terminal ? 'Cerrado' : (isPast ? 'Pasado' : 'Pr' + String.fromCharCode(243) + 'ximo');
     const notesShort = notesFull.length > 40 ? notesFull.slice(0,40)+'…' : notesFull;
+    const owner = pet ? petOwners(pet)[0] : null;
     return `<tr>
-      <td>${formatDate(a.date)}</td>
-      <td>${a.time||'—'}</td>
-      <td>${pet ? `<button type="button" class="link-cell" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button>` : '—'}</td>
-      <td class="col-sec">${escapeHtml(a.type||'—')}</td>
-      <td class="col-sec">${escapeHtml(a.vet||'—')}</td>
-      <td class="col-sec"><span${notesFull.length>40?' data-tip="'+escapeAttr(notesFull)+'"':''} style="white-space:nowrap">${escapeHtml(notesShort)}</span></td>
-      <td class="col-sec"><span class="tag ${!terminal&&!isPast?'accent':''}">${momentLabel}</span></td>
-      <td class="col-sec"><span class="appointment-status ${appointmentStatusClass(status)}">${appointmentStatusLabel(status)}</span></td>
+      <td data-primary>${pet ? `<button type="button" class="link-cell" onclick="openPetDetail('${pet.id}')">${escapeHtml(petDisplayName(pet))}</button>` : '—'}</td>
+      <td data-label="Fecha">${formatDate(a.date)}</td>
+      <td data-label="Hora">${a.time||'—'}</td>
+      <td data-label="Tipo">${escapeHtml(a.type||'—')}</td>
+      <td data-label="Profesional">${escapeHtml(a.vet||'—')}</td>
+      <td class="col-sec" data-label="Tutor">${owner ? `<button type="button" class="link-cell" onclick="openOwnerModal('${owner.id}')">${escapeHtml(owner.name)}</button>` : '—'}</td>
+      <td class="col-sec" data-label="Notas"><span${notesFull.length>40?' data-tip="'+escapeAttr(notesFull)+'"':''}>${escapeHtml(notesShort)}</span></td>
+      <td class="col-sec" data-label="Momento"><span class="tag ${!terminal&&!isPast?'accent':''}">${momentLabel}</span></td>
+      <td data-label="Estado"><span class="appointment-status ${appointmentStatusClass(status)}">${appointmentStatusLabel(status)}</span></td>
       <td><div class="actions">${appointmentPrimaryActionHTML(a, false)}<button class="btn btn-sm" onclick="openApptModal('${a.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="deleteAppt('${a.id}')" title="Eliminar">${iconX()}</button></div></td>
     </tr>`;
   }
@@ -83,11 +85,11 @@ function renderAppointments() {
       <div class="title"><small>Agenda médica</small><h1>Turnos</h1></div>
       <button class="btn btn-warm" onclick="openApptModal()">+ Nuevo turno</button>
     </div>
-    <div class="table-wrap">
+    <div class="table-wrap as-cards">
       <table>
-        <thead><tr><th>Fecha</th><th>Hora</th><th>Paciente</th><th class="col-sec">Tipo</th><th class="col-sec">Profesional</th><th class="col-sec">Notas</th><th class="col-sec">Momento</th><th class="col-sec">Estado</th><th></th></tr></thead>
+        <thead><tr><th>Paciente</th><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Profesional</th><th class="col-sec">Tutor</th><th class="col-sec">Notas</th><th class="col-sec">Momento</th><th>Estado</th><th></th></tr></thead>
         <tbody>
-          ${sorted.length===0?'<tr><td colspan="9"><div class="empty-state">Sin turnos registrados</div></td></tr>':sorted.map(apptRow).join('')}
+          ${sorted.length===0?'<tr><td colspan="10"><div class="empty-state">Sin turnos registrados</div></td></tr>':sorted.map(apptRow).join('')}
         </tbody>
       </table>
     </div>
@@ -218,25 +220,23 @@ function renderGrooming() {
       <div class="title"><small>Servicios estéticos</small><h1>Peluquería</h1></div>
       <button class="btn btn-warm" onclick="openGroomModal()">+ Nuevo turno</button>
     </div>
-    <div class="table-wrap">
+    <div class="table-wrap as-cards">
       <table>
-        <thead><tr><th>Fecha</th><th>Hora</th><th>Paciente</th><th class="col-sec">Servicio</th><th class="col-sec">Peluquero/a</th><th class="col-sec">Precio</th><th class="col-sec">Estado serv.</th><th class="col-sec">Recordatorio</th><th class="col-sec">Próx/Pas</th><th></th></tr></thead>
+        <thead><tr><th>Paciente</th><th>Fecha</th><th>Hora</th><th>Servicio</th><th>Peluquero/a</th><th>Precio</th><th>Estado</th><th class="col-sec">Recordatorio</th><th class="col-sec">Próx/Pas</th><th></th></tr></thead>
         <tbody>
           ${sorted.length===0 ? '<tr><td colspan="10"><div class="empty-state">Sin turnos de peluquería</div></td></tr>' : sorted.map(a => {
             const pet = db.pets.find(p=>p.id===a.petId);
             const isPast = new Date(a.date+'T'+(a.time||'00:00')) < _now;
-            const notesFull = a.notes||'';
-            const notesShort = notesFull.length>40?notesFull.slice(0,40)+'…':notesFull;
             return `<tr>
-              <td>${formatDate(a.date)}</td>
-              <td>${a.time||'—'}</td>
-              <td>${pet ? `<button type="button" class="link-cell" onclick="openPetDetail('${pet.id}')">${escapeHtml(pet.name)}</button>` : '—'}</td>
-              <td class="col-sec">${escapeHtml(a.service||'—')}</td>
-              <td class="col-sec">${escapeHtml(a.groomer||'—')}</td>
-              <td class="col-sec">${a.price ? '$'+a.price : '—'}</td>
-              <td class="col-sec"><span class="tag ${a.status==='Completado'?'accent':a.status==='Cancelado'?'danger':''}">${a.status||'Pendiente'}</span></td>
-              <td class="col-sec">${a.reminder ? `<span style='font-size:var(--fs-2xs);background:var(--color-lilac-soft);color:#6a4fa0;border:1px solid var(--color-lilac);border-radius:20px;padding:2px 8px;'>${icon('bell','ico-sm')} ${escapeHtml(a.reminder)}</span>` : '<span style="color:var(--text-mute);font-size:var(--fs-xs)">—</span>'}</td>
-              <td class="col-sec"><span class="tag ${isPast?'':'accent'}">${isPast?'Pasado':'Próximo'}</span></td>
+              <td data-primary>${pet ? `<button type="button" class="link-cell" onclick="openPetDetail('${pet.id}')">${escapeHtml(petDisplayName(pet))}</button>` : '—'}</td>
+              <td data-label="Fecha">${formatDate(a.date)}</td>
+              <td data-label="Hora">${a.time||'—'}</td>
+              <td data-label="Servicio">${escapeHtml(a.service||'—')}</td>
+              <td data-label="Peluquero/a">${escapeHtml(a.groomer||'—')}</td>
+              <td data-label="Precio">${a.price ? '$'+a.price : '—'}</td>
+              <td data-label="Estado"><span class="tag ${a.status==='Completado'?'accent':a.status==='Cancelado'?'danger':''}">${a.status||'Pendiente'}</span></td>
+              <td class="col-sec" data-label="Recordatorio">${a.reminder ? `<span style='font-size:var(--fs-2xs);background:var(--color-lilac-soft);color:#6a4fa0;border:1px solid var(--color-lilac);border-radius:20px;padding:2px 8px;'>${icon('bell','ico-sm')} ${escapeHtml(a.reminder)}</span>` : '<span style="color:var(--text-mute);font-size:var(--fs-xs)">—</span>'}</td>
+              <td class="col-sec" data-label="Momento"><span class="tag ${isPast?'':'accent'}">${isPast?'Pasado':'Próximo'}</span></td>
               <td><div class="actions"><button class="btn btn-sm" onclick="openGroomModal('${a.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="deleteGroom('${a.id}')" title="Eliminar">${iconX()}</button></div></td>
             </tr>`;
           }).join('')}
