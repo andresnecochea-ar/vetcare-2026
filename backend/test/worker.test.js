@@ -1173,20 +1173,22 @@ describe('VetCare Worker', () => {
     expect(JSON.stringify(audit.body.entries)).not.toContain(newReceptionPassword);
   });
 
-  it('toma un único número plausible de un teléfono con varios pegados', async () => {
-    await import('../../js/ui.js');
+  it('prefiere el celular sobre el fijo cuando hay varios números pegados', async () => {
+    await import('../../js/phone.js');
     const cleanPhone = globalThis.cleanPhone;
 
     // Caso normal: un solo número, con o sin formato.
     expect(cleanPhone('5491123456789')).toBe('5491123456789');
     expect(cleanPhone('43-1032')).toBe('431032');
 
-    // Datos migrados del sistema anterior: fijo + celular pegados con espacio.
-    // Antes se concatenaban en un número inexistente; ahora se toma el primero.
-    expect(cleanPhone('43-8745 15352493')).toBe('438745');
+    // Datos migrados: fijo + celular pegados con espacio. El útil es el celular
+    // (el que empieza con 15), no el primero de la lista.
+    expect(cleanPhone('43-8745 15352493')).toBe('15352493');
     expect(cleanPhone('15509680 15561417')).toBe('15509680');
-    // Con iniciales de personas mezcladas en el texto: se ignoran los tokens sin dígitos.
-    expect(cleanPhone('45-0717 SRA 15636877 JL 15591887')).toBe('450717');
+    // Con iniciales de personas mezcladas: se ignoran los tokens sin dígitos.
+    expect(cleanPhone('45-0717 SRA 15636877 JL 15591887')).toBe('15636877');
+    // Sin ningún celular queda el fijo, que sirve para llamar.
+    expect(cleanPhone('42-5132 T 42-2392')).toBe('425132');
 
     expect(cleanPhone('')).toBe('');
     expect(cleanPhone(null)).toBe('');
@@ -1198,5 +1200,50 @@ describe('VetCare Worker', () => {
     expect(isLikelyFullPhone('15649798')).toBe(false);
     expect(isLikelyFullPhone('43-8745 15352493')).toBe(false);
     expect(isLikelyFullPhone('')).toBe(false);
+  });
+
+  it('arma el número internacional de WhatsApp con el área configurada', async () => {
+    await import('../../js/phone.js');
+    const { waPhone, telPhone, phoneIssue } = globalThis;
+
+    // Sin área configurada no se adivina nada: no hay WhatsApp posible.
+    globalThis.db = { settings: {} };
+    expect(waPhone('15649798')).toBe('');
+    expect(phoneIssue('15649798')).toBe('no-area');
+
+    globalThis.db = { settings: { phoneCountryCode: '54', phoneAreaCode: '2262' } };
+
+    // Celular local del formato viejo: se saca el 15 y se antepone 54 9 + área.
+    expect(waPhone('15649798')).toBe('5492262649798');
+    // Fijo primero, celular después: gana el celular.
+    expect(waPhone('42-5132 T 42-2392 15657545')).toBe('5492262657545');
+    expect(waPhone('MARCELA 15406287 15507188')).toBe('5492262406287');
+    // Ya internacional: se respeta tal cual.
+    expect(waPhone('+54 9 2262 64-9798')).toBe('5492262649798');
+    expect(waPhone('5492262649798')).toBe('5492262649798');
+
+    // Sólo fijo local: se puede llamar pero no mandar WhatsApp.
+    expect(waPhone('43-0781')).toBe('');
+    expect(phoneIssue('43-0781')).toBe('landline-only');
+    expect(telPhone('43-0781')).toBe('542262430781');
+
+    // Número nacional de 10 dígitos: se asume celular y se le agrega el 9.
+    // Casi siempre es el celular de alguien de otra localidad.
+    expect(waPhone('45-2121 1121608026')).toBe('5491121608026');
+    expect(waPhone('2983500364')).toBe('5492983500364');
+    // Con el 0 nacional adelante.
+    expect(waPhone('01144440947')).toBe('5491144440947');
+    // Área local + 15 + número, todo pegado.
+    expect(waPhone('226215556326')).toBe('5492262556326');
+
+    // Celular de otra área en formato viejo: no se le inventa el área local,
+    // porque el mensaje terminaría en el teléfono de un vecino.
+    expect(waPhone('0341-153520058 43-0826')).toBe('');
+
+    expect(waPhone('')).toBe('');
+    expect(phoneIssue('')).toBe('empty');
+    expect(phoneIssue('15649798')).toBe(null);
+
+    delete globalThis.db;
   });
 });

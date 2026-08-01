@@ -20,7 +20,12 @@ function renderReminders() {
           ${r.notes?`<small style="display:block;margin-top:4px">${escapeHtml(r.notes)}</small>`:''}
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${owners.map(o => o.phone ? `<a class="contact-btn wa" href="https://wa.me/${cleanPhone(o.phone)}?text=${encodeURIComponent('Hola '+o.name+', desde la veterinaria le recordamos: '+r.title)}" target="_blank" title="Avisar a ${escapeAttr(o.name)}">WA</a>` : '').join('')}
+          ${owners.map(o => waButtonHTML([o.phone, o.altPhone], {
+            message: 'Hola ' + o.name + ', desde la veterinaria le recordamos: ' + r.title,
+            label: 'WA',
+            title: 'Avisar a ' + o.name,
+            fixOnclick: `openOwnerModal('${o.id}')`
+          })).join('')}
           <button class="btn btn-sm" onclick="completeReminder('${r.id}')" title="Marcar como hecho" aria-label="Marcar como hecho">${icon('check','ico-sm')}</button>
           <button class="btn btn-sm btn-danger" onclick="deleteReminder('${r.id}')" title="Eliminar">${iconX()}</button>
         </div>
@@ -128,7 +133,7 @@ function renderBirthdays() {
       `<div class="pets-grid">
         ${upcoming.map(pet => {
           const owners = (pet.ownerIds||[]).map(id => db.owners.find(o=>o.id===id)).filter(Boolean);
-          const promoMsg = encodeURIComponent(fillBirthdayMsg(pet));
+          const promoMsg = fillBirthdayMsg(pet);
           return `<div class="pet-card" onclick="openPetDetail('${pet.id}')">
             <div class="pet-photo${pet.photo?'':' is-silhouette'}" style="${petPhotoStyle(pet)}"></div>
             <div class="pet-card-body">
@@ -136,8 +141,12 @@ function renderBirthdays() {
               <div class="meta">${pet.daysUntil === 0 ? `${icon('cake','ico-sm')} ¡HOY cumple ` + pet.age + '!' : `Cumple ${pet.age} años en ${pet.daysUntil} día${pet.daysUntil>1?'s':''}`}</div>
               <div class="meta">${formatDate(localDateKey(pet.nextBirthday))}</div>
               <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap" onclick="event.stopPropagation()">
-                ${owners.map(o => o.phone ? `<a class="contact-btn wa" href="https://wa.me/${cleanPhone(o.phone)}?text=${promoMsg}" target="_blank">WhatsApp ${escapeHtml(o.name.split(' ')[0])}</a>` : '').join('')}
-                ${owners.map(o => o.email ? `<a class="contact-btn mail" href="mailto:${o.email}?subject=${encodeURIComponent('¡Feliz cumpleaños '+pet.name+'!')}&body=${promoMsg}">Email</a>` : '').join('')}
+                ${owners.map(o => waButtonHTML([o.phone, o.altPhone], {
+                  message: promoMsg,
+                  label: 'WhatsApp ' + o.name.split(' ')[0],
+                  fixOnclick: `openOwnerModal('${o.id}')`
+                })).join('')}
+                ${owners.map(o => o.email ? `<a class="contact-btn mail" href="mailto:${o.email}?subject=${encodeURIComponent('¡Feliz cumpleaños '+pet.name+'!')}&body=${encodeURIComponent(promoMsg)}">Email</a>` : '').join('')}
               </div>
             </div>
           </div>`;

@@ -26,7 +26,7 @@ function ownerListCardHTML(o) {
           ${pets.map(p => `<button type="button" class="tag tag-link" onclick="openPetDetail('${p.id}')">${escapeHtml(p.name)}</button>`).join('') || '<span class="tag">Sin mascotas</span>'}
         </div>
         <div class="contact-links">
-          ${o.phone ? `<a class="contact-btn wa" href="https://wa.me/${cleanPhone(o.phone)}" target="_blank">WhatsApp</a>` : ''}
+          ${waButtonHTML([o.phone, o.altPhone], { fixOnclick: `openOwnerModal('${o.id}')` })}
           ${o.email ? `<a class="contact-btn mail" href="mailto:${o.email}">Email</a>` : ''}
           <button class="btn btn-sm" style="margin-left:auto" onclick="openOwnerModal('${o.id}')">Editar</button>
         </div>
@@ -36,7 +36,7 @@ function ownerListCardHTML(o) {
 }
 
 function ownerCardHTML(o, petName) {
-  const waMsg = encodeURIComponent(`Hola ${o.name}, le escribimos de la veterinaria respecto a ${petName}.`);
+  const waMsg = `Hola ${o.name}, le escribimos de la veterinaria respecto a ${petName}.`;
   const mailSubj = encodeURIComponent(`Veterinaria - ${petName}`);
   return `
     <div class="owner-card">
@@ -48,9 +48,9 @@ function ownerCardHTML(o, petName) {
         ${o.address ? `${icon('pin','ico-sm')} ${escapeHtml(o.address)}` : ''}
       </div>
       <div class="contact-links">
-        ${o.phone ? `<a class="contact-btn wa" href="https://wa.me/${cleanPhone(o.phone)}?text=${waMsg}" target="_blank">WhatsApp</a>` : ''}
-        ${o.phone ? `<a class="contact-btn" href="tel:${cleanPhone(o.phone)}">Llamar</a>` : ''}
-        ${o.altPhone ? `<a class="contact-btn" href="tel:${cleanPhone(o.altPhone)}">Llamar (alt.)</a>` : ''}
+        ${waButtonHTML([o.phone, o.altPhone], { message: waMsg, fixOnclick: `closeModal();openOwnerModal('${o.id}')` })}
+        ${o.phone ? `<a class="contact-btn" href="tel:${telPhone(o.phone)}">Llamar</a>` : ''}
+        ${o.altPhone ? `<a class="contact-btn" href="tel:${telPhone(o.altPhone)}">Llamar (alt.)</a>` : ''}
         ${o.email ? `<a class="contact-btn mail" href="mailto:${o.email}?subject=${mailSubj}">Email</a>` : ''}
         <button class="btn btn-sm" style="margin-left:auto" onclick="closeModal();openOwnerModal('${o.id}')">Editar tutor</button>
       </div>
@@ -110,12 +110,14 @@ function saveOwner(id, isNew) {
     dni: document.getElementById('oDni').value.trim(),
     notes: document.getElementById('oNotes').value.trim()
   };
-  // No se adivina el código de país/área (ver isLikelyFullPhone): si falta,
-  // se avisa para que quien carga el dato lo corrija con el número real,
-  // en vez de que quede un botón de WhatsApp roto sin que nadie se entere.
-  if (data.phone && !isLikelyFullPhone(data.phone)) {
+  // Ya no se exige el formato internacional completo: con el código de área
+  // configurado en Opciones, "15649798" se reconstruye solo. Sólo se avisa
+  // cuando de verdad no se puede armar un celular, que es cuando el botón de
+  // WhatsApp va a quedar deshabilitado para este tutor.
+  const issue = data.phone || data.altPhone ? phoneIssue([data.phone, data.altPhone]) : null;
+  if (issue) {
     showConfirm(
-      `El celular "${data.phone}" no parece tener el código de país y área completo (formato esperado: +5492262649798). Sin eso, el botón de WhatsApp no va a funcionar. ¿Guardar igual?`,
+      `${phoneIssueText([data.phone, data.altPhone])}. Sin un celular válido no vas a poder avisarle por WhatsApp. ¿Guardar igual?`,
       () => persistOwner(id, isNew, data),
       { okLabel: 'Guardar igual', okClass: 'btn-primary' }
     );

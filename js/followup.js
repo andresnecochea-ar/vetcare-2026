@@ -40,13 +40,18 @@ function petPrimaryOwner(pet) {
 
 function followUpReminderMessage(pet, item) {
   const when = item.date ? ` (${followUpWhen(item.days).toLowerCase()}, ${formatDate(item.date)})` : '';
-  return encodeURIComponent(`Hola, le escribimos de la veterinaria por ${pet.name}: ${followUpDetail(item)}${when}.`);
+  return `Hola, le escribimos de la veterinaria por ${pet.name}: ${followUpDetail(item)}${when}.`;
 }
 
 function followUpReminderButtonHTML(pet, item) {
   const owner = petPrimaryOwner(pet);
-  if (!owner || !owner.phone) return '';
-  return `<a class="contact-btn wa" href="https://wa.me/${cleanPhone(owner.phone)}?text=${followUpReminderMessage(pet, item)}" target="_blank" title="Avisar a ${escapeAttr(owner.name)} por WhatsApp">Recordatorio WA</a>`;
+  if (!owner) return '';
+  return waButtonHTML([owner.phone, owner.altPhone], {
+    message: followUpReminderMessage(pet, item),
+    label: 'Recordatorio WA',
+    title: `Avisar a ${owner.name} por WhatsApp`,
+    fixOnclick: `openOwnerModal('${owner.id}')`
+  });
 }
 
 // Diferencia en días entre hoy y una fecha YYYY-MM-DD, en calendario local.

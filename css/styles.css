@@ -1006,6 +1006,20 @@
   .contact-btn.wa:hover { background: var(--brand-whatsapp); color: var(--on-whatsapp); }
   .contact-btn.mail { color: var(--accent); border-color: var(--accent-border); }
   .contact-btn.mail:hover { background: var(--accent); color: var(--on-accent); }
+  /* Teléfono con el que no se puede armar un WhatsApp. Se muestra apagado y
+     con borde punteado para que se lea como "falta un dato", no como una
+     acción disponible; el title explica qué falta y al tocarlo se corrige. */
+  .contact-btn.is-unavailable {
+    color: var(--text-mute);
+    border-style: dashed;
+    border-color: var(--border-strong);
+    background: transparent;
+  }
+  .contact-btn.is-unavailable:hover {
+    background: var(--surface-alt, var(--surface));
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
 
   /* Calendar */
   .calendar-header {

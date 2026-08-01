@@ -301,7 +301,12 @@ function sanitaryDueListHTML() {
           ${record.notifiedAt ? `<small>Avisado el ${formatDate(record.notifiedAt)}</small>` : (owner ? `<small><button type="button" class="link-inline" onclick="openOwnerModal('${owner.id}')">${escapeHtml(owner.name)}</button>${owner.phone ? ' · ' + escapeHtml(owner.phone) : ''}</small>` : '<small>Sin tutor asociado</small>')}
         </div>
         <div class="sanitary-due-actions">
-          ${owner && owner.phone ? `<a class="contact-btn wa" href="https://wa.me/${cleanPhone(owner.phone)}?text=${encodeURIComponent(message)}" target="_blank" rel="noopener" title="Avisar por WhatsApp">WA</a>` : ''}
+          ${owner ? waButtonHTML([owner.phone, owner.altPhone], {
+            message,
+            label: 'WA',
+            title: 'Avisar por WhatsApp',
+            fixOnclick: `openOwnerModal('${owner.id}')`
+          }) : ''}
           ${canEditClinical() ? `<button class="btn btn-sm" onclick="markSanitaryNotified('${pet.id}','${kind}','${record.id}')">${record.notifiedAt ? 'Quitar aviso' : 'Marcar avisado'}</button>` : ''}
           <button class="btn btn-sm" onclick="openPetDetail('${pet.id}')">Abrir ficha</button>
         </div>
