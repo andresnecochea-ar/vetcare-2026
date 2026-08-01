@@ -45,11 +45,27 @@ function showConfirm(message, onConfirm, options) {
 // ========================================
 // [06b] UTILS (formato y texto) — formatDate, calcAge, cleanPhone, escapeHtml
 // ========================================
+// Intl.DateTimeFormat se crea una sola vez: construirlo en cada llamada es lo
+// caro, y formatDate() se llama miles de veces al armar listas largas (la lista
+// de pacientes para elegir en un turno son 4.734 fechas de una).
+const _dateFormatter = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+const _dateCache = new Map();
 function formatDate(d) {
   if (!d) return '—';
+  const cached = _dateCache.get(d);
+  if (cached !== undefined) return cached;
   const date = new Date(d + (d.includes('T')?'':'T12:00:00'));
-  return date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+  const text = _dateFormatter.format(date);
+  // Las fechas se repiten mucho entre registros; el tope evita que la caché
+  // crezca sin control en una sesión larga.
+  if (_dateCache.size < 5000) _dateCache.set(d, text);
+  return text;
 }
+
+// Mismo motivo: un Intl.Collator reusado en vez de String.localeCompare, que
+// arma uno nuevo por comparación al ordenar listas grandes.
+const _esCollator = new Intl.Collator('es');
+function compareEs(a, b) { return _esCollator.compare(String(a || ''), String(b || '')); }
 function calcAge(birthdate) {
   const bd = new Date(birthdate);
   const today = new Date();
@@ -64,6 +80,55 @@ function calcAge(birthdate) {
 }
 // El manejo de teléfonos (varios números pegados, formatos locales viejos,
 // armado del número internacional para WhatsApp) vive en js/phone.js.
+
+// ========================================
+// [06d] CAMPO "PROFESIONAL"
+// Era un <input type="text"> vacío en la consulta, el turno, la vacuna y la
+// peluquería. Con dos veterinarias rotando alcanzaba con que una escribiera
+// "Dra. Laura Perez" y otra "laura perez" para tener dos profesionales
+// distintos: no se podía filtrar "mis turnos" ni contar cuántas consultas hizo
+// cada una. Ahora es una lista cerrada del equipo, precargada con quien está
+// usando la app, y con una salida de escape para suplencias y datos viejos.
+// ========================================
+const ATTENDING_OTHER = '__other__';
+
+function attendingFieldHTML(id, value, label) {
+  const staff = typeof attendingStaff === 'function' ? attendingStaff() : [];
+  const current = String(value || '').trim();
+  const caption = label || 'Profesional';
+  // Sin servidor (modo local) no hay equipo que ofrecer: se mantiene el campo
+  // de texto de siempre para no dejar a nadie sin poder registrar quién atendió.
+  if (!staff.length) {
+    return `<div class="form-group"><label for="${id}">${escapeHtml(caption)}</label>`
+      + `<input type="text" id="${id}" value="${escapeAttr(current)}" placeholder="Nombre del profesional"></div>`;
+  }
+  const isKnown = !current || staff.includes(current);
+  const options = ['<option value="">Sin indicar</option>']
+    .concat(staff.map(name => `<option value="${escapeAttr(name)}"${current === name ? ' selected' : ''}>${escapeHtml(name)}</option>`))
+    .concat([`<option value="${ATTENDING_OTHER}"${isKnown ? '' : ' selected'}>Otra persona…</option>`])
+    .join('');
+  return `<div class="form-group"><label for="${id}">${escapeHtml(caption)}</label>`
+    + `<select id="${id}" onchange="attendingFieldToggle('${id}')">${options}</select>`
+    + `<input type="text" id="${id}Other" class="input" style="margin-top:6px" placeholder="Nombre de quien atendió"`
+    + ` value="${isKnown ? '' : escapeAttr(current)}"${isKnown ? ' hidden' : ''}></div>`;
+}
+
+function attendingFieldToggle(id) {
+  const select = document.getElementById(id);
+  const other = document.getElementById(id + 'Other');
+  if (!select || !other) return;
+  const isOther = select.value === ATTENDING_OTHER;
+  other.hidden = !isOther;
+  if (isOther) other.focus();
+}
+
+function getAttendingValue(id) {
+  const select = document.getElementById(id);
+  if (!select) return '';
+  if (select.tagName === 'INPUT') return select.value.trim();
+  if (select.value !== ATTENDING_OTHER) return select.value;
+  return (document.getElementById(id + 'Other')?.value || '').trim();
+}
 
 function escapeHtml(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
 function escapeAttr(s) { return escapeHtml(s); }

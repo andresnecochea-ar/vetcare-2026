@@ -374,6 +374,15 @@ async function listUsers(env: Env): Promise<JsonObject[]> {
   return results ?? [];
 }
 
+// Solo id, nombre y rol: alcanza para ofrecer "quién atendió" y no expone
+// datos de la cuenta a quien no administra.
+async function listStaff(env: Env): Promise<JsonObject[]> {
+  const { results } = await env.DB.prepare(
+    'SELECT id,name,role FROM users ORDER BY name',
+  ).all<JsonObject>();
+  return results ?? [];
+}
+
 async function changeUserRole(
   env: Env,
   actor: JsonObject,
@@ -1335,6 +1344,14 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   if (path === '/api/users' && request.method === 'GET') {
     requireAdmin(user);
     return json({ users: await listUsers(env) }, 200, origin, env);
+  }
+
+  // Nombres del equipo para elegir el profesional de una consulta, un turno o
+  // una vacuna. Lo necesita cualquier persona que atienda, no solo quien
+  // administra, así que va aparte de /api/users y no expone el email ni nada
+  // más que el nombre y el rol.
+  if (path === '/api/staff' && request.method === 'GET') {
+    return json({ staff: await listStaff(env) }, 200, origin, env);
   }
 
   const userRoleMatch = path.match(/^\/api\/users\/([^/]+)\/role$/);

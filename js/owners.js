@@ -13,6 +13,19 @@ function renderOwners() {
   `;
 }
 
+// Items para pickerOne(). El teléfono y el DNI son lo que distingue a dos
+// tutores con el mismo nombre: hay 176 repartidos en 84 grupos homónimos.
+function ownerPickerItems(options) {
+  const opts = options || {};
+  const pool = opts.ids ? db.owners.filter(o => opts.ids.includes(o.id)) : db.owners;
+  return pool.map(o => ({
+    id: o.id,
+    label: o.name,
+    sub: [o.phone || o.altPhone || 'sin teléfono', o.dni ? 'DNI ' + o.dni : ''].filter(Boolean).join(' · '),
+    search: [o.name, o.dni, o.phone, o.altPhone].filter(Boolean).join(' ')
+  })).sort((a, b) => compareEs(a.label, b.label));
+}
+
 function ownerListCardHTML(o) {
   const pets = db.pets.filter(p => (p.ownerIds||[]).includes(o.id));
   return `
@@ -75,8 +88,9 @@ function openOwnerModal(id) {
         <div class="form-group"><label>Relación con mascota</label><input type="text" id="oRel" value="${escapeAttr(owner.relationship||'')}" placeholder="Tutor, hijo/a, cuidador..."></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Celular / WhatsApp (con código país: 5491123456789)</label><input type="text" id="oPhone" value="${escapeAttr(owner.phone||'')}"></div>
-        <div class="form-group"><label>Email</label><input type="email" id="oEmail" value="${escapeAttr(owner.email||'')}"></div>
+        <div class="form-group"><label for="oPhone">Celular / WhatsApp</label><input type="text" id="oPhone" value="${escapeAttr(owner.phone||'')}" placeholder="15649798 o 2262649798">
+          <small style="color:var(--text-mute)">Alcanza con el número local: el código de área sale de Opciones.</small></div>
+        <div class="form-group"><label for="oEmail">Email</label><input type="email" id="oEmail" value="${escapeAttr(owner.email||'')}"></div>
       </div>
       <div class="form-row">
         <div class="form-group"><label>Teléfono alternativo <small style="color:var(--text-mute)">(fijo u otro contacto, opcional)</small></label><input type="text" id="oPhoneAlt" value="${escapeAttr(owner.altPhone||'')}"></div>
@@ -85,7 +99,11 @@ function openOwnerModal(id) {
       <div class="form-group"><label>DNI / Documento</label><input type="text" id="oDni" value="${escapeAttr(owner.dni||'')}"></div>
       <div class="form-group">
         <label>Mascotas asociadas</label>
-        ${db.pets.length ? assocPicker('ownerPetsPicker', db.pets.map(p=>({id:p.id,label:p.name+(p.species?' · '+p.species:''),search:(p.name||'')+' '+(p.species||'')})), db.pets.filter(p=>(p.ownerIds||[]).includes(owner.id)).map(p=>p.id)) : '<small style="color:var(--text-mute)">No hay mascotas todavía. Creá una en la sección Pacientes.</small>'}
+        ${db.pets.length ? (() => {
+          const own = db.pets.filter(p => (p.ownerIds||[]).includes(owner.id)).map(p => p.id);
+          const items = petPickerItems({ keepIds: own }).map(it => ({ id: it.id, label: it.label + ' · ' + it.sub, search: it.search }));
+          return assocPicker('ownerPetsPicker', items, own);
+        })() : '<small style="color:var(--text-mute)">No hay mascotas todavía. Creá una en la sección Pacientes.</small>'}
       </div>
       <div class="form-group"><label>Notas</label><textarea id="oNotes">${escapeHtml(owner.notes||'')}</textarea></div>
     </div>

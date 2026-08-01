@@ -38,16 +38,14 @@ function renderReminders() {
 function openReminderModal(id, presetDate) {
   const r = id ? db.reminders.find(x=>x.id===id) : { id: uid(), date: presetDate || '' };
   const isNew = !id;
-  const petOpts = db.pets.map(p => `<option value="${p.id}" ${r.petId===p.id?'selected':''}>${escapeHtml(p.name)}</option>`).join('');
   showModal(`
     <div class="modal-header"><h2>${isNew?'Nuevo aviso':'Editar aviso'}</h2><button class="close-btn" onclick="closeModal()">&times;</button></div>
     <div class="modal-body">
-      <div class="form-group"><label>Título *</label><input type="text" id="rTitle" value="${escapeAttr(r.title||'')}" placeholder="Ej: Llamar para control post-cirugía"></div>
-      <div class="form-row">
-        <div class="form-group"><label>Fecha del aviso *</label><input type="date" id="rDate" value="${r.date||''}"></div>
-        <div class="form-group"><label>Paciente (opcional)</label><select id="rPet"><option value="">—</option>${petOpts}</select></div>
-      </div>
-      <div class="form-group"><label>Notas</label><textarea id="rNotes">${escapeHtml(r.notes||'')}</textarea></div>
+      <div class="form-group"><label for="rTitle">Título *</label><input type="text" id="rTitle" value="${escapeAttr(r.title||'')}" placeholder="Ej: Llamar para control post-cirugía"><span class="field-error"></span></div>
+      <div class="form-group"><label for="rDate">Fecha del aviso *</label><input type="date" id="rDate" value="${r.date||localDateKey()}"><span class="field-error"></span></div>
+      <div class="form-group"><label for="rPet-search">Paciente (opcional)</label>
+        ${pickerOne('rPet', petPickerItems({ keepId: r.petId || '' }), r.petId || '', { emptyLabel: 'Sin pacientes' })}</div>
+      <div class="form-group"><label for="rNotes">Notas</label><textarea id="rNotes">${escapeHtml(r.notes||'')}</textarea></div>
     </div>
     <div class="modal-footer">
       ${!isNew ? `<button class="btn btn-danger" onclick="deleteReminder('${r.id}')">Eliminar</button>` : ''}
@@ -63,7 +61,7 @@ function saveReminder(id, isNew) {
   const _r1 = validateField('rTitle', !!title, 'El título es obligatorio');
   const _r2 = validateField('rDate', !!date, 'La fecha es obligatoria');
   if (!_r1 || !_r2) return;
-  const data = { id, title, date, petId: document.getElementById('rPet').value, notes: document.getElementById('rNotes').value, completed: false };
+  const data = { id, title, date, petId: getPickerOne('rPet'), notes: document.getElementById('rNotes').value, completed: false };
   if (isNew) db.reminders.push(data); else { const i = db.reminders.findIndex(r=>r.id===id); db.reminders[i] = { ...db.reminders[i], ...data }; }
   saveDB(isNew?'Aviso creado':'Aviso actualizado'); closeModal(); render();
 }

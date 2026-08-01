@@ -47,9 +47,14 @@ function openInvoiceModal(id) {
     ?{id:uid(),date:today,items:[{desc:'',qty:1,price:0}],status:'pending',ownerId:'',petId:'',notes:''}
     :((db.invoices||[]).find(i=>i.id===id)||{id:uid(),date:today,items:[{desc:'',qty:1,price:0}],status:'pending',ownerId:'',petId:'',notes:''});
   const linkedPet=inv.encounterId?db.pets.find(p=>p.id===inv.petId):null;
-  const availableOwners=linkedPet?db.owners.filter(o=>(linkedPet.ownerIds||[]).includes(o.id)):db.owners;
-  const ownerOpts=availableOwners.map(o=>`<option value="${o.id}" ${inv.ownerId===o.id?'selected':''} >${escapeHtml(o.name)}</option>`).join('');
-  const petOpts=invoicePetOptions(inv.ownerId,inv.petId,true);
+  const ownerItems=linkedPet
+    ?ownerPickerItems({ids:linkedPet.ownerIds||[]})
+    :ownerPickerItems();
+  // Un recibo nacido de una consulta no puede cambiar de paciente: se muestra
+  // el vínculo en vez del selector, para no romper la trazabilidad.
+  const petField=inv.encounterId
+    ?`<div class="picker-one-chosen is-locked"><div class="picker-one-chosen-main"><strong>${escapeHtml(linkedPet?linkedPet.name:'Paciente de la consulta')}</strong><small>${linkedPet?escapeHtml(petContextLine(linkedPet)):''}</small></div></div>`
+    :pickerOne('invPet',invoicePickerItems(inv.ownerId,inv.petId),inv.petId||'',{onChange:"syncInvoiceRelations('pet')",emptyLabel:'Ese tutor no tiene pacientes asociados'});
   showModal(`
     <div class="modal-header">
       <h2>${isNew?'Nuevo recibo':'Editar recibo #'+(inv.number||'')}</h2>
@@ -58,14 +63,14 @@ function openInvoiceModal(id) {
     <div class="modal-body">
       ${inv.encounterId ? `<div class="linked-receipt-context"><strong>Vinculado a una consulta clínica</strong><span>El paciente ${linkedPet ? `<button type="button" class="link-inline" onclick="closeModal();openPetDetail('${linkedPet.id}')">${escapeHtml(linkedPet.name)}</button>` : ''} queda protegido para conservar la trazabilidad.</span></div>` : ''}
       <div class="form-row">
-        <div class="form-group"><label>Tutor</label>
-          <select id="invOwner" onchange="syncInvoiceRelations('owner')"><option value="">— Sin tutor —</option>${ownerOpts}</select></div>
-        <div class="form-group"><label>Paciente${inv.encounterId?' vinculado':''}</label>
-          <select id="invPet" onchange="syncInvoiceRelations('pet')" ${inv.encounterId?'disabled':''}><option value="">— Sin paciente —</option>${petOpts}</select></div>
+        <div class="form-group"><label for="invOwner-search">Tutor</label>
+          ${pickerOne('invOwner',ownerItems,inv.ownerId||'',{onChange:"syncInvoiceRelations('owner')",placeholder:'Buscar por apellido, DNI o teléfono...'})}</div>
+        <div class="form-group"><label for="invPet-search">Paciente${inv.encounterId?' vinculado':''}</label>
+          ${petField}</div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Fecha</label><input type="date" id="invDate" value="${inv.date}"></div>
-        <div class="form-group"><label>Estado</label>
+        <div class="form-group"><label for="invDate">Fecha</label><input type="date" id="invDate" value="${inv.date}"></div>
+        <div class="form-group"><label for="invStatus">Estado</label>
           <select id="invStatus">
             <option value="pending" ${inv.status==='pending'?'selected':''}>Pendiente</option>
             <option value="paid" ${inv.status==='paid'?'selected':''}>Cobrado</option>
@@ -96,35 +101,45 @@ function openInvoiceModal(id) {
   updateInvTotal();
 }
 
-function invoicePetOptions(ownerId,selectedPetId,includeLegacyMismatch){
-  let pets=ownerId
-    ?db.pets.filter(p=>(p.ownerIds||[]).includes(ownerId))
-    :db.pets.slice();
-  if(includeLegacyMismatch&&selectedPetId&&!pets.some(p=>p.id===selectedPetId)){
-    const legacyPet=db.pets.find(p=>p.id===selectedPetId);
-    if(legacyPet)pets.unshift({...legacyPet,_relationWarning:true});
+// Pacientes ofrecidos para el recibo: los del tutor elegido, o todos si
+// todavía no hay tutor. Un recibo viejo puede apuntar a un paciente que ya no
+// está asociado a ese tutor; en ese caso se lo conserva, marcado, para no
+// perder el dato al editar.
+function invoicePickerItems(ownerId,selectedPetId){
+  const items=ownerId
+    ?petPickerItems({keepId:selectedPetId}).filter(it=>{
+        const pet=db.pets.find(p=>p.id===it.id);
+        return pet&&(pet.ownerIds||[]).includes(ownerId);
+      })
+    :petPickerItems({keepId:selectedPetId});
+  if(selectedPetId&&!items.some(it=>it.id===selectedPetId)){
+    const pet=db.pets.find(p=>p.id===selectedPetId);
+    if(pet)items.unshift({
+      id:pet.id,
+      label:'⚠ '+pet.name+' — no asociado a este tutor',
+      sub:petContextLine(pet),
+      search:pet.name
+    });
   }
-  return pets.map(p=>`<option value="${p.id}" ${selectedPetId===p.id?'selected':''}>${p._relationWarning?'⚠ ':''}${escapeHtml(p.name)}${p._relationWarning?' — no asociado':''}</option>`).join('');
+  return items;
 }
 
 function syncInvoiceRelations(source){
-  const ownerSelect=document.getElementById('invOwner');
-  const petSelect=document.getElementById('invPet');
-  if(!ownerSelect||!petSelect)return;
-  let ownerId=ownerSelect.value;
-  let petId=petSelect.value;
+  if(!document.getElementById('invPet'))return;   // recibo vinculado a consulta
+  let ownerId=getPickerOne('invOwner');
+  let petId=getPickerOne('invPet');
   if(source==='pet'&&petId){
     const pet=db.pets.find(p=>p.id===petId);
+    // Elegir el paciente completa el tutor solo: es el camino más frecuente.
     if(pet&&ownerId&&!(pet.ownerIds||[]).includes(ownerId))ownerId='';
     if(pet&&!ownerId)ownerId=(pet.ownerIds||[])[0]||'';
-    ownerSelect.value=ownerId;
+    setPickerOneItems('invOwner',ownerPickerItems(),ownerId);
   }
   if(source==='owner'&&petId){
     const pet=db.pets.find(p=>p.id===petId);
     if(ownerId&&pet&&!(pet.ownerIds||[]).includes(ownerId))petId='';
   }
-  petSelect.innerHTML='<option value="">— Sin paciente —</option>'+invoicePetOptions(ownerId,petId,false);
-  petSelect.value=petId;
+  setPickerOneItems('invPet',invoicePickerItems(ownerId,petId),petId);
 }
 
 function addInvItem(){
@@ -161,10 +176,12 @@ function saveInvoice(id,isNew){
     const price=parseFloat(row.querySelector('.inv-price')?.value||0);
     if(desc.trim()){items.push({desc,qty,price});total+=qty*price;}});
   db.invoices=db.invoices||[];
-  const ownerId=document.getElementById('invOwner')?.value||'';
-  const petId=document.getElementById('invPet')?.value||'';
-  const selectedPet=petId?db.pets.find(p=>p.id===petId):null;
   const existingInvoice=id?db.invoices.find(i=>i.id===id):null;
+  const ownerId=getPickerOne('invOwner');
+  // El recibo nacido de una consulta no muestra selector de paciente: conserva
+  // el que ya tenía.
+  const petId=document.getElementById('invPet')?getPickerOne('invPet'):(existingInvoice?.petId||'');
+  const selectedPet=petId?db.pets.find(p=>p.id===petId):null;
   if(ownerId&&petId&&(!selectedPet||!(selectedPet.ownerIds||[]).includes(ownerId))){
     toast('El paciente no está asociado al tutor seleccionado','error');
     return;

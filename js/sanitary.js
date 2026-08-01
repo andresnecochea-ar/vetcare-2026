@@ -140,7 +140,7 @@ function openSanitaryModal(petId, kind, id) {
       </div>
       <div class="form-row">
         <div class="form-group"><label for="sanLot">N&uacute;mero de serie o lote</label><input type="text" id="sanLot" value="${escapeAttr(record?.lot || '')}" placeholder="Opcional"></div>
-        <div class="form-group"><label for="sanVet">Profesional</label><input type="text" id="sanVet" value="${escapeAttr(record?.vet || '')}" placeholder="Qui&eacute;n lo aplic&oacute;"></div>
+        ${attendingFieldHTML('sanVet', record ? record.vet : defaultAttendingName(), 'Quién lo aplicó')}
       </div>
       <small style="color:var(--text-mute)">Si complet&aacute;s el intervalo, la pr&oacute;xima dosis se calcula sola. Tambi&eacute;n pod&eacute;s ponerla a mano.</small>
     </div>
@@ -174,7 +174,7 @@ function saveSanitaryRecord(petId, kind, id) {
     nextDose: document.getElementById('sanNext').value,
     intervalDays: document.getElementById('sanInterval').value,
     lot: document.getElementById('sanLot').value.trim(),
-    vet: document.getElementById('sanVet').value.trim()
+    vet: getAttendingValue('sanVet')
   };
 
   pet[config.collection] = pet[config.collection] || [];

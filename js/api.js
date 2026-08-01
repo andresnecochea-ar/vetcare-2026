@@ -102,6 +102,34 @@ function clearSession(){
   if(typeof _clearRetryTimer==='function')_clearRetryTimer();
   if(typeof _syncTimer!=='undefined')clearTimeout(_syncTimer);
 }
+// Equipo de la clínica. No es un dato sincronizable como los pacientes: se lee
+// del servidor al entrar y sirve para ofrecer "quién atendió" como una lista
+// cerrada en vez de un campo de texto libre, donde "Dra. Laura Perez" y
+// "laura perez" terminaban siendo dos profesionales distintos.
+let clinicStaff = [];
+async function loadStaff(){
+  if(!apiConfigured()||!authToken){ clinicStaff = []; return clinicStaff; }
+  try { clinicStaff = (await api('/api/staff')).staff || []; }
+  catch(e){ clinicStaff = []; }
+  return clinicStaff;
+}
+// Profesionales que pueden figurar como quien atiende. Recepción no atiende,
+// así que no se ofrece; el nombre de quien está usando la app va primero.
+function attendingStaff(){
+  const names = clinicStaff
+    .filter(person => person.role === 'veterinarian' || person.role === 'admin')
+    .map(person => person.name)
+    .filter(Boolean);
+  const own = currentUser && currentUser.name;
+  const ordered = own && names.includes(own) ? [own, ...names.filter(n => n !== own)] : names;
+  return [...new Set(ordered)];
+}
+// Nombre a precargar en un registro nuevo: quien está usando la app, si atiende.
+function defaultAttendingName(){
+  const own = currentUser && currentUser.name;
+  return own && attendingStaff().includes(own) ? own : '';
+}
+
 async function apiLogin(email, password){ const d = await api('/api/login', { method:'POST', body:{ email, password } }); setSession(d.token, d.user); return d.user; }
 async function apiRegister(email, password, name, inviteCode){ return api('/api/register', { method:'POST', body:{ email, password, name, inviteCode } }); }
 async function apiLogout(){ try { await api('/api/logout', { method:'POST' }); } catch(e){} clearSession(); }
@@ -119,7 +147,7 @@ function restoreDerivedVitals(pet) {
   pet.vitals = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 async function loadFromAPI(){
-  const d = await api('/api/data');
+  const [d] = await Promise.all([api('/api/data'), loadStaff()]);
   db = Object.assign(JSON.parse(JSON.stringify(defaultData)), d);
   if (!db.invoices) db.invoices = [];
   for (const pet of db.pets || []) restoreDerivedVitals(pet);

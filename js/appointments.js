@@ -97,20 +97,23 @@ function renderAppointments() {
 function openApptModal(id, presetPetId) {
   const a = id ? db.appointments.find(x=>x.id===id) : { id: uid(), petId: presetPetId||'' };
   const isNew = !id;
-  const petOpts = db.pets.map(p => `<option value="${p.id}" ${(a.petId===p.id||p.id===presetPetId)?'selected':''}>${escapeHtml(p.name)}</option>`).join('');
+  const selectedPetId = a.petId || presetPetId || '';
   const currentStatus = appointmentStatusValue(a);
   const statusOpts = Object.entries(APPOINTMENT_STATUSES).map(([value,label]) => `<option value="${value}" ${currentStatus===value?'selected':''}>${label}</option>`).join('');
   showModal(`
     <div class="modal-header"><h2>${isNew?'Nuevo turno':'Editar turno'}</h2><button class="close-btn" onclick="closeModal()">&times;</button></div>
     <div class="modal-body">
-      <div class="form-group"><label>Paciente *</label><select id="aPet" aria-required="true"><option value="">Seleccionar...</option>${petOpts}</select><span class="field-error"></span></div>
+      <div class="form-group"><label for="aPet-search">Paciente *</label>
+        ${pickerOne('aPet', petPickerItems({ keepId: selectedPetId }), selectedPetId, { onChange: 'renderApptConflict()' })}
+        <span class="field-error"></span></div>
       <div class="form-row-3">
-        <div class="form-group"><label>Fecha *</label><input type="date" id="aDate" value="${a.date||''}" aria-required="true"><span class="field-error"></span></div>
-        <div class="form-group"><label>Hora</label><input type="time" id="aTime" value="${a.time||''}"></div>
-        <div class="form-group"><label>Tipo</label><select id="aType"><option ${a.type==='Consulta'?'selected':''}>Consulta</option><option ${a.type==='Vacunación'?'selected':''}>Vacunación</option><option ${a.type==='Cirugía'?'selected':''}>Cirugía</option><option ${a.type==='Control'?'selected':''}>Control</option><option ${a.type==='Análisis'?'selected':''}>Análisis</option><option ${a.type==='Emergencia'?'selected':''}>Emergencia</option></select></div>
+        <div class="form-group"><label for="aDate">Fecha *</label><input type="date" id="aDate" value="${a.date||localDateKey()}" aria-required="true" onchange="renderApptConflict()"><span class="field-error"></span></div>
+        <div class="form-group"><label for="aTime">Hora</label><input type="time" id="aTime" value="${a.time||''}" onchange="renderApptConflict()"></div>
+        <div class="form-group"><label for="aType">Tipo</label><select id="aType"><option ${a.type==='Consulta'?'selected':''}>Consulta</option><option ${a.type==='Vacunación'?'selected':''}>Vacunación</option><option ${a.type==='Cirugía'?'selected':''}>Cirugía</option><option ${a.type==='Control'?'selected':''}>Control</option><option ${a.type==='Análisis'?'selected':''}>Análisis</option><option ${a.type==='Emergencia'?'selected':''}>Emergencia</option></select></div>
       </div>
-      <div class="form-group"><label>Profesional</label><input type="text" id="aVet" value="${escapeAttr(a.vet||'')}"></div>
-      <div class="form-group"><label>Notas</label><textarea id="aNotes">${escapeHtml(a.notes||'')}</textarea></div>
+      ${attendingFieldHTML('aVet', isNew ? (a.vet || defaultAttendingName()) : a.vet)}
+      <div id="apptConflict" data-appt-id="${a.id}"></div>
+      <div class="form-group"><label for="aNotes">Notas</label><textarea id="aNotes">${escapeHtml(a.notes||'')}</textarea></div>
       <div class="form-row">
         <div class="form-group"><label>Estado</label><select id="aStatus">${statusOpts}</select></div>
         <div class="form-group"><label>Duraci&oacute;n estimada</label><select id="aDuration"><option value="15" ${String(a.duration||'30')==='15'?'selected':''}>15 minutos</option><option value="30" ${String(a.duration||'30')==='30'?'selected':''}>30 minutos</option><option value="45" ${String(a.duration||'30')==='45'?'selected':''}>45 minutos</option><option value="60" ${String(a.duration||'30')==='60'?'selected':''}>60 minutos</option></select></div>
@@ -122,10 +125,52 @@ function openApptModal(id, presetPetId) {
       <button class="btn btn-primary" onclick="saveAppt('${a.id}', ${isNew})">Guardar</button>
     </div>
   `);
+  renderApptConflict();
+}
+
+// Turnos del mismo profesional que se pisan en el tiempo. Antes se podían
+// cargar dos turnos a la misma hora con la misma veterinaria y la app no decía
+// nada; se avisa al escribir y al guardar, pero nunca se bloquea: una urgencia
+// encima de otro turno es una situación real.
+function appointmentOverlaps(candidate) {
+  const vet = String(candidate.vet || '').trim();
+  if (!vet || !candidate.date || !candidate.time) return [];
+  const start = a => {
+    const [h, m] = String(a.time || '00:00').split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+  const from = start(candidate);
+  const to = from + (parseInt(candidate.duration, 10) || 30);
+  return db.appointments.filter(other => {
+    if (other.id === candidate.id) return false;
+    if (other.date !== candidate.date || !other.time) return false;
+    if (String(other.vet || '').trim() !== vet) return false;
+    if (appointmentIsTerminal(other)) return false;
+    const otherFrom = start(other);
+    return otherFrom < to && otherFrom + (parseInt(other.duration, 10) || 30) > from;
+  });
+}
+
+function renderApptConflict() {
+  const box = document.getElementById('apptConflict');
+  if (!box) return;
+  const clashes = appointmentOverlaps({
+    id: box.dataset.apptId || '',
+    date: document.getElementById('aDate')?.value || '',
+    time: document.getElementById('aTime')?.value || '',
+    vet: getAttendingValue('aVet'),
+    duration: document.getElementById('aDuration')?.value || '30'
+  });
+  box.innerHTML = clashes.length
+    ? `<div class="inline-warning">${icon('alert','ico-sm')} Se superpone con ${clashes.map(c => {
+        const pet = db.pets.find(p => p.id === c.petId);
+        return `${escapeHtml(c.time)} ${escapeHtml(pet ? pet.name : 'otro turno')}`;
+      }).join(', ')}. Podés guardarlo igual.</div>`
+    : '';
 }
 
 function saveAppt(id, isNew) {
-  const petId = document.getElementById('aPet').value;
+  const petId = getPickerOne('aPet');
   const date = document.getElementById('aDate').value;
   const _v1 = validateField('aPet', !!petId, 'Seleccioná un paciente');
   const _v2 = validateField('aDate', !!date, 'La fecha es obligatoria');
@@ -135,7 +180,7 @@ function saveAppt(id, isNew) {
     ...(existing || {}), id, petId, date,
     time: document.getElementById('aTime').value,
     type: document.getElementById('aType').value,
-    vet: document.getElementById('aVet').value,
+    vet: getAttendingValue('aVet'),
     notes: document.getElementById('aNotes').value,
     status: document.getElementById('aStatus').value,
     duration: document.getElementById('aDuration').value,
@@ -201,23 +246,34 @@ function renderGrooming() {
   `;
 }
 
+// Los peluqueros no usan la app, así que no son usuarios del sistema y el campo
+// sigue siendo libre. Ofrecer los nombres ya cargados alcanza para que no
+// convivan "Marcela" y "marcela" como dos personas distintas.
+function groomerNames() {
+  return [...new Set((db.groomingAppointments || []).map(a => (a.groomer || '').trim()).filter(Boolean))]
+    .sort(compareEs);
+}
+
 function openGroomModal(id) {
   const a = id ? db.groomingAppointments.find(x=>x.id===id) : { id: uid() };
   const isNew = !id;
-  const petOpts = db.pets.map(p => `<option value="${p.id}" ${a.petId===p.id?'selected':''}>${escapeHtml(p.name)}</option>`).join('');
   showModal(`
     <div class="modal-header"><h2>${isNew?'Nuevo turno de peluquería':'Editar turno'}</h2><button class="close-btn" onclick="closeModal()">&times;</button></div>
     <div class="modal-body">
-      <div class="form-group"><label>Paciente *</label><select id="gPet"><option value="">Seleccionar...</option>${petOpts}</select></div>
+      <div class="form-group"><label for="gPet-search">Paciente *</label>
+        ${pickerOne('gPet', petPickerItems({ keepId: a.petId || '' }), a.petId || '')}
+        <span class="field-error"></span></div>
       <div class="form-row-3">
-        <div class="form-group"><label>Fecha *</label><input type="date" id="gDate" value="${a.date||''}"></div>
-        <div class="form-group"><label>Hora</label><input type="time" id="gTime" value="${a.time||''}"></div>
+        <div class="form-group"><label for="gDate">Fecha *</label><input type="date" id="gDate" value="${a.date||localDateKey()}"><span class="field-error"></span></div>
+        <div class="form-group"><label for="gTime">Hora</label><input type="time" id="gTime" value="${a.time||''}"></div>
         <div class="form-group"><label>Estado</label><select id="gStatus"><option ${a.status==='Pendiente'?'selected':''}>Pendiente</option><option ${a.status==='Completado'?'selected':''}>Completado</option><option ${a.status==='Cancelado'?'selected':''}>Cancelado</option></select></div>
       </div>
       <div class="form-row-3">
         <div class="form-group"><label>Servicio</label><select id="gService"><option ${a.service==='Baño'?'selected':''}>Baño</option><option ${a.service==='Corte completo'?'selected':''}>Corte completo</option><option ${a.service==='Baño + corte'?'selected':''}>Baño + corte</option><option ${a.service==='Corte de uñas'?'selected':''}>Corte de uñas</option><option ${a.service==='Limpieza de oídos'?'selected':''}>Limpieza de oídos</option><option ${a.service==='Otro'?'selected':''}>Otro</option></select></div>
-        <div class="form-group"><label>Peluquero/a</label><input type="text" id="gGroomer" value="${escapeAttr(a.groomer||'')}"></div>
-        <div class="form-group"><label>Precio</label><input type="number" id="gPrice" value="${a.price||''}"></div>
+        <div class="form-group"><label for="gGroomer">Peluquero/a</label>
+          <input type="text" id="gGroomer" list="groomerNames" value="${escapeAttr(a.groomer||'')}" placeholder="Nombre">
+          <datalist id="groomerNames">${groomerNames().map(n=>`<option value="${escapeAttr(n)}"></option>`).join('')}</datalist></div>
+        <div class="form-group"><label for="gPrice">Precio</label><input type="number" id="gPrice" min="0" step="0.01" value="${a.price||''}"></div>
       </div>
       <div class="form-group"><label>${icon('bell','ico-sm')} Recordatorio / Nota al cliente</label><input type="text" id="gReminder" value="${escapeAttr(a.reminder||'')}" placeholder="Ej: Traer champu especial, avisar 1h antes..."></div>
       <div class="form-group"><label>Notas internas</label><textarea id="gNotes">${escapeHtml(a.notes||'')}</textarea></div>
@@ -231,7 +287,7 @@ function openGroomModal(id) {
 }
 
 function saveGroom(id, isNew) {
-  const petId = document.getElementById('gPet').value;
+  const petId = getPickerOne('gPet');
   const date = document.getElementById('gDate').value;
   const _g1 = validateField('gPet', !!petId, 'Seleccioná un paciente');
   const _g2 = validateField('gDate', !!date, 'La fecha es obligatoria');

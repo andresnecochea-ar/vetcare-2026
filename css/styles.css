@@ -2016,6 +2016,42 @@ html, body { max-width:100%; overflow-x:hidden; }
 .assoc-row:active { background:var(--accent-soft); }
 .assoc-row input[type=checkbox] { width:auto; margin:0; flex:none; }
 .assoc-empty { padding:var(--space-4); text-align:center; color:var(--text-mute); font-size:var(--fs-sm); }
+.assoc-more { padding:var(--space-2) var(--space-3); font-size:var(--fs-xs); color:var(--text-mute); text-align:center; background:var(--bg-soft); border-top:1px solid var(--border); }
+
+/* Selector de un solo registro (paciente de un turno, tutor de un recibo).
+   Reemplaza a los <select> con miles de <option>: cada fila muestra el nombre
+   y debajo el contexto que hace falta para distinguir homónimos. */
+.picker-one { border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; }
+.picker-one-search { border:none !important; border-bottom:1px solid var(--border) !important; border-radius:0 !important; }
+.picker-one-list { max-height:200px; overflow-y:auto; background:var(--field-bg); }
+.picker-one-row {
+  display:block; width:100%; text-align:left; padding:var(--space-2) var(--space-3);
+  border:none; border-bottom:1px solid var(--border); background:transparent;
+  color:var(--text); cursor:pointer; font-family:inherit; transition:var(--transition-ui);
+}
+.picker-one-row:last-child { border-bottom:none; }
+.picker-one-row:hover { background:var(--bg-soft); }
+.picker-one-row:active { background:var(--accent-soft); }
+.picker-one-row strong { display:block; font-size:var(--fs-sm); }
+.picker-one-row small { display:block; color:var(--text-mute); font-size:var(--fs-xs); margin-top:2px; }
+.picker-one-chosen {
+  display:flex; align-items:center; gap:var(--space-3);
+  padding:var(--space-2) var(--space-3); background:var(--field-bg);
+}
+.picker-one-chosen-main { flex:1; min-width:0; }
+.picker-one-chosen-main strong { display:block; font-size:var(--fs-sm); }
+.picker-one-chosen-main small { display:block; color:var(--text-mute); font-size:var(--fs-xs); margin-top:2px; }
+.picker-one-chosen.is-locked { opacity:.75; }
+
+/* Aviso no bloqueante dentro de un formulario (ej: turnos superpuestos). */
+.inline-warning {
+  display:flex; align-items:center; gap:var(--space-2);
+  padding:var(--space-2) var(--space-3); margin-bottom:var(--space-3);
+  border-radius:var(--radius-sm); font-size:var(--fs-sm);
+  background:var(--warning-soft, var(--bg-soft));
+  border:1px solid var(--warning);
+  color:var(--text);
+}
 
 /* ===== T5: Calendario - selector de vista y vistas semana/dia ===== */
 .cal-view-switch { display:inline-flex; gap:var(--space-1); }

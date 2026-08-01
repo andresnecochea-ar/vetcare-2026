@@ -2,6 +2,79 @@
 let petViewMode = (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) ? 'list' : 'grid';
 let petsShowArchive = false;
 
+// ---------------------------------------------------------------------
+// IDENTIFICACIÓN DEL PACIENTE
+// El nombre solo no alcanza: 3.418 de los 4.734 pacientes comparten nombre con
+// otro (97 se llaman LOLA, 92 LUNA, 75 NN). Estas funciones arman la línea de
+// contexto que hace falta para distinguirlos, y se usan en todos los lugares
+// donde hay que elegir o encontrar un paciente: buscador global, turnos,
+// peluquería, avisos y recibos.
+// ---------------------------------------------------------------------
+
+// Índice de tutores por id. Sin esto, armar la lista de pacientes hacía un
+// find() lineal sobre 3.473 tutores por cada uno de los 4.734 pacientes: abrir
+// "Nuevo turno" tardaba 333 ms.
+function ownersById() {
+  const map = new Map();
+  for (const owner of db.owners || []) map.set(owner.id, owner);
+  return map;
+}
+
+function petOwners(pet, index) {
+  const map = index || ownersById();
+  return ((pet && pet.ownerIds) || []).map(id => map.get(id)).filter(Boolean);
+}
+
+function petOwnerNames(pet, index) {
+  return petOwners(pet, index).map(o => o.name).filter(Boolean);
+}
+
+// Los pacientes migrados sin nombre existen y hay que poder elegirlos igual.
+function petDisplayName(pet) {
+  return String((pet && pet.name) || '').trim() || '(sin nombre)';
+}
+
+// Fecha de la última atención registrada (YYYY-MM-DD) o '' si no hay ninguna.
+function petLastVisit(pet) {
+  let last = '';
+  for (const entry of (pet && pet.history) || []) {
+    if (entry.date && entry.date > last) last = entry.date;
+  }
+  return last;
+}
+
+// Línea secundaria: especie, raza, tutor y última visita. Es lo mínimo para
+// saber si "LOLA" es la que estamos buscando.
+function petContextLine(pet, index) {
+  const parts = [];
+  const kind = [pet.species, pet.breed].filter(Boolean).join(' · ');
+  if (kind) parts.push(kind);
+  const owners = petOwnerNames(pet, index);
+  if (owners.length) parts.push(owners[0] + (owners.length > 1 ? ` +${owners.length - 1}` : ''));
+  const last = petLastVisit(pet);
+  parts.push(last ? 'últ. visita ' + formatDate(last) : 'sin visitas');
+  if (pet.deceasedAt) parts.unshift('FALLECIDO');
+  return parts.join(' · ');
+}
+
+// Items para pickerOne() y assocPicker(). Por defecto excluye fallecidos, pero
+// conserva los que ya estaban elegidos aunque lo estén (al editar un registro
+// viejo, o al ver las mascotas asociadas a un tutor).
+function petPickerItems(options) {
+  const opts = options || {};
+  const keep = new Set([opts.keepId, ...(opts.keepIds || [])].filter(Boolean));
+  const index = ownersById();
+  return (db.pets || [])
+    .filter(p => !p.deceasedAt || keep.has(p.id))
+    .map(p => ({
+      id: p.id,
+      label: petDisplayName(p),
+      sub: petContextLine(p, index),
+      search: [p.name, p.species, p.breed, ...petOwnerNames(p, index)].filter(Boolean).join(' ')
+    }))
+    .sort((a, b) => compareEs(a.label, b.label));
+}
+
 function renderPets() {
   const archivedPets = db.pets.filter(p => p.deceasedAt);
   if (petsShowArchive) return renderPetsArchive(archivedPets);
@@ -247,7 +320,7 @@ function openPetModal(id) {
   const pet = id ? db.pets.find(p => p.id === id) : { id: uid(), ownerIds: [] };
   const isNew = !id;
   const clinicalDisabled = canEditClinical() ? '' : ' disabled';
-  const ownerItems = db.owners.map(o => ({ id:o.id, label:o.name + (o.dni?' · DNI '+o.dni:''), search:(o.name||'')+' '+(o.dni||'') }));
+  const ownerItems = ownerPickerItems().map(it => ({ id:it.id, label:it.label + ' · ' + it.sub, search:it.search }));
   const speciesCommon = ['Perro','Gato','Conejo','Ave','Tortuga','Roedor','Pez','Caballo','Otro'];
   const curSp = pet.species||'';
   const spOpts = speciesCommon.map(s=>`<option value="${s}" ${curSp===s?'selected':''}>${s}</option>`).join('')
@@ -821,61 +894,6 @@ function openLightbox(src) {
   document.getElementById('lightbox').classList.add('show');
 }
 
-function addHistoryEntryLegacy(petId, editId) {
-  if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
-  const pet = db.pets.find(p => p.id === petId);
-  const ex = editId ? (pet.history||[]).find(h => h.id === editId) : null;
-  const today = localDateKey();
-  const ev = (f) => ex ? escapeHtml(ex[f]||''): '';
-  const types = ['Consulta general','Control','Urgencia','Cirugía','Vacunación','Laboratorio','Otro'];
-  showModal(`
-    <div class="modal-header">
-      <h2>${ex ? 'Editar consulta' : 'Nueva consulta clínica'}</h2>
-      <button class="close-btn" onclick="closeModal()">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-row-3">
-        <div class="form-group"><label>Fecha *</label>
-          <input type="date" id="hDate" value="${ex ? ex.date : today}"></div>
-        <div class="form-group"><label>Tipo de consulta</label>
-          <select id="hType">${types.map(t=>`<option ${ex&&ex.type===t?'selected':''} value="${t}">${t}</option>`).join('')}</select></div>
-        <div class="form-group"><label>Profesional</label>
-          <input type="text" id="hVet" value="${ev('vet')}" placeholder="Dr. García"></div>
-      </div>
-      <div style="background:var(--surface-sunken);padding:var(--space-3);border-radius:var(--radius-sm);margin-bottom:var(--space-3)">
-        <div style="font-size:var(--fs-2xs);font-weight: var(--fw-bold);color:var(--text-soft);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">${icon('stethoscope','ico-sm')} Signos vitales</div>
-        <div class="form-row-3">
-          <div class="form-group"><label>${icon('weight','ico-sm')} Peso (kg)</label>
-            <input type="number" id="hWeight" step="0.1" placeholder="4.5" value="${ex?ex.weight||'':''}"></div>
-          <div class="form-group"><label>${icon('thermometer','ico-sm')} Temperatura (°C)</label>
-            <input type="number" id="hTemp" step="0.1" placeholder="38.5" value="${ex?ex.temp||'':''}"></div>
-          <div class="form-group"><label>${icon('heart','ico-sm')} FC (lpm)</label>
-            <input type="number" id="hHR" placeholder="80" value="${ex?ex.hr||'':''}"></div>
-        </div>
-      </div>
-      <div class="form-group"><label>Motivo de consulta *</label>
-        <input type="text" id="hTitle" placeholder="¿Por qué viene hoy?" value="${ev('title')}"></div>
-      <div class="form-group"><label>Examen físico</label>
-        <textarea id="hExam" rows="3" placeholder="Hallazgos del examen físico...">${ev('exam')}</textarea></div>
-      <div class="form-group"><label>Diagnóstico</label>
-        <input type="text" id="hDiag" placeholder="Diagnóstico presuntivo o definitivo" value="${ev('diagnosis')}"></div>
-      <div class="form-group"><label>Tratamiento / Prescripción</label>
-        <textarea id="hTreat" rows="3" placeholder="Medicamentos, dosis, duración...">${ev('treatment')}</textarea></div>
-      <div class="form-row">
-        <div class="form-group"><label>Próximo control</label>
-          <input type="date" id="hNext" value="${ex?ex.nextControl||'':''}"></div>
-        <div class="form-group"><label>Observaciones</label>
-          <input type="text" id="hDesc" value="${ev('description')}" placeholder="Notas adicionales"></div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn" onclick="closeModal()">Cancelar</button>
-      ${ex ? `<button class="btn btn-secondary" onclick="printHistEntry('${petId}','${editId}')">${icon('print','ico-sm')} Imprimir</button>` : ''}
-      <button class="btn btn-primary" onclick="saveHistory('${petId}','${editId||''}')">${icon('save','ico-sm')} Guardar consulta</button>
-    </div>
-  `, false);
-}
-
 function addHistoryEntry(petId, editId) {
   openEncounter(petId, editId);
 }
@@ -944,7 +962,7 @@ function renderEncounter() {
             <div class="form-row-3">
               <div class="form-group"><label for="hDate">Fecha *</label><input type="date" id="hDate" value="${escapeAttr(ex?.date || appointment?.date || today)}"></div>
               <div class="form-group"><label for="hType">Tipo</label><select id="hType">${types.map(type=>`<option ${encounterType===type?'selected':''} value="${type}">${type}</option>`).join('')}</select></div>
-              <div class="form-group"><label for="hVet">Profesional</label><input type="text" id="hVet" value="${escapeAttr(ex?.vet || appointment?.vet || '')}" placeholder="Nombre del profesional"></div>
+              ${attendingFieldHTML('hVet', ex?.vet || appointment?.vet || (ex ? '' : defaultAttendingName()))}
             </div>
             <div class="form-group"><label for="hTitle">Motivo de consulta ${status==='draft'?'':'*'}</label><input type="text" id="hTitle" value="${escapeAttr(ex?.title || appointment?.notes || appointment?.type || '')}" placeholder="Por que viene hoy"></div>
           </div>
@@ -1089,7 +1107,7 @@ function openEncounterCloseReview(petId, editId) {
               ? `${incomplete.length} campo${incomplete.length === 1 ? '' : 's'} clínico${incomplete.length === 1 ? '' : 's'} sin completar. Podés cerrar igualmente, pero quedará visible en la historia.`
               : 'La información clínica principal está completa.'}
           </div>
-          <div class="close-review-meta"><span>Fecha <strong>${formatDate(date)}</strong></span><span>Profesional <strong>${escapeHtml(document.getElementById('hVet')?.value || 'Sin indicar')}</strong></span></div>
+          <div class="close-review-meta"><span>Fecha <strong>${formatDate(date)}</strong></span><span>Profesional <strong>${escapeHtml(getAttendingValue('hVet') || 'Sin indicar')}</strong></span></div>
 
           <div class="close-review-studies">
             <label class="billing-toggle">
@@ -1239,7 +1257,7 @@ async function saveHistory(petId, editId, forcedStatus, closeBundle) {
   const entry = {
     id: closeBundle?.encounterId || editId || uid(), date,
     type: document.getElementById('hType').value,
-    vet: document.getElementById('hVet').value,
+    vet: getAttendingValue('hVet'),
     weight, temp, hr: document.getElementById('hHR').value,
     title, exam: document.getElementById('hExam').value,
     diagnosis: document.getElementById('hDiag').value,
