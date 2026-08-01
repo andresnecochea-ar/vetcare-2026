@@ -1,6 +1,32 @@
+let invoiceFilters = { period: 'month', from: '', to: '', professional: '', status: '' };
+
+function setInvoiceFilter(key,value){
+  if(key==='from'||key==='to'){
+    const bounds=dateFilterBounds(invoiceFilters);
+    invoiceFilters.period='custom';
+    invoiceFilters.from=bounds.from;
+    invoiceFilters.to=bounds.to;
+  }
+  invoiceFilters[key]=value;
+  render();
+}
+
+function invoiceProfessional(invoice){
+  const pet=(db.pets||[]).find(item=>item.id===invoice.petId);
+  const encounter=pet&&(pet.history||[]).find(item=>item.id===invoice.encounterId);
+  return { vet:encounter?.vet||'', vetUserId:encounter?.vetUserId||'' };
+}
+
 function renderInvoices() {
   const invs = db.invoices||[];
-  const summary = VetCareFinance.summarize(invs);
+  const professionalRecords=invs.map(invoice=>invoiceProfessional(invoice));
+  const filtered=invs.filter(invoice=>{
+    const professional=invoiceProfessional(invoice);
+    return dateMatchesFilter(invoice.date,invoiceFilters)
+      && (!invoiceFilters.status||invoice.status===invoiceFilters.status)
+      && professionalMatches(professional,invoiceFilters.professional,'vetUserId','vet');
+  });
+  const summary = VetCareFinance.summarize(filtered);
   return `
     <div class="page-header">
       <div class="title"><small>Administración</small><h1>Recibos</h1></div>
@@ -10,17 +36,29 @@ function renderInvoices() {
       <div class="stat-card"><div class="stat-label">${icon('money','ico-sm')} Total cobrado</div><div class="stat-val" style="color:var(--color-navy)">$${summary.paidTotal.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
       <div class="stat-card"><div class="stat-label">${icon('clock','ico-sm')} Pendiente cobro</div><div class="stat-val" style="color:var(--warning)">$${summary.pendingTotal.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
       <div class="stat-card"><div class="stat-label">${icon('checkCircle','ico-sm')} Cobrados</div><div class="stat-val" style="color:var(--color-mint-hover)">${summary.paidCount}</div></div>
-      <div class="stat-card"><div class="stat-label">${icon('receipt','ico-sm')} Comprobantes</div><div class="stat-val">${invs.length}</div></div>
+      <div class="stat-card"><div class="stat-label">${icon('receipt','ico-sm')} Comprobantes</div><div class="stat-val">${filtered.length}</div></div>
+    </div>
+    <div class="list-filters">
+      ${dateFilterControls(invoiceFilters,'setInvoiceFilter')}
+      <label>Profesional<select class="input" onchange="setInvoiceFilter('professional',this.value)">${professionalFilterOptions(professionalRecords,'vetUserId','vet',invoiceFilters.professional,false)}</select></label>
+      <label>Estado<select class="input" onchange="setInvoiceFilter('status',this.value)">
+        <option value="">Cualquier estado</option>
+        <option value="pending" ${invoiceFilters.status==='pending'?'selected':''}>Pendiente</option>
+        <option value="paid" ${invoiceFilters.status==='paid'?'selected':''}>Cobrado</option>
+        <option value="cancelled" ${invoiceFilters.status==='cancelled'?'selected':''}>Cancelado</option>
+      </select></label>
+      <span class="list-filter-count">${filtered.length} de ${invs.length} recibos</span>
     </div>
     <div class="table-wrap as-cards">
       <table>
-        <thead><tr><th>Tutor</th><th>#</th><th>Paciente</th><th>Fecha</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Tutor</th><th>#</th><th>Paciente</th><th>Fecha</th><th class="col-sec">Profesional</th><th>Total</th><th>Estado</th><th></th></tr></thead>
         <tbody>
-        ${invs.length===0
-          ?'<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-mute)">Sin recibos todavía. ¡Creá el primero!</td></tr>'
-          :invs.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(inv=>{
+        ${filtered.length===0
+          ?'<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-mute)">Sin recibos para estos filtros</td></tr>'
+          :filtered.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(inv=>{
               const owner=db.owners.find(o=>o.id===inv.ownerId);
               const pet=db.pets.find(p=>p.id===inv.petId);
+              const professional=invoiceProfessional(inv);
               const sl=inv.status==='paid'?'Cobrado':inv.status==='cancelled'?'Cancelado':'Pendiente';
               const sc=inv.status==='paid'?'tag-success':inv.status==='cancelled'?'tag-mute':'tag-warning';
               return `<tr>
@@ -28,6 +66,7 @@ function renderInvoices() {
                 <td data-label="Recibo"><strong>#${inv.number||inv.id.slice(-4).toUpperCase()}</strong></td>
                 <td data-label="Paciente">${pet?`<button type="button" class="link-cell" onclick="openPetDetail('${pet.id}')">${escapeHtml(petDisplayName(pet))}</button>`:'—'}</td>
                 <td data-label="Fecha">${formatDate(inv.date)}</td>
+                <td class="col-sec" data-label="Profesional">${escapeHtml(professional.vet||'—')}</td>
                 <td data-label="Total"><strong>$${parseFloat(inv.total||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</strong></td>
                 <td data-label="Estado"><span class="tag ${sc}">${sl}</span></td>
                 <td style="white-space:nowrap">

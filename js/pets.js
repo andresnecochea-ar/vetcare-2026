@@ -57,6 +57,62 @@ function petContextLine(pet, index) {
   return parts.join(' · ');
 }
 
+// ---------------------------------------------------------------------
+// PLAUSIBILIDAD DE SIGNOS VITALES
+// No se bloquea la carga: un valor raro puede ser real y frenar a quien está
+// atendiendo es peor que un dato dudoso. Se avisa al lado del campo, que es
+// suficiente para cazar el error de tipeo frecuente (38.6 → 3.86, 21 → 210).
+// ---------------------------------------------------------------------
+const VITAL_RANGES = {
+  perro: { weight: [0.5, 100], temp: [35, 43], hr: [40, 220] },
+  gato:  { weight: [0.3, 15],  temp: [35, 43], hr: [100, 260] },
+  otro:  { weight: [0.02, 1000], temp: [30, 45], hr: [20, 600] }
+};
+
+function vitalRangesFor(species) {
+  const s = String(species || '').toLowerCase();
+  if (/perr|cachorr|canin|can\b/.test(s)) return VITAL_RANGES.perro;
+  if (/gat|felin|minin/.test(s)) return VITAL_RANGES.gato;
+  return VITAL_RANGES.otro;
+}
+
+function vitalWarnings(species, values) {
+  const ranges = vitalRangesFor(species);
+  const out = [];
+  const check = (key, raw, label, unit) => {
+    if (raw === '' || raw === null || raw === undefined) return;
+    const value = Number.parseFloat(raw);
+    if (!Number.isFinite(value)) { out.push(`${label}: no es un número`); return; }
+    const [min, max] = ranges[key];
+    if (value < min || value > max) {
+      out.push(`${label} ${value} ${unit} está fuera de lo habitual (${min}–${max} ${unit}). Revisá que no sea un error de tipeo.`);
+    }
+  };
+  check('weight', values.weight, 'Peso', 'kg');
+  check('temp', values.temp, 'Temperatura', '°C');
+  check('hr', values.hr, 'FC', 'lpm');
+  return out;
+}
+
+function vitalWarningHTML(species, values) {
+  const warnings = vitalWarnings(species, values);
+  return warnings.length
+    ? `<div class="inline-warning">${icon('alert','ico-sm')} <span>${warnings.map(escapeHtml).join('<br>')}</span></div>`
+    : '';
+}
+
+// Se dibuja bajo la sección de signos vitales mientras se escribe.
+function renderVitalWarnings() {
+  const box = document.getElementById('hVitalsWarning');
+  if (!box) return;
+  const pet = (db.pets || []).find(item => item.id === currentPetId);
+  box.innerHTML = vitalWarningHTML(pet?.species, {
+    weight: document.getElementById('hWeight')?.value,
+    temp: document.getElementById('hTemp')?.value,
+    hr: document.getElementById('hHR')?.value
+  });
+}
+
 // Items para pickerOne() y assocPicker(). Por defecto excluye fallecidos, pero
 // conserva los que ya estaban elegidos aunque lo estén (al editar un registro
 // viejo, o al ver las mascotas asociadas a un tutor).
@@ -387,17 +443,18 @@ function openPetModal(id) {
         <div class="form-group"><label>Color / Pelaje</label><input type="text" id="pColor" value="${escapeAttr(pet.color||'')}"></div>
       </div>
       <div class="form-row-3">
-        <div class="form-group"><label>Fecha nacimiento</label><input type="date" id="pBirth" value="${pet.birthdate||''}"></div>
-        <div class="form-group"><label>Peso (kg)</label><input type="number" step="0.1" id="pWeight" value="${pet.weight||''}"${clinicalDisabled}></div>
-        <div class="form-group"><label>Microchip</label><input type="text" id="pChip" value="${escapeAttr(pet.microchip||'')}"></div>
+        <div class="form-group"><label for="pBirth">Fecha nacimiento</label><input type="date" id="pBirth" max="${localDateKey()}" value="${pet.birthdate||''}"><span class="field-error"></span></div>
+        <div class="form-group"><label for="pWeight">Peso (kg)</label><input type="number" step="0.1" min="0" id="pWeight" value="${pet.weight||''}"${clinicalDisabled}></div>
+        <div class="form-group"><label for="pChip">Microchip</label><input type="text" id="pChip" value="${escapeAttr(pet.microchip||'')}"></div>
       </div>
       <div class="form-row">
         <div class="form-group">
           <label class="settings-toggle"><input type="checkbox" id="pDeceased" ${pet.deceasedAt ? 'checked' : ''} onchange="toggleDeceasedDateField(this.checked)"><span>Fallecido</span></label>
         </div>
         <div class="form-group" id="pDeceasedDateGroup" ${pet.deceasedAt ? '' : 'hidden'}>
-          <label>Fecha de fallecimiento</label>
-          <input type="date" id="pDeceasedDate" value="${pet.deceasedAt||''}">
+          <label for="pDeceasedDate">Fecha de fallecimiento</label>
+          <input type="date" id="pDeceasedDate" max="${localDateKey()}" value="${pet.deceasedAt||''}">
+          <span class="field-error"></span>
         </div>
       </div>
       <div class="form-group">
@@ -428,6 +485,14 @@ function toggleDeceasedDateField(checked) {
 function savePet(id, isNew) {
   const name = document.getElementById('pName').value.trim();
   if (!validateField('pName', !!name, 'El nombre es obligatorio')) return;
+  // Había 2 pacientes con nacimiento en el futuro, que la app mostraba como
+  // "recién nacido". El max del input no alcanza: se puede tipear a mano.
+  const today = localDateKey();
+  const birth = document.getElementById('pBirth').value;
+  if (!validateField('pBirth', !birth || birth <= today, 'La fecha de nacimiento no puede ser futura')) return;
+  const deceasedDate = document.getElementById('pDeceasedDate').value;
+  if (!validateField('pDeceasedDate', !deceasedDate || deceasedDate <= today, 'La fecha de fallecimiento no puede ser futura')) return;
+  if (!validateField('pDeceasedDate', !birth || !deceasedDate || deceasedDate >= birth, 'El fallecimiento no puede ser anterior al nacimiento')) return;
   const ownerIds = document.getElementById('petOwnersPicker') ? getAssocSelected('petOwnersPicker') : (id ? (db.pets.find(p=>p.id===id)||{}).ownerIds||[] : []);
   const deceased = document.getElementById('pDeceased').checked;
   const data = {
@@ -1005,19 +1070,20 @@ function renderEncounter() {
           <div class="encounter-section">
             <div class="encounter-section-heading"><span>1</span><div><h2>Contexto de la consulta</h2><p>Fecha, tipo, profesional y motivo de atenci&oacute;n.</p></div></div>
             <div class="form-row-3">
-              <div class="form-group"><label for="hDate">Fecha *</label><input type="date" id="hDate" value="${escapeAttr(ex?.date || appointment?.date || today)}"></div>
+              <div class="form-group"><label for="hDate">Fecha *</label><input type="date" id="hDate" max="${today}" value="${escapeAttr(ex?.date || appointment?.date || today)}"><span class="field-error"></span></div>
               <div class="form-group"><label for="hType">Tipo</label><select id="hType">${types.map(type=>`<option ${encounterType===type?'selected':''} value="${type}">${type}</option>`).join('')}</select></div>
-              ${attendingFieldHTML('hVet', ex?.vet || appointment?.vet || (ex ? '' : defaultAttendingName()))}
+              ${attendingFieldHTML('hVet', ex?.vet || appointment?.vet || (ex ? '' : defaultAttendingName()), 'Profesional', ex?.vetUserId || appointment?.vetUserId || (ex ? '' : defaultAttendingUserId()))}
             </div>
             <div class="form-group"><label for="hTitle">Motivo de consulta ${status==='draft'?'':'*'}</label><input type="text" id="hTitle" value="${escapeAttr(ex?.title || appointment?.notes || appointment?.type || '')}" placeholder="Por que viene hoy"></div>
           </div>
           <div class="encounter-section encounter-vitals-section">
             <div class="encounter-section-heading"><span>2</span><div><h2>Signos vitales</h2><p>Quedan disponibles para ver la evoluci&oacute;n del paciente.</p></div></div>
             <div class="form-row-3">
-              <div class="form-group"><label for="hWeight">Peso (kg)</label><input type="number" id="hWeight" step="0.1" value="${attrValue('weight')}" placeholder="4.5"></div>
-              <div class="form-group"><label for="hTemp">Temperatura (&deg;C)</label><input type="number" id="hTemp" step="0.1" value="${attrValue('temp')}" placeholder="38.5"></div>
-              <div class="form-group"><label for="hHR">FC (lpm)</label><input type="number" id="hHR" value="${attrValue('hr')}" placeholder="80"></div>
+              <div class="form-group"><label for="hWeight">Peso (kg)</label><input type="number" id="hWeight" step="0.1" min="0" value="${attrValue('weight')}" placeholder="4.5" oninput="renderVitalWarnings()"></div>
+              <div class="form-group"><label for="hTemp">Temperatura (&deg;C)</label><input type="number" id="hTemp" step="0.1" min="0" value="${attrValue('temp')}" placeholder="38.5" oninput="renderVitalWarnings()"></div>
+              <div class="form-group"><label for="hHR">FC (lpm)</label><input type="number" id="hHR" min="0" value="${attrValue('hr')}" placeholder="80" oninput="renderVitalWarnings()"></div>
             </div>
+            <div id="hVitalsWarning">${vitalWarningHTML(pet.species, { weight:ex?.weight, temp:ex?.temp, hr:ex?.hr })}</div>
           </div>
           <div class="encounter-section">
             <div class="encounter-section-heading"><span>3</span><div><h2>Evaluaci&oacute;n y plan</h2><p>Hallazgos, diagn&oacute;stico, tratamiento e indicaciones.</p></div></div>
@@ -1030,7 +1096,7 @@ function renderEncounter() {
             </div>
             <div class="form-group"><label for="hDiag">Diagn&oacute;stico</label><input type="text" id="hDiag" value="${attrValue('diagnosis')}" placeholder="Presuntivo o definitivo"></div>
             <div class="form-group"><label for="hTreat">Tratamiento e indicaciones</label><textarea id="hTreat" rows="4" placeholder="Medicamentos, dosis, duraci&oacute;n e indicaciones">${textValue('treatment')}</textarea></div>
-            <div class="form-row"><div class="form-group"><label for="hNext">Pr&oacute;ximo control</label><input type="date" id="hNext" value="${attrValue('nextControl')}"></div><div class="form-group"><label for="hDesc">Observaciones</label><input type="text" id="hDesc" value="${attrValue('description')}" placeholder="Notas adicionales"></div></div>
+            <div class="form-row"><div class="form-group"><label for="hNext">Pr&oacute;ximo control</label><input type="date" id="hNext" min="${today}" value="${attrValue('nextControl')}"><span class="field-error"></span></div><div class="form-group"><label for="hDesc">Observaciones</label><input type="text" id="hDesc" value="${attrValue('description')}" placeholder="Notas adicionales"></div></div>
           </div>
         </section>
         <aside class="encounter-sidebar">
@@ -1288,6 +1354,16 @@ async function saveHistory(petId, editId, forcedStatus, closeBundle) {
   if (status === 'reopened' && !reopenedReason) { toast('Completa el motivo de reapertura', 'error'); return; }
   if (existing && (existing.status || 'closed') === 'closed' && !['closed','reopened'].includes(status)) { toast('Una consulta cerrada debe pasar a Reabierta', 'error'); return; }
   if (!date || !title) { toast('Completá fecha y motivo', 'error'); return; }
+  // Una consulta no puede quedar registrada en el futuro, y un control indicado
+  // para una fecha ya pasada nace vencido: es casi siempre un error de tipeo en
+  // el año. Se valida acá porque el max/min del input se puede saltear tipeando.
+  const todayKey = localDateKey();
+  if (!validateField('hDate', date <= todayKey, 'La consulta no puede tener fecha futura')) return;
+  const nextControl = document.getElementById('hNext')?.value || '';
+  // Un control histórico ya guardado se conserva al editar otros datos, pero no
+  // se permite crear ni cambiar un control para una fecha que ya pasó.
+  const unchangedHistoricalControl = !!existing && nextControl === (existing.nextControl || '');
+  if (!validateField('hNext', !nextControl || nextControl >= todayKey || unchangedHistoricalControl, 'El próximo control no puede quedar en el pasado')) return;
   if (status === 'closed' && !closeBundle) {
     openEncounterCloseReview(petId, editId);
     return;
@@ -1303,6 +1379,7 @@ async function saveHistory(petId, editId, forcedStatus, closeBundle) {
     id: closeBundle?.encounterId || editId || uid(), date,
     type: document.getElementById('hType').value,
     vet: getAttendingValue('hVet'),
+    vetUserId: getAttendingUserId('hVet'),
     weight, temp, hr: document.getElementById('hHR').value,
     title, exam: document.getElementById('hExam').value,
     diagnosis: document.getElementById('hDiag').value,

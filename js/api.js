@@ -115,19 +115,23 @@ async function loadStaff(){
 }
 // Profesionales que pueden figurar como quien atiende. Recepción no atiende,
 // así que no se ofrece; el nombre de quien está usando la app va primero.
-function attendingStaff(){
-  const names = clinicStaff
-    .filter(person => person.role === 'veterinarian' || person.role === 'admin')
-    .map(person => person.name)
-    .filter(Boolean);
+function attendingStaffRecords(){
+  const records = clinicStaff
+    .filter(person => (person.role === 'veterinarian' || person.role === 'admin') && person.id && person.name);
   const own = currentUser && currentUser.name;
-  const ordered = own && names.includes(own) ? [own, ...names.filter(n => n !== own)] : names;
-  return [...new Set(ordered)];
+  const ordered = own ? [...records.filter(person => person.id === currentUser.id), ...records.filter(person => person.id !== currentUser.id)] : records;
+  return ordered.filter((person,index,list) => list.findIndex(other => other.id === person.id) === index);
+}
+function attendingStaff(){
+  return attendingStaffRecords().map(person => person.name);
 }
 // Nombre a precargar en un registro nuevo: quien está usando la app, si atiende.
 function defaultAttendingName(){
   const own = currentUser && currentUser.name;
   return own && attendingStaff().includes(own) ? own : '';
+}
+function defaultAttendingUserId(){
+  return attendingStaffRecords().some(person => person.id === currentUser?.id) ? currentUser.id : '';
 }
 
 async function apiLogin(email, password){ const d = await api('/api/login', { method:'POST', body:{ email, password } }); setSession(d.token, d.user); return d.user; }

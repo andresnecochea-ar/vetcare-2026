@@ -9,6 +9,44 @@ const APPOINTMENT_STATUSES = {
   cancelled: 'Cancelado'
 };
 
+let appointmentFilters = { period: 'month', from: '', to: '', professional: '', status: '' };
+let groomingFilters = { period: 'month', from: '', to: '', professional: '', status: '' };
+
+function setAppointmentFilter(key, value) {
+  if (key === 'from' || key === 'to') {
+    const bounds = dateFilterBounds(appointmentFilters);
+    appointmentFilters.period = 'custom';
+    appointmentFilters.from = bounds.from;
+    appointmentFilters.to = bounds.to;
+  }
+  appointmentFilters[key] = value;
+  render();
+}
+
+function setGroomingFilter(key, value) {
+  if (key === 'from' || key === 'to') {
+    const bounds = dateFilterBounds(groomingFilters);
+    groomingFilters.period = 'custom';
+    groomingFilters.from = bounds.from;
+    groomingFilters.to = bounds.to;
+  }
+  groomingFilters[key] = value;
+  render();
+}
+
+function appointmentMatchesCurrentUser(appointment) {
+  return professionalMatches(appointment, 'mine', 'vetUserId', 'vet');
+}
+
+function ownerQuickContactHTML(owner) {
+  if (!owner) return '—';
+  const raw = owner.phone || owner.altPhone || '';
+  const call = raw ? `<a class="link-inline" href="tel:${escapeAttr(telPhone(raw))}">Llamar</a>` : '';
+  const whatsapp = waPhone([owner.phone, owner.altPhone]);
+  const wa = whatsapp ? `<a class="link-inline" href="https://wa.me/${whatsapp}" target="_blank" rel="noopener">WhatsApp</a>` : '';
+  return [call, wa].filter(Boolean).join(' · ') || '<span class="text-mute">Sin teléfono</span>';
+}
+
 function appointmentStatusValue(appointment) { return appointment.status || 'scheduled'; }
 function appointmentStatusLabel(status) { return APPOINTMENT_STATUSES[status] || APPOINTMENT_STATUSES.scheduled; }
 function appointmentStatusClass(status) { return 'appointment-status-' + (status || 'scheduled').replace(/_/g, '-'); }
@@ -58,6 +96,10 @@ function renderAppointments() {
   const past = db.appointments.filter(a=>new Date(a.date+'T'+(a.time||'00:00'))<now)
     .sort((a,b)=>new Date(b.date+'T'+(b.time||'00:00'))-new Date(a.date+'T'+(a.time||'00:00')));
   const sorted = [...upcoming, ...past];
+  const filtered = sorted.filter(appointment =>
+    dateMatchesFilter(appointment.date, appointmentFilters)
+    && (!appointmentFilters.status || appointmentStatusValue(appointment) === appointmentFilters.status)
+    && professionalMatches(appointment, appointmentFilters.professional, 'vetUserId', 'vet'));
   function apptRow(a) {
     const pet = db.pets.find(p=>p.id===a.petId);
     const isPast = new Date(a.date+'T'+(a.time||'00:00')) < now;
@@ -74,6 +116,7 @@ function renderAppointments() {
       <td data-label="Tipo">${escapeHtml(a.type||'—')}</td>
       <td data-label="Profesional">${escapeHtml(a.vet||'—')}</td>
       <td class="col-sec" data-label="Tutor">${owner ? `<button type="button" class="link-cell" onclick="openOwnerModal('${owner.id}')">${escapeHtml(owner.name)}</button>` : '—'}</td>
+      <td class="col-sec" data-label="Contacto">${ownerQuickContactHTML(owner)}</td>
       <td class="col-sec" data-label="Notas"><span${notesFull.length>40?' data-tip="'+escapeAttr(notesFull)+'"':''}>${escapeHtml(notesShort)}</span></td>
       <td class="col-sec" data-label="Momento"><span class="tag ${!terminal&&!isPast?'accent':''}">${momentLabel}</span></td>
       <td data-label="Estado"><span class="appointment-status ${appointmentStatusClass(status)}">${appointmentStatusLabel(status)}</span></td>
@@ -85,11 +128,20 @@ function renderAppointments() {
       <div class="title"><small>Agenda médica</small><h1>Turnos</h1></div>
       <button class="btn btn-warm" onclick="openApptModal()">+ Nuevo turno</button>
     </div>
+    <div class="list-filters">
+      ${dateFilterControls(appointmentFilters,'setAppointmentFilter')}
+      <label>Profesional<select class="input" onchange="setAppointmentFilter('professional',this.value)">${professionalFilterOptions(db.appointments,'vetUserId','vet',appointmentFilters.professional,true)}</select></label>
+      <label>Estado<select class="input" onchange="setAppointmentFilter('status',this.value)">
+        <option value="">Cualquier estado</option>
+        ${Object.entries(APPOINTMENT_STATUSES).map(([value,label])=>`<option value="${value}" ${appointmentFilters.status===value?'selected':''}>${label}</option>`).join('')}
+      </select></label>
+      <span class="list-filter-count">${filtered.length} de ${sorted.length} turnos</span>
+    </div>
     <div class="table-wrap as-cards">
       <table>
-        <thead><tr><th>Paciente</th><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Profesional</th><th class="col-sec">Tutor</th><th class="col-sec">Notas</th><th class="col-sec">Momento</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Paciente</th><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Profesional</th><th class="col-sec">Tutor</th><th class="col-sec">Contacto</th><th class="col-sec">Notas</th><th class="col-sec">Momento</th><th>Estado</th><th></th></tr></thead>
         <tbody>
-          ${sorted.length===0?'<tr><td colspan="10"><div class="empty-state">Sin turnos registrados</div></td></tr>':sorted.map(apptRow).join('')}
+          ${filtered.length===0?'<tr><td colspan="11"><div class="empty-state">Sin turnos para estos filtros</div></td></tr>':filtered.map(apptRow).join('')}
         </tbody>
       </table>
     </div>
@@ -113,7 +165,7 @@ function openApptModal(id, presetPetId) {
         <div class="form-group"><label for="aTime">Hora</label><input type="time" id="aTime" value="${a.time||''}" onchange="renderApptConflict()"></div>
         <div class="form-group"><label for="aType">Tipo</label><select id="aType"><option ${a.type==='Consulta'?'selected':''}>Consulta</option><option ${a.type==='Vacunación'?'selected':''}>Vacunación</option><option ${a.type==='Cirugía'?'selected':''}>Cirugía</option><option ${a.type==='Control'?'selected':''}>Control</option><option ${a.type==='Análisis'?'selected':''}>Análisis</option><option ${a.type==='Emergencia'?'selected':''}>Emergencia</option></select></div>
       </div>
-      ${attendingFieldHTML('aVet', isNew ? (a.vet || defaultAttendingName()) : a.vet)}
+      ${attendingFieldHTML('aVet', isNew ? (a.vet || defaultAttendingName()) : a.vet, 'Profesional', isNew ? (a.vetUserId || defaultAttendingUserId()) : a.vetUserId)}
       <div id="apptConflict" data-appt-id="${a.id}"></div>
       <div class="form-group"><label for="aNotes">Notas</label><textarea id="aNotes">${escapeHtml(a.notes||'')}</textarea></div>
       <div class="form-row">
@@ -146,7 +198,10 @@ function appointmentOverlaps(candidate) {
   return db.appointments.filter(other => {
     if (other.id === candidate.id) return false;
     if (other.date !== candidate.date || !other.time) return false;
-    if (String(other.vet || '').trim() !== vet) return false;
+    const sameProfessional = candidate.vetUserId && other.vetUserId
+      ? candidate.vetUserId === other.vetUserId
+      : String(other.vet || '').trim() === vet;
+    if (!sameProfessional) return false;
     if (appointmentIsTerminal(other)) return false;
     const otherFrom = start(other);
     return otherFrom < to && otherFrom + (parseInt(other.duration, 10) || 30) > from;
@@ -161,6 +216,7 @@ function renderApptConflict() {
     date: document.getElementById('aDate')?.value || '',
     time: document.getElementById('aTime')?.value || '',
     vet: getAttendingValue('aVet'),
+    vetUserId: getAttendingUserId('aVet'),
     duration: document.getElementById('aDuration')?.value || '30'
   });
   box.innerHTML = clashes.length
@@ -183,6 +239,7 @@ function saveAppt(id, isNew) {
     time: document.getElementById('aTime').value,
     type: document.getElementById('aType').value,
     vet: getAttendingValue('aVet'),
+    vetUserId: getAttendingUserId('aVet'),
     notes: document.getElementById('aNotes').value,
     status: document.getElementById('aStatus').value,
     duration: document.getElementById('aDuration').value,
@@ -215,16 +272,29 @@ function renderGrooming() {
   const _ps = db.groomingAppointments.filter(a=>new Date(a.date+'T'+(a.time||'00:00'))<_now)
     .sort((a,b)=>new Date(b.date+'T'+(b.time||'00:00'))-new Date(a.date+'T'+(a.time||'00:00')));
   const sorted = [..._up, ..._ps];
+  const filtered = sorted.filter(appointment =>
+    dateMatchesFilter(appointment.date, groomingFilters)
+    && (!groomingFilters.status || appointment.status === groomingFilters.status)
+    && professionalMatches(appointment, groomingFilters.professional, 'groomerUserId', 'groomer'));
   return `
     <div class="page-header">
       <div class="title"><small>Servicios estéticos</small><h1>Peluquería</h1></div>
       <button class="btn btn-warm" onclick="openGroomModal()">+ Nuevo turno</button>
     </div>
+    <div class="list-filters">
+      ${dateFilterControls(groomingFilters,'setGroomingFilter')}
+      <label>Peluquero/a<select class="input" onchange="setGroomingFilter('professional',this.value)">${professionalFilterOptions(db.groomingAppointments,'groomerUserId','groomer',groomingFilters.professional,false)}</select></label>
+      <label>Estado<select class="input" onchange="setGroomingFilter('status',this.value)">
+        <option value="">Cualquier estado</option>
+        ${['Pendiente','Completado','Cancelado'].map(value=>`<option value="${value}" ${groomingFilters.status===value?'selected':''}>${value}</option>`).join('')}
+      </select></label>
+      <span class="list-filter-count">${filtered.length} de ${sorted.length} turnos</span>
+    </div>
     <div class="table-wrap as-cards">
       <table>
         <thead><tr><th>Paciente</th><th>Fecha</th><th>Hora</th><th>Servicio</th><th>Peluquero/a</th><th>Precio</th><th>Estado</th><th class="col-sec">Recordatorio</th><th class="col-sec">Próx/Pas</th><th></th></tr></thead>
         <tbody>
-          ${sorted.length===0 ? '<tr><td colspan="10"><div class="empty-state">Sin turnos de peluquería</div></td></tr>' : sorted.map(a => {
+          ${filtered.length===0 ? '<tr><td colspan="10"><div class="empty-state">Sin turnos de peluquería para estos filtros</div></td></tr>' : filtered.map(a => {
             const pet = db.pets.find(p=>p.id===a.petId);
             const isPast = new Date(a.date+'T'+(a.time||'00:00')) < _now;
             return `<tr>
@@ -246,14 +316,6 @@ function renderGrooming() {
   `;
 }
 
-// Los peluqueros no usan la app, así que no son usuarios del sistema y el campo
-// sigue siendo libre. Ofrecer los nombres ya cargados alcanza para que no
-// convivan "Marcela" y "marcela" como dos personas distintas.
-function groomerNames() {
-  return [...new Set((db.groomingAppointments || []).map(a => (a.groomer || '').trim()).filter(Boolean))]
-    .sort(compareEs);
-}
-
 function openGroomModal(id) {
   const a = id ? db.groomingAppointments.find(x=>x.id===id) : { id: uid() };
   const isNew = !id;
@@ -270,9 +332,7 @@ function openGroomModal(id) {
       </div>
       <div class="form-row-3">
         <div class="form-group"><label>Servicio</label><select id="gService"><option ${a.service==='Baño'?'selected':''}>Baño</option><option ${a.service==='Corte completo'?'selected':''}>Corte completo</option><option ${a.service==='Baño + corte'?'selected':''}>Baño + corte</option><option ${a.service==='Corte de uñas'?'selected':''}>Corte de uñas</option><option ${a.service==='Limpieza de oídos'?'selected':''}>Limpieza de oídos</option><option ${a.service==='Otro'?'selected':''}>Otro</option></select></div>
-        <div class="form-group"><label for="gGroomer">Peluquero/a</label>
-          <input type="text" id="gGroomer" list="groomerNames" value="${escapeAttr(a.groomer||'')}" placeholder="Nombre">
-          <datalist id="groomerNames">${groomerNames().map(n=>`<option value="${escapeAttr(n)}"></option>`).join('')}</datalist></div>
+        ${attendingFieldHTML('gGroomer',a.groomer,'Peluquero/a',a.groomerUserId)}
         <div class="form-group"><label for="gPrice">Precio</label><input type="number" id="gPrice" min="0" step="0.01" value="${a.price||''}"></div>
       </div>
       <div class="form-group"><label>${icon('bell','ico-sm')} Recordatorio / Nota al cliente</label><input type="text" id="gReminder" value="${escapeAttr(a.reminder||'')}" placeholder="Ej: Traer champu especial, avisar 1h antes..."></div>
@@ -292,7 +352,7 @@ function saveGroom(id, isNew) {
   const _g1 = validateField('gPet', !!petId, 'Seleccioná un paciente');
   const _g2 = validateField('gDate', !!date, 'La fecha es obligatoria');
   if (!_g1 || !_g2) return;
-  const data = { id, petId, date, time: document.getElementById('gTime').value, service: document.getElementById('gService').value, groomer: document.getElementById('gGroomer').value, price: document.getElementById('gPrice').value, status: document.getElementById('gStatus').value, reminder: document.getElementById('gReminder').value.trim(), notes: document.getElementById('gNotes').value };
+  const data = { id, petId, date, time: document.getElementById('gTime').value, service: document.getElementById('gService').value, groomer: getAttendingValue('gGroomer'), groomerUserId: getAttendingUserId('gGroomer'), price: document.getElementById('gPrice').value, status: document.getElementById('gStatus').value, reminder: document.getElementById('gReminder').value.trim(), notes: document.getElementById('gNotes').value };
   if (isNew) db.groomingAppointments.push(data); else { const i = db.groomingAppointments.findIndex(a=>a.id===id); db.groomingAppointments[i] = data; }
   saveDB(isNew?'Turno de peluquería creado':'Turno de peluquería actualizado'); closeModal(); render();
 }

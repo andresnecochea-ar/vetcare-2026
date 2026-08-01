@@ -134,13 +134,13 @@ function openSanitaryModal(petId, kind, id) {
     <div class="modal-body">
       <div class="form-group"><label for="sanName">${config.product}</label><input type="text" id="sanName" value="${escapeAttr(record?.name || '')}" placeholder="${config.placeholder}"></div>
       <div class="form-row-3">
-        <div class="form-group"><label for="sanDate">Fecha de aplicaci&oacute;n</label><input type="date" id="sanDate" value="${escapeAttr(record?.date || localDateKey())}" onchange="recalcSanitaryNextDose()"></div>
+        <div class="form-group"><label for="sanDate">Fecha de aplicaci&oacute;n</label><input type="date" id="sanDate" max="${localDateKey()}" value="${escapeAttr(record?.date || localDateKey())}" onchange="recalcSanitaryNextDose()"><span class="field-error"></span></div>
         <div class="form-group"><label for="sanInterval">${config.intervalLabel}</label><input type="number" id="sanInterval" min="1" step="1" value="${escapeAttr(record?.intervalDays || '')}" placeholder="365" oninput="recalcSanitaryNextDose()"></div>
-        <div class="form-group"><label for="sanNext">Pr&oacute;xima dosis</label><input type="date" id="sanNext" value="${escapeAttr(record?.nextDose || '')}"></div>
+        <div class="form-group"><label for="sanNext">Pr&oacute;xima dosis</label><input type="date" id="sanNext" value="${escapeAttr(record?.nextDose || '')}"><span class="field-error"></span></div>
       </div>
       <div class="form-row">
         <div class="form-group"><label for="sanLot">N&uacute;mero de serie o lote</label><input type="text" id="sanLot" value="${escapeAttr(record?.lot || '')}" placeholder="Opcional"></div>
-        ${attendingFieldHTML('sanVet', record ? record.vet : defaultAttendingName(), 'Quién lo aplicó')}
+        ${attendingFieldHTML('sanVet', record ? record.vet : defaultAttendingName(), 'Quién lo aplicó', record ? record.vetUserId : defaultAttendingUserId())}
       </div>
       <small style="color:var(--text-mute)">Si complet&aacute;s el intervalo, la pr&oacute;xima dosis se calcula sola. Tambi&eacute;n pod&eacute;s ponerla a mano.</small>
     </div>
@@ -167,6 +167,10 @@ function saveSanitaryRecord(petId, kind, id) {
   const name = document.getElementById('sanName').value.trim();
   const date = document.getElementById('sanDate').value;
   if (!name || !date) { toast('Completá producto y fecha', 'error'); return; }
+  // Una dosis se registra cuando ya se aplicó; la próxima siempre va después.
+  if (!validateField('sanDate', date <= localDateKey(), 'La aplicación no puede tener fecha futura')) return;
+  const nextDose = document.getElementById('sanNext').value;
+  if (!validateField('sanNext', !nextDose || nextDose > date, 'La próxima dosis tiene que ser posterior a la aplicación')) return;
 
   const data = {
     name,
@@ -174,7 +178,8 @@ function saveSanitaryRecord(petId, kind, id) {
     nextDose: document.getElementById('sanNext').value,
     intervalDays: document.getElementById('sanInterval').value,
     lot: document.getElementById('sanLot').value.trim(),
-    vet: getAttendingValue('sanVet')
+    vet: getAttendingValue('sanVet'),
+    vetUserId: getAttendingUserId('sanVet')
   };
 
   pet[config.collection] = pet[config.collection] || [];

@@ -192,10 +192,13 @@ function navigateTo(view) {
 // ========================================
 // [10] VISTA: HOY (TODAY)  ·  NOTA: ubicada al final del archivo por historia del proyecto
 // ========================================
+let todayMineOnly = false;
+function toggleTodayMine(){ todayMineOnly = !todayMineOnly; render(); }
+
 function renderToday() {
   const today = localDateKey();
   const now = new Date();
-  const dayAppts = db.appointments.filter(a => a.date === today)
+  const dayAppts = db.appointments.filter(a => a.date === today && (!todayMineOnly || appointmentMatchesCurrentUser(a)))
     .sort((a,b) => (a.time||'00:00').localeCompare(b.time||'00:00'));
   const dayGroom = db.groomingAppointments.filter(a => a.date === today)
     .sort((a,b) => (a.time||'00:00').localeCompare(b.time||'00:00'));
@@ -226,7 +229,7 @@ function renderToday() {
       <div class="ts-info">
         <strong>${pet ? `<button type="button" class="link-inline" onclick="openPetDetail('${pet.id}')">${escapeHtml(petDisplayName(pet))}</button>` : escapeHtml('Paciente')}${isClinical ? `<span class="appointment-status ${appointmentStatusClass(status)}">${appointmentStatusLabel(status)}</span>` : ''}</strong>
         <small>${meta}</small>
-        ${owner ? `<small class="ts-owner"><button type="button" class="link-inline" onclick="openOwnerModal('${owner.id}')">${escapeHtml(owner.name)}</button>${waPhone([owner.phone, owner.altPhone]) ? ` · <a class="link-inline" href="https://wa.me/${waPhone([owner.phone, owner.altPhone])}" target="_blank" rel="noopener">WhatsApp</a>` : ''}</small>` : ''}
+        ${owner ? `<small class="ts-owner"><button type="button" class="link-inline" onclick="openOwnerModal('${owner.id}')">${escapeHtml(owner.name)}</button>${owner.phone||owner.altPhone ? ` · <a class="link-inline" href="tel:${escapeAttr(telPhone(owner.phone||owner.altPhone))}">Llamar</a>` : ''}${waPhone([owner.phone, owner.altPhone]) ? ` · <a class="link-inline" href="https://wa.me/${waPhone([owner.phone, owner.altPhone])}" target="_blank" rel="noopener">WhatsApp</a>` : ''}</small>` : ''}
       </div>
       <div class="today-slot-actions">
         ${isClinical ? appointmentPrimaryActionHTML(a, true) : ''}
@@ -254,7 +257,10 @@ function renderToday() {
   return `
     <div class="page-header">
       <div class="title"><small>${new Date().toLocaleDateString('es-ES',{weekday:'long'})}</small><h1>Hoy</h1></div>
-      <div style="font-size:var(--fs-sm);color:var(--text-soft)">${new Date().toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'})}</div>
+      <div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;justify-content:flex-end">
+        ${defaultAttendingUserId() ? `<button class="btn btn-sm ${todayMineOnly?'btn-primary':''}" onclick="toggleTodayMine()" aria-pressed="${todayMineOnly?'true':'false'}">Mis turnos</button>` : ''}
+        <div style="font-size:var(--fs-sm);color:var(--text-soft)">${new Date().toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'})}</div>
+      </div>
     </div>
     <div class="today-grid">
       <div class="today-col">

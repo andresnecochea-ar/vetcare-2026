@@ -68,7 +68,7 @@ describe('VetCare Worker', () => {
       status: 'ok',
       database: 'ready',
       version: '2.15.0',
-      schemaVersion: 15,
+      schemaVersion: 17,
     });
 
     // Los estudios cargados antes de 0011 siguen contando como resultado recibido.
@@ -424,6 +424,7 @@ describe('VetCare Worker', () => {
         description: 'Paciente activo',
         treatment: 'Continuar tratamiento',
         vet: 'Dra. Test',
+        vetUserId: login.body.user.id,
         weight: '28.4',
         temp: '38.6',
         hr: '92',
@@ -443,6 +444,7 @@ describe('VetCare Worker', () => {
         nextDose: '2027-07-02',
         lot: 'L-2026-14',
         vet: 'Dra. Test',
+        vetUserId: login.body.user.id,
         intervalDays: '365',
         cancelled: '',
         notifiedAt: '',
@@ -454,6 +456,7 @@ describe('VetCare Worker', () => {
         nextDose: '2026-08-02',
         lot: '',
         vet: 'Dra. Test',
+        vetUserId: login.body.user.id,
         intervalDays: '31',
         cancelled: '',
         notifiedAt: '',
@@ -494,6 +497,7 @@ describe('VetCare Worker', () => {
       time: '10:30',
       type: 'Control',
       vet: 'Dra. Test',
+      vetUserId: login.body.user.id,
       notes: 'Control programado',
       status: 'waiting',
       duration: '30',
@@ -521,6 +525,7 @@ describe('VetCare Worker', () => {
       time: '10:00',
       service: 'Baño',
       groomer: 'Pablo',
+      groomerUserId: login.body.user.id,
       price: '5000',
       status: 'Pendiente',
       reminder: '24h',
@@ -621,6 +626,7 @@ describe('VetCare Worker', () => {
     expect(snapshot.body.groomingAppointments[0]).toMatchObject({
       reminder: grooming.reminder,
       notes: grooming.notes,
+      groomerUserId: login.body.user.id,
     });
     expect(snapshot.body.inventory[0].lots).toEqual(inventory.lots);
     expect(snapshot.body.invoices[0].items).toEqual(invoice.items);
@@ -809,6 +815,7 @@ describe('VetCare Worker', () => {
         description: '',
         treatment: 'Continuar plan',
         vet: 'Dra. Test',
+        vetUserId: login.body.user.id,
         weight: '12.4',
         temp: '38.5',
         hr: '90',
@@ -871,6 +878,8 @@ describe('VetCare Worker', () => {
     expect(reusedKeyWithOtherData.body.error).toContain('usada con otros datos');
     expect((await env.DB.prepare('SELECT COUNT(*) AS total FROM pet_history WHERE id = ?')
       .bind(atomicEncounterId).first()).total).toBe(1);
+    expect((await env.DB.prepare('SELECT vetUserId FROM pet_history WHERE id = ?')
+      .bind(atomicEncounterId).first()).vetUserId).toBe(login.body.user.id);
     expect((await env.DB.prepare('SELECT COUNT(*) AS total FROM reminders WHERE id = ?')
       .bind(atomicReminderId).first()).total).toBe(1);
     expect((await env.DB.prepare('SELECT status FROM appointments WHERE id = ?')
@@ -1149,6 +1158,13 @@ describe('VetCare Worker', () => {
     expect(lastAdminDemotion.response.status).toBe(409);
     expect(lastAdminDemotion.body.error).toContain('al menos un administrador');
 
+    const deletedReceptionPet = await jsonResponse(`/api/pets/${receptionPet.id}`, {
+      method: 'DELETE',
+      headers: authenticated,
+      body: { revision: 2 },
+    });
+    expect(deletedReceptionPet.response.status).toBe(200);
+
     const audit = await jsonResponse('/api/audit?limit=200', { headers: authenticated });
     expect(audit.response.status).toBe(200);
     expect(audit.body.entries).toEqual(expect.arrayContaining([
@@ -1157,20 +1173,35 @@ describe('VetCare Worker', () => {
         entity_type: 'users',
         entity_id: receptionRegistration.body.id,
         fields: ['role'],
+        target_label: 'Recepción Test',
       }),
       expect.objectContaining({
         action: 'password_reset',
         entity_type: 'users',
         entity_id: receptionRegistration.body.id,
+        target_label: 'Recepción Test',
       }),
       expect.objectContaining({
         action: 'update',
         entity_type: 'pets',
         entity_id: receptionPet.id,
       }),
+      expect.objectContaining({
+        action: 'delete',
+        entity_type: 'pets',
+        entity_id: receptionPet.id,
+        target_label: 'Paciente Paciente Recepción · Tutor Tutor Recepción',
+      }),
     ]));
     expect(JSON.stringify(audit.body.entries)).not.toContain('Paciente estable');
     expect(JSON.stringify(audit.body.entries)).not.toContain(newReceptionPassword);
+
+    const roleAudit = audit.body.entries.find(entry => entry.action === 'role_change' && entry.entity_id === receptionRegistration.body.id);
+    const filteredAudit = await jsonResponse(`/api/audit?from=${encodeURIComponent(roleAudit.created_at)}&to=${encodeURIComponent(new Date(Date.parse(roleAudit.created_at) + 1).toISOString())}`, { headers: authenticated });
+    expect(filteredAudit.response.status).toBe(200);
+    expect(filteredAudit.body.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: roleAudit.id }),
+    ]));
   });
 
   it('prefiere el celular sobre el fijo cuando hay varios números pegados', async () => {

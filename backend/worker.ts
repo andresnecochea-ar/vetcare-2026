@@ -32,13 +32,13 @@ const TABLES: Record<string, EntityConfig> = {
   appointments: {
     columns: [
       'id', 'petId', 'date', 'time', 'type', 'vet', 'notes', 'status',
-      'duration', 'checkedInAt', 'startedAt', 'completedAt',
+      'duration', 'checkedInAt', 'startedAt', 'completedAt', 'vetUserId',
     ],
   },
   groomingAppointments: {
     columns: [
       'id', 'petId', 'date', 'time', 'service', 'groomer', 'price', 'status',
-      'reminder', 'notes',
+      'reminder', 'notes', 'groomerUserId',
     ],
   },
   reminders: {
@@ -187,11 +187,12 @@ async function writeAudit(
   entityType: string,
   entityId: string,
   fields: string[] = [],
+  targetLabel = '',
 ): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO audit_log (
-       id,user_id,user_email,user_name,action,entity_type,entity_id,fields,created_at
-     ) VALUES (?,?,?,?,?,?,?,?,?)`,
+       id,user_id,user_email,user_name,action,entity_type,entity_id,fields,target_label,created_at
+     ) VALUES (?,?,?,?,?,?,?,?,?,?)`,
   ).bind(
     uid(),
     stringValue(user.id),
@@ -201,8 +202,58 @@ async function writeAudit(
     entityType,
     entityId,
     JSON.stringify([...new Set(fields)]),
+    targetLabel,
     new Date().toISOString(),
   ).run();
+}
+
+async function auditTargetLabel(env: Env, entityType: string, entityId: string): Promise<string> {
+  if (!entityId) return '';
+  if (entityType === 'pets') {
+    const row = await env.DB.prepare(
+      `SELECT p.name, GROUP_CONCAT(o.name, ', ') AS owner_names
+       FROM pets p
+       LEFT JOIN pet_owners po ON po.pet_id = p.id
+       LEFT JOIN owners o ON o.id = po.owner_id
+       WHERE p.id = ?
+       GROUP BY p.id`,
+    ).bind(entityId).first<JsonObject>();
+    if (!row) return '';
+    const owners = stringValue(row.owner_names);
+    return `Paciente ${stringValue(row.name, 'sin nombre')}${owners ? ` · Tutor${owners.includes(',') ? 'es' : ''} ${owners}` : ''}`;
+  }
+  if (entityType === 'owners') {
+    const row = await env.DB.prepare('SELECT name FROM owners WHERE id = ?').bind(entityId).first<JsonObject>();
+    return row ? `Tutor ${stringValue(row.name, 'sin nombre')}` : '';
+  }
+  if (entityType === 'users') {
+    const row = await env.DB.prepare('SELECT name,email FROM users WHERE id = ?').bind(entityId).first<JsonObject>();
+    return row ? stringValue(row.name, stringValue(row.email, 'Usuario')) : '';
+  }
+  if (entityType === 'invoices') {
+    const row = await env.DB.prepare('SELECT number FROM invoices WHERE id = ?').bind(entityId).first<JsonObject>();
+    return row ? `Recibo #${stringValue(row.number, 'sin número')}` : '';
+  }
+  if (entityType === 'appointments' || entityType === 'groomingAppointments') {
+    const row = await env.DB.prepare(
+      `SELECT a.date,a.time,p.name AS pet_name
+       FROM ${entityType} a LEFT JOIN pets p ON p.id = a.petId
+       WHERE a.id = ?`,
+    ).bind(entityId).first<JsonObject>();
+    if (!row) return '';
+    return `${entityType === 'appointments' ? 'Turno' : 'Peluquería'}${row.pet_name ? ` de ${stringValue(row.pet_name)}` : ''}${row.date ? ` · ${stringValue(row.date)}` : ''}${row.time ? ` ${stringValue(row.time)}` : ''}`;
+  }
+  if (entityType === 'reminders') {
+    const row = await env.DB.prepare(
+      'SELECT r.title,p.name AS pet_name FROM reminders r LEFT JOIN pets p ON p.id = r.petId WHERE r.id = ?',
+    ).bind(entityId).first<JsonObject>();
+    return row ? `Aviso ${stringValue(row.title, 'sin título')}${row.pet_name ? ` · ${stringValue(row.pet_name)}` : ''}` : '';
+  }
+  if (entityType === 'inventory') {
+    const row = await env.DB.prepare('SELECT name FROM inventory WHERE id = ?').bind(entityId).first<JsonObject>();
+    return row ? `Producto ${stringValue(row.name, 'sin nombre')}` : '';
+  }
+  return '';
 }
 
 function configuredOrigins(env: Env): Set<string> {
@@ -421,7 +472,7 @@ async function changeUserRole(
     }
   }
   await env.DB.prepare('UPDATE users SET role = ? WHERE id = ?').bind(role, targetId).run();
-  await writeAudit(env, actor, 'role_change', 'users', targetId, ['role']);
+  await writeAudit(env, actor, 'role_change', 'users', targetId, ['role'], stringValue(target.name, stringValue(target.email)));
   return { ...target, role };
 }
 
@@ -434,7 +485,7 @@ async function resetUserPassword(
   requireAdmin(actor);
   const password = stringValue(body.password);
   if (password.length < 8) throw new HttpError('La contraseña debe tener al menos 8 caracteres');
-  const target = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(targetId).first<JsonObject>();
+  const target = await env.DB.prepare('SELECT id,email,name FROM users WHERE id = ?').bind(targetId).first<JsonObject>();
   if (!target) throw new HttpError('Usuario no encontrado', 404);
 
   const { hash, salt } = await hashPassword(password);
@@ -443,21 +494,48 @@ async function resetUserPassword(
   // Se cierran las sesiones activas: si alguien perdió la contraseña, no tenía
   // sesión válida igual; si la contraseña estaba comprometida, esto la revoca.
   await env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(targetId).run();
-  await writeAudit(env, actor, 'password_reset', 'users', targetId, ['pass_hash']);
+  await writeAudit(env, actor, 'password_reset', 'users', targetId, ['pass_hash'], stringValue(target.name, stringValue(target.email)));
   return { ok: true };
 }
 
-async function listAudit(env: Env, limit: number): Promise<JsonObject[]> {
+interface AuditQuery {
+  limit: number;
+  offset: number;
+  userId?: string;
+  action?: string;
+  entityType?: string;
+  from?: string;
+  to?: string;
+}
+
+// Con filtros y paginación: sin esto eran 100 entradas planas donde los inicios
+// de sesión enterraban las eliminaciones, que es justamente lo que hay que
+// poder encontrar. Devuelve también el total para poder paginar.
+async function listAudit(env: Env, query: AuditQuery): Promise<{ entries: JsonObject[]; total: number }> {
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (query.userId) { where.push('user_id = ?'); params.push(query.userId); }
+  if (query.action) { where.push('action = ?'); params.push(query.action); }
+  if (query.entityType) { where.push('entity_type = ?'); params.push(query.entityType); }
+  if (query.from) { where.push('created_at >= ?'); params.push(query.from); }
+  // El navegador convierte los días elegidos a límites UTC. "to" es exclusivo:
+  // así el filtro respeta el día local incluso en zonas con cambio horario.
+  if (query.to) { where.push('created_at < ?'); params.push(query.to); }
+  const clause = where.length ? ` WHERE ${where.join(' AND ')}` : '';
+
+  const totalRow = await env.DB.prepare(`SELECT COUNT(*) AS total FROM audit_log${clause}`)
+    .bind(...params).first<{ total: number }>();
   const { results } = await env.DB.prepare(
-    `SELECT id,user_id,user_email,user_name,action,entity_type,entity_id,fields,created_at
-     FROM audit_log
+    `SELECT id,user_id,user_email,user_name,action,entity_type,entity_id,fields,target_label,created_at
+     FROM audit_log${clause}
      ORDER BY created_at DESC
-     LIMIT ?`,
-  ).bind(limit).all<JsonObject>();
-  return (results ?? []).map((row) => ({
-    ...row,
-    fields: parseJson(row.fields, []),
-  }));
+     LIMIT ? OFFSET ?`,
+  ).bind(...params, query.limit, query.offset).all<JsonObject>();
+
+  return {
+    total: totalRow?.total ?? 0,
+    entries: (results ?? []).map((row) => ({ ...row, fields: parseJson(row.fields, []) })),
+  };
 }
 
 async function upsertEntity(env: Env, table: string, body: JsonObject): Promise<JsonObject> {
@@ -543,7 +621,7 @@ const PET_CHILDREN: readonly PetChildConfig[] = [
     bodyKey: 'history',
     table: 'pet_history',
     columns: [
-      'date', 'type', 'title', 'description', 'treatment', 'vet',
+      'date', 'type', 'title', 'description', 'treatment', 'vet', 'vetUserId',
       'weight', 'temp', 'hr', 'exam', 'diagnosis', 'nextControl',
       'status', 'startedAt', 'closedAt', 'reopenedReason', 'appointmentId',
     ],
@@ -552,12 +630,12 @@ const PET_CHILDREN: readonly PetChildConfig[] = [
   {
     bodyKey: 'vaccines',
     table: 'pet_vaccines',
-    columns: ['name', 'date', 'nextDose', 'lot', 'vet', 'intervalDays', 'cancelled', 'notifiedAt'],
+    columns: ['name', 'date', 'nextDose', 'lot', 'vet', 'vetUserId', 'intervalDays', 'cancelled', 'notifiedAt'],
   },
   {
     bodyKey: 'dewormings',
     table: 'pet_dewormings',
-    columns: ['name', 'date', 'nextDose', 'lot', 'vet', 'intervalDays', 'cancelled', 'notifiedAt'],
+    columns: ['name', 'date', 'nextDose', 'lot', 'vet', 'vetUserId', 'intervalDays', 'cancelled', 'notifiedAt'],
   },
   {
     bodyKey: 'images',
@@ -902,6 +980,8 @@ async function closeClinicalEncounter(
   const claimToken = uid();
   const now = new Date().toISOString();
   const requestHash = await sha256(stableJson(body));
+  const auditPet = await env.DB.prepare('SELECT name FROM pets WHERE id = ?').bind(petId).first<JsonObject>();
+  const auditTarget = `Paciente ${stringValue(auditPet?.name, petId)} · ${stringValue(encounter.title, 'Consulta')}`;
 
   if (invoiceId) {
     if (!ownerId) throw new HttpError('Seleccioná un tutor para generar el recibo');
@@ -923,7 +1003,7 @@ async function closeClinicalEncounter(
   }
 
   const historyColumns = [
-    'date', 'type', 'title', 'description', 'treatment', 'vet',
+    'date', 'type', 'title', 'description', 'treatment', 'vet', 'vetUserId',
     'weight', 'temp', 'hr', 'exam', 'diagnosis', 'nextControl',
     'status', 'startedAt', 'closedAt', 'reopenedReason', 'appointmentId',
   ] as const;
@@ -1105,9 +1185,9 @@ async function closeClinicalEncounter(
     ).bind(petId, invoiceId, now, idempotencyKey, claimToken),
     env.DB.prepare(
       `INSERT INTO audit_log (
-         id,user_id,user_email,user_name,action,entity_type,entity_id,fields,created_at
+         id,user_id,user_email,user_name,action,entity_type,entity_id,fields,target_label,created_at
        )
-       SELECT ?,?,?,?,?,?,?,?,?
+       SELECT ?,?,?,?,?,?,?,?,?,?
        WHERE EXISTS (
          SELECT 1 FROM clinical_close_operations
          WHERE idempotency_key=? AND claim_token=?
@@ -1126,6 +1206,7 @@ async function closeClinicalEncounter(
         ...(invoiceId ? ['invoice'] : []),
         ...(requestedStudies.length ? ['studies'] : []),
       ]),
+      auditTarget,
       now,
       idempotencyKey,
       claimToken,
@@ -1208,16 +1289,21 @@ async function health(env: Env): Promise<{
          FROM pragma_table_info('pet_history')
          WHERE name IN (
            'weight', 'temp', 'hr', 'exam', 'diagnosis', 'nextControl',
-           'status', 'startedAt', 'closedAt', 'reopenedReason', 'appointmentId'
+           'status', 'startedAt', 'closedAt', 'reopenedReason', 'appointmentId', 'vetUserId'
          )
-       ) = 11
+       ) = 12
        AND (
          SELECT COUNT(*)
          FROM pragma_table_info('appointments')
          WHERE name IN (
-           'status', 'duration', 'checkedInAt', 'startedAt', 'completedAt'
+           'status', 'duration', 'checkedInAt', 'startedAt', 'completedAt', 'vetUserId'
          )
-       ) = 5
+       ) = 6
+       AND (
+         SELECT COUNT(*)
+         FROM pragma_table_info('groomingAppointments')
+         WHERE name IN ('groomerUserId')
+       ) = 1
        AND (
          SELECT COUNT(*)
          FROM pragma_table_info('pets')
@@ -1240,17 +1326,18 @@ async function health(env: Env): Promise<{
         ) = 3
         AND (
           SELECT COUNT(*)
-          FROM pragma_table_info('pet_vaccines')
-          WHERE name IN ('lot', 'vet', 'intervalDays', 'cancelled', 'notifiedAt')
-        ) = 5
+         FROM pragma_table_info('pet_vaccines')
+         WHERE name IN ('lot', 'vet', 'vetUserId', 'intervalDays', 'cancelled', 'notifiedAt')
+       ) = 6
+       AND (SELECT COUNT(*) FROM pragma_table_info('pet_dewormings') WHERE name = 'vetUserId') = 1
        AND (
          SELECT COUNT(*)
          FROM pragma_table_info('audit_log')
          WHERE name IN (
            'user_id', 'user_email', 'user_name', 'action',
-           'entity_type', 'entity_id', 'fields', 'created_at'
+           'entity_type', 'entity_id', 'fields', 'target_label', 'created_at'
          )
-       ) = 8
+       ) = 9
        AND (
          SELECT COUNT(*)
          FROM pragma_table_info('clinical_close_operations')
@@ -1267,7 +1354,7 @@ async function health(env: Env): Promise<{
     status: ready ? 'ok' : 'degraded',
     version: stringValue(env.APP_VERSION, 'unknown'),
     database: ready ? 'ready' : 'migrations-pending',
-    schemaVersion: ready ? 15 : 0,
+    schemaVersion: ready ? 17 : 0,
   };
 }
 
@@ -1392,11 +1479,22 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
   if (path === '/api/audit' && request.method === 'GET') {
     requireAdmin(user);
-    const requestedLimit = Number.parseInt(url.searchParams.get('limit') ?? '100', 10);
+    const requestedLimit = Number.parseInt(url.searchParams.get('limit') ?? '50', 10);
     const limit = Number.isFinite(requestedLimit)
       ? Math.min(Math.max(requestedLimit, 1), 200)
-      : 100;
-    return json({ entries: await listAudit(env, limit) }, 200, origin, env);
+      : 50;
+    const requestedOffset = Number.parseInt(url.searchParams.get('offset') ?? '0', 10);
+    const offset = Number.isFinite(requestedOffset) ? Math.max(requestedOffset, 0) : 0;
+    const result = await listAudit(env, {
+      limit,
+      offset,
+      userId: url.searchParams.get('userId') || undefined,
+      action: url.searchParams.get('action') || undefined,
+      entityType: url.searchParams.get('entityType') || undefined,
+      from: url.searchParams.get('from') || undefined,
+      to: url.searchParams.get('to') || undefined,
+    });
+    return json({ entries: result.entries, total: result.total, limit, offset }, 200, origin, env);
   }
 
   if (path === '/api/data' && request.method === 'GET') {
@@ -1467,8 +1565,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       if (request.method === 'DELETE' && id) {
         requireMutationPermission(user, 'pets', 'delete');
         const deleteBody = asObject(await request.json<unknown>().catch(() => ({})));
+        const targetLabel = await auditTargetLabel(env, 'pets', id);
         const result = await deletePetFull(env, id, revisionValue(deleteBody.revision));
-        await writeAudit(env, user, 'delete', 'pets', id);
+        await writeAudit(env, user, 'delete', 'pets', id, [], targetLabel);
         return json(result, 200, origin, env);
       }
     } else if (Object.hasOwn(TABLES, table)) {
@@ -1494,8 +1593,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       }
       if (request.method === 'DELETE' && id) {
         requireMutationPermission(user, table, 'delete');
+        const targetLabel = await auditTargetLabel(env, table, id);
         const result = await deleteEntity(env, table, id);
-        await writeAudit(env, user, 'delete', table, id);
+        await writeAudit(env, user, 'delete', table, id, [], targetLabel);
         return json(result, 200, origin, env);
       }
     }

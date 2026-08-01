@@ -229,41 +229,217 @@ function toggleReceiptSettingsFields(enabled){
   if(fields) fields.hidden = !enabled;
 }
 
-function _auditLabel(action){
-  return ({register:'Alta de usuario',login:'Inicio de sesión',create:'Creación',update:'Modificación',delete:'Eliminación',role_change:'Cambio de rol'})[action] || action;
+// La auditoría mostraba la acción y el tipo en crudo ("close · clinical_encounter",
+// "password_reset"). Quien la lee es el dueño de la veterinaria, no quien
+// escribió el código.
+var AUDIT_ACTIONS = {
+  register:'Alta de usuario', login:'Inicio de sesión', create:'Creación',
+  update:'Modificación', delete:'Eliminación', role_change:'Cambio de rol',
+  password_reset:'Restablecer contraseña', close:'Cierre de consulta'
+};
+var AUDIT_ENTITIES = {
+  users:'Usuario', sessions:'Sesión', pets:'Paciente', owners:'Tutor',
+  appointments:'Turno', groomingAppointments:'Turno de peluquería',
+  reminders:'Aviso', inventory:'Producto', invoices:'Recibo',
+  settings:'Configuración', clinical_encounter:'Consulta clínica'
+};
+var AUDIT_FIELDS = {
+  email:'Correo', name:'Nombre', role:'Rol', pass_hash:'Contraseña',
+  clinicName:'Nombre de la clínica', settings:'Preferencias', ownerIds:'Tutores',
+  phone:'Teléfono', altPhone:'Teléfono alternativo', address:'Domicilio',
+  relationship:'Vínculo', dni:'DNI', species:'Especie', breed:'Raza', sex:'Sexo',
+  color:'Pelaje', birthdate:'Fecha de nacimiento', deceasedAt:'Fallecimiento', weight:'Peso',
+  microchip:'Microchip', photo:'Foto',
+  allergies:'Alergias', chronicConditions:'Condiciones crónicas', notes:'Notas',
+  date:'Fecha', time:'Hora', type:'Tipo', status:'Estado', vet:'Profesional', vetUserId:'Cuenta del profesional',
+  duration:'Duración', checkedInAt:'Ingreso', startedAt:'Inicio', completedAt:'Finalización',
+  service:'Servicio', groomer:'Peluquero/a', groomerUserId:'Cuenta del peluquero/a', title:'Título', completed:'Completado',
+  category:'Categoría', quantity:'Cantidad', unit:'Unidad', minStock:'Stock mínimo',
+  supplier:'Proveedor', lots:'Lotes', price:'Precio', number:'Número',
+  ownerId:'Tutor', petId:'Paciente',
+  items:'Conceptos', total:'Total', encounterId:'Consulta',
+  encounter:'Consulta', appointment:'Turno', reminder:'Aviso', invoice:'Recibo',
+  studies:'Estudios', history:'Historia clínica', vaccines:'Vacunas',
+  dewormings:'Antiparasitarios', images:'Imágenes'
+};
+
+function _auditLabel(action){ return AUDIT_ACTIONS[action] || action; }
+function _auditEntityLabel(type){ return AUDIT_ENTITIES[type] || type || '—'; }
+function _auditFieldLabel(field){
+  if(AUDIT_FIELDS[field]) return AUDIT_FIELDS[field];
+  return String(field||'Dato')
+    .replace(/_/g,' ')
+    .replace(/([a-záéíóúñ])([A-Z])/g,'$1 $2')
+    .replace(/^./,function(letter){ return letter.toUpperCase(); });
+}
+
+// A qué registro se refiere la entrada. En una eliminación la auditoría es el
+// único rastro que queda, y antes no decía de qué paciente se trataba.
+function _auditTarget(entry, users){
+  if(entry.target_label) return entry.target_label;
+  var id = entry.entity_id || '';
+  if(!id) return '';
+  if(entry.entity_type === 'users'){
+    var user = (users||[]).find(function(u){ return u.id === id; });
+    return user ? (user.name||user.email) : 'usuario (' + id.slice(0,8) + ')';
+  }
+  if(entry.entity_type === 'pets'){
+    var pet = (db.pets||[]).find(function(p){ return p.id === id; });
+    return pet ? petDisplayName(pet) + ' · ' + petContextLine(pet) : 'ficha eliminada (' + id.slice(0,8) + ')';
+  }
+  if(entry.entity_type === 'owners'){
+    var owner = (db.owners||[]).find(function(o){ return o.id === id; });
+    return owner ? owner.name : 'tutor eliminado (' + id.slice(0,8) + ')';
+  }
+  if(entry.entity_type === 'invoices'){
+    var inv = (db.invoices||[]).find(function(i){ return i.id === id; });
+    return inv ? 'Recibo #' + (inv.number||'') : 'recibo eliminado (' + id.slice(0,8) + ')';
+  }
+  if(entry.entity_type === 'clinical_encounter'){
+    for(const pet of db.pets||[]){
+      const found = (pet.history||[]).find(function(h){ return h.id === id; });
+      if(found) return petDisplayName(pet) + ' · ' + (found.title || 'consulta');
+    }
+    return 'consulta (' + id.slice(0,8) + ')';
+  }
+  if(entry.entity_type === 'appointments' || entry.entity_type === 'groomingAppointments'){
+    var appointments = entry.entity_type === 'appointments' ? (db.appointments||[]) : (db.groomingAppointments||[]);
+    var appointment = appointments.find(function(a){ return a.id === id; });
+    if(appointment){
+      var appointmentPet = (db.pets||[]).find(function(p){ return p.id === appointment.petId; });
+      return (appointmentPet ? petDisplayName(appointmentPet) + ' · ' : '') + (appointment.date||'') + (appointment.time ? ' ' + appointment.time : '');
+    }
+  }
+  if(entry.entity_type === 'reminders'){
+    var reminder = (db.reminders||[]).find(function(r){ return r.id === id; });
+    if(reminder) return reminder.title || 'Aviso';
+  }
+  if(entry.entity_type === 'inventory'){
+    var product = (db.inventory||[]).find(function(i){ return i.id === id; });
+    if(product) return product.name || 'Producto';
+  }
+  if(entry.entity_type === 'settings' || entry.entity_type === 'sessions') return '';
+  return 'registro (' + id.slice(0,8) + ')';
+}
+
+var _auditFilters = { userId:'', action:'', entityType:'', from:'', to:'' };
+var _auditPage = 0;
+var AUDIT_PAGE_SIZE = 50;
+
+function setAuditFilter(key, value){
+  _auditFilters[key] = value;
+  _auditPage = 0;
+  openAccessManagement();
+}
+function clearAuditFilters(){
+  _auditFilters = { userId:'', action:'', entityType:'', from:'', to:'' };
+  _auditPage = 0;
+  openAccessManagement();
+}
+function auditPage(delta){
+  _auditPage = Math.max(0, _auditPage + delta);
+  openAccessManagement();
+}
+
+// Los filtros representan días de la clínica. Se envían como instantes UTC
+// calculados por el navegador para no cortar el día a las 21:00 en Argentina.
+function auditDateBoundary(dateKey, nextDay){
+  if(!dateKey) return '';
+  var parts=dateKey.split('-').map(Number);
+  if(parts.length!==3 || parts.some(function(part){ return !Number.isFinite(part); })) return '';
+  return new Date(parts[0],parts[1]-1,parts[2]+(nextDay?1:0),0,0,0,0).toISOString();
 }
 
 async function openAccessManagement(){
   if(!isAdmin()){ toast('Acceso reservado a administradores'); return; }
+  var query = new URLSearchParams({ limit:String(AUDIT_PAGE_SIZE), offset:String(_auditPage*AUDIT_PAGE_SIZE) });
+  ['userId','action','entityType'].forEach(function(key){ if(_auditFilters[key]) query.set(key, _auditFilters[key]); });
+  if(_auditFilters.from) query.set('from',auditDateBoundary(_auditFilters.from,false));
+  if(_auditFilters.to) query.set('to',auditDateBoundary(_auditFilters.to,true));
   showModal('<div class="modal-header"><h3>Accesos y auditoría</h3><button class="close-btn" onclick="closeModal()">&times;</button></div><div class="modal-body"><div class="empty-state">Cargando…</div></div>',true);
   try{
-    var results=await Promise.all([api('/api/users'),api('/api/audit?limit=100')]);
+    var results=await Promise.all([api('/api/users'),api('/api/audit?'+query.toString())]);
     var users=results[0].users||[];
     var entries=results[1].entries||[];
+    var total=results[1].total||0;
+
     var userRows=users.map(function(user){
       var own=currentUser&&currentUser.id===user.id;
       return '<tr><td><strong>'+escapeHtml(user.name||'Sin nombre')+'</strong><br><small>'+escapeHtml(user.email||'')+(own?' · Vos':'')+'</small></td>'
-        +'<td><select class="input" aria-label="Rol de '+escapeAttr(user.name||user.email||'usuario')+'" onchange="changeUserRole(\''+user.id+'\',this.value)">'
+        +'<td><select class="input" data-role-current="'+escapeAttr(user.role)+'" data-user-id="'+escapeAttr(user.id)+'" data-person-name="'+escapeAttr(user.name||user.email||'esta persona')+'" aria-label="Rol de '+escapeAttr(user.name||user.email||'usuario')+'"'
+        +' onchange="confirmUserRoleChange(this)">'
         +['admin','veterinarian','reception'].map(function(role){return '<option value="'+role+'" '+(user.role===role?'selected':'')+'>'+escapeHtml(roleLabel(role))+'</option>';}).join('')
         +'</select></td>'
-        +'<td><button class="btn btn-secondary" style="white-space:nowrap" onclick="resetUserPassword(\''+user.id+'\',\''+escapeAttr(user.name||user.email||'usuario')+'\')">Restablecer contraseña</button></td></tr>';
+        +'<td><button class="btn btn-secondary" style="white-space:nowrap" data-user-id="'+escapeAttr(user.id)+'" data-person-name="'+escapeAttr(user.name||user.email||'usuario')+'" onclick="resetUserPasswordFromButton(this)">Restablecer contraseña</button></td></tr>';
     }).join('');
+
     var auditRows=entries.map(function(entry){
-      var fields=(entry.fields||[]).length?' · Campos: '+escapeHtml((entry.fields||[]).join(', ')):'';
-      return '<div style="padding:10px 0;border-bottom:1px solid var(--border)">'
-        +'<strong>'+escapeHtml(_auditLabel(entry.action))+'</strong> · '+escapeHtml(entry.entity_type||'')
-        +'<div style="font-size:var(--fs-xs);color:var(--text-mute)">'+escapeHtml(entry.user_name||entry.user_email||'Sistema')
-        +' · '+escapeHtml(new Date(entry.created_at).toLocaleString('es-AR'))+fields+'</div></div>';
+      var fields=(entry.fields||[]).length?'<div class="audit-fields">Datos modificados: '+escapeHtml((entry.fields||[]).map(_auditFieldLabel).join(', '))+'</div>':'';
+      var target=_auditTarget(entry,users);
+      return '<div class="audit-entry">'
+        +'<div class="audit-entry-head"><strong>'+escapeHtml(_auditLabel(entry.action))+'</strong>'
+        +'<span class="tag">'+escapeHtml(_auditEntityLabel(entry.entity_type))+'</span></div>'
+        +(target?'<div class="audit-target">'+escapeHtml(target)+'</div>':'')
+        +'<div class="audit-meta">'+escapeHtml(entry.user_name||entry.user_email||'Sistema')
+        +' · '+escapeHtml(new Date(entry.created_at).toLocaleString('es-AR'))+'</div>'
+        +fields+'</div>';
     }).join('');
+
+    var userOpts='<option value="">Cualquier persona</option>'+users.map(function(u){
+      return '<option value="'+u.id+'" '+(_auditFilters.userId===u.id?'selected':'')+'>'+escapeHtml(u.name||u.email)+'</option>';}).join('');
+    var actionOpts='<option value="">Cualquier acción</option>'+Object.keys(AUDIT_ACTIONS).map(function(a){
+      return '<option value="'+a+'" '+(_auditFilters.action===a?'selected':'')+'>'+escapeHtml(AUDIT_ACTIONS[a])+'</option>';}).join('');
+    var entityOpts='<option value="">Cualquier tipo</option>'+Object.keys(AUDIT_ENTITIES).map(function(t){
+      return '<option value="'+t+'" '+(_auditFilters.entityType===t?'selected':'')+'>'+escapeHtml(AUDIT_ENTITIES[t])+'</option>';}).join('');
+
+    var from=_auditPage*AUDIT_PAGE_SIZE+1;
+    var to=Math.min(from+entries.length-1, total);
+    var hasFilters=Object.keys(_auditFilters).some(function(k){ return _auditFilters[k]; });
+
     showModal('<div class="modal-header"><h3>Accesos y auditoría</h3><button class="close-btn" onclick="closeModal()">&times;</button></div>'
       +'<div class="modal-body"><div class="settings-section"><div class="settings-label">Usuarios</div>'
       +(users.length?'<div class="table-wrap"><table><thead><tr><th>Persona</th><th>Rol</th><th></th></tr></thead><tbody>'+userRows+'</tbody></table></div>':'<div class="empty-state">Sin usuarios</div>')
-      +'</div><div class="settings-section"><div class="settings-label">Última actividad</div>'
-      +(entries.length?auditRows:'<div class="empty-state">Sin actividad registrada</div>')+'</div></div>',true);
+      +'</div><div class="settings-section"><div class="settings-label">Actividad</div>'
+      +'<div class="audit-filters">'
+      +'<select class="input" aria-label="Filtrar por persona" onchange="setAuditFilter(\'userId\',this.value)">'+userOpts+'</select>'
+      +'<select class="input" aria-label="Filtrar por acción" onchange="setAuditFilter(\'action\',this.value)">'+actionOpts+'</select>'
+      +'<select class="input" aria-label="Filtrar por tipo" onchange="setAuditFilter(\'entityType\',this.value)">'+entityOpts+'</select>'
+      +'<input class="input" type="date" aria-label="Desde" value="'+escapeAttr(_auditFilters.from)+'" onchange="setAuditFilter(\'from\',this.value)">'
+      +'<input class="input" type="date" aria-label="Hasta" value="'+escapeAttr(_auditFilters.to)+'" onchange="setAuditFilter(\'to\',this.value)">'
+      +(hasFilters?'<button class="btn btn-sm" onclick="clearAuditFilters()">Limpiar</button>':'')
+      +'</div>'
+      +(entries.length?auditRows:'<div class="empty-state">Sin actividad con estos filtros</div>')
+      +(total>0?'<div class="audit-pager">'
+        +'<button class="btn btn-sm" '+(_auditPage===0?'disabled':'')+' onclick="auditPage(-1)">Anteriores</button>'
+        +'<span>'+from+'–'+to+' de '+total+'</span>'
+        +'<button class="btn btn-sm" '+(to>=total?'disabled':'')+' onclick="auditPage(1)">Siguientes</button>'
+        +'</div>':'')
+      +'</div></div>',true);
   }catch(e){
     toast(e.message||'No se pudieron cargar los accesos');
     openSettings();
   }
+}
+
+// El <select> de rol aplicaba el cambio al soltarlo. En el celular alcanzaba un
+// scroll encima del desplegable para degradar a alguien sin querer. Ahora
+// confirma, y si se cancela vuelve al valor anterior.
+function confirmUserRoleChange(select){
+  var userId = select.dataset.userId;
+  var personName = select.dataset.personName || 'esta persona';
+  var previous = select.dataset.roleCurrent;
+  var next = select.value;
+  if(previous === next) return;
+  var own = currentUser && currentUser.id === userId;
+  var message = own
+    ? '¿Cambiar tu propio rol a ' + roleLabel(next) + '? Vas a perder los permisos de administración en cuanto se aplique.'
+    : '¿Cambiar el rol de ' + personName + ' de ' + roleLabel(previous) + ' a ' + roleLabel(next) + '?';
+  showConfirm(message,
+    function(){ changeUserRole(userId, next); },
+    { okLabel:'Cambiar rol', okClass:'btn-primary' });
+  // Si se cancela el diálogo, el <select> tiene que volver solo: showConfirm no
+  // avisa del cancelar, así que se restaura ya y se vuelve a pintar al aplicar.
+  select.value = previous;
 }
 
 async function changeUserRole(userId,role){
@@ -271,11 +447,20 @@ async function changeUserRole(userId,role){
     var updated=await api('/api/users/'+encodeURIComponent(userId)+'/role',{method:'PUT',body:{role:role}});
     if(currentUser&&currentUser.id===updated.id)currentUser.role=updated.role;
     toast('Rol actualizado');
-    await openAccessManagement();
+    if(currentUser&&currentUser.id===updated.id&&!isAdmin()){
+      closeModal();
+      openSettings();
+    }else{
+      await openAccessManagement();
+    }
   }catch(e){
     toast(e.message||'No se pudo cambiar el rol');
     await openAccessManagement();
   }
+}
+
+function resetUserPasswordFromButton(button){
+  return resetUserPassword(button.dataset.userId,button.dataset.personName||'usuario');
 }
 
 async function resetUserPassword(userId,label){
