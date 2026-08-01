@@ -757,6 +757,25 @@ async function getPetsSummary(env: Env): Promise<JsonObject[]> {
   });
 }
 
+const D1_IN_QUERY_BATCH_SIZE = 80;
+
+async function selectRowsByIds(
+  env: Env,
+  sqlBeforeIds: string,
+  ids: readonly string[],
+): Promise<JsonObject[]> {
+  if (!ids.length) return [];
+  const statements = [];
+  for (let offset = 0; offset < ids.length; offset += D1_IN_QUERY_BATCH_SIZE) {
+    const batchIds = ids.slice(offset, offset + D1_IN_QUERY_BATCH_SIZE);
+    statements.push(env.DB.prepare(
+      `${sqlBeforeIds} (${batchIds.map(() => '?').join(',')})`,
+    ).bind(...batchIds));
+  }
+  const results = await env.DB.batch<JsonObject>(statements);
+  return results.flatMap((result) => result.results ?? []);
+}
+
 async function getCoreData(env: Env, dateKey: string): Promise<JsonObject> {
   const [appointmentResult, groomingResult, reminderResult, openHistoryResult, pendingStudyResult, vaccineResult, dewormingResult, appSettings, followupActions] = await Promise.all([
     env.DB.prepare('SELECT * FROM appointments WHERE date = ? ORDER BY time').bind(dateKey).all<JsonObject>(),
@@ -778,24 +797,20 @@ async function getCoreData(env: Env, dateKey: string): Promise<JsonObject> {
     ...clinicalRows.map(row=>stringValue(row.pet_id)),
   ].filter(Boolean))];
   if(!petIds.length)return {pets:[],owners:[],appointments,groomingAppointments,reminders,inventory:[],invoices:[],followupActions,...appSettings,partial:true};
-  const placeholders=petIds.map(()=>'?').join(',');
-  const [petResult,ownerLinkResult]=await Promise.all([
-    env.DB.prepare(`SELECT p.id,p.name,p.species,p.breed,p.sex,p.birthdate,p.weight,p.deceasedAt,p.inactiveAt,p.inactiveReason,p.revision,
+  const [petRows,links]=await Promise.all([
+    selectRowsByIds(env, `SELECT p.id,p.name,p.species,p.breed,p.sex,p.birthdate,p.weight,p.deceasedAt,p.inactiveAt,p.inactiveReason,p.revision,
       COALESCE((SELECT MAX(h.date) FROM pet_history h WHERE h.pet_id = p.id),'') AS lastVisit
-      FROM pets p WHERE p.id IN (${placeholders})`).bind(...petIds).all<JsonObject>(),
-    env.DB.prepare(`SELECT pet_id,owner_id FROM pet_owners WHERE pet_id IN (${placeholders})`).bind(...petIds).all<JsonObject>(),
+      FROM pets p WHERE p.id IN`, petIds),
+    selectRowsByIds(env, 'SELECT pet_id,owner_id FROM pet_owners WHERE pet_id IN', petIds),
   ]);
-  const links=ownerLinkResult.results||[];
   const ownerIds=[...new Set(links.map(row=>stringValue(row.owner_id)).filter(Boolean))];
-  const owners=ownerIds.length
-    ? (await env.DB.prepare(`SELECT * FROM owners WHERE id IN (${ownerIds.map(()=>'?').join(',')})`).bind(...ownerIds).all<JsonObject>()).results||[]
-    : [];
+  const owners=await selectRowsByIds(env, 'SELECT * FROM owners WHERE id IN', ownerIds);
   const withoutPetId=({pet_id:_petId,...row}:JsonObject):JsonObject=>row;
   const histories=groupBy(openHistoryResult.results||[],'pet_id');
   const studies=groupBy(pendingStudyResult.results||[],'pet_id');
   const vaccines=groupBy(vaccineResult.results||[],'pet_id');
   const dewormings=groupBy(dewormingResult.results||[],'pet_id');
-  const pets=(petResult.results||[]).map(pet=>({...pet,
+  const pets=petRows.map(pet=>({...pet,
     history:(histories[stringValue(pet.id)]||[]).map(withoutPetId),
     vaccines:(vaccines[stringValue(pet.id)]||[]).map(withoutPetId),
     dewormings:(dewormings[stringValue(pet.id)]||[]).map(withoutPetId),

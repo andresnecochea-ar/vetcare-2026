@@ -1437,6 +1437,21 @@ describe('VetCare Worker', () => {
       .bind(pet.id).first()).total;
     expect(historyCountAfter).toBe(historyCountBefore);
     expect((await jsonResponse(`/api/pets/${pet.id}`, { headers: authenticated })).body.history.length).toBe(historyCountBefore);
+
+    // La carga inicial debe dividir los IN extensos para no superar el límite
+    // de parámetros de D1 cuando producción acumula muchos pendientes.
+    const bulkPetIds = Array.from({ length: 85 }, (_, index) => `pet-core-bulk-${index}`);
+    const bulkStatements = bulkPetIds.flatMap((id, index) => [
+      env.DB.prepare('INSERT INTO pets (id, name) VALUES (?, ?)').bind(id, `Paciente masivo ${index}`),
+      env.DB.prepare('INSERT INTO reminders (id, title, petId, date) VALUES (?, ?, ?, ?)')
+        .bind(`reminder-core-bulk-${index}`, 'Control pendiente', id, '2026-08-01'),
+    ]);
+    for (let offset = 0; offset < bulkStatements.length; offset += 50) {
+      await env.DB.batch(bulkStatements.slice(offset, offset + 50));
+    }
+    const largeCoreSnapshot = await jsonResponse('/api/data?scope=core&date=2026-08-01', { headers: authenticated });
+    expect(largeCoreSnapshot.response.status).toBe(200);
+    expect(largeCoreSnapshot.body.pets.filter(item => item.id.startsWith('pet-core-bulk-'))).toHaveLength(85);
   });
 
   it('prefiere el celular sobre el fijo cuando hay varios números pegados', async () => {
