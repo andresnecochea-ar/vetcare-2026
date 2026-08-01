@@ -3306,3 +3306,19 @@ html, body { max-width:100%; overflow-x:hidden; }
   td .actions { flex-direction: column; align-items: stretch; }
   td .actions .btn { width: 100%; justify-content: center; }
 }
+  .skip-link { position:fixed;left:12px;top:8px;z-index:200;transform:translateY(-160%);background:var(--surface);color:var(--text);padding:10px 14px;border:2px solid var(--accent);border-radius:var(--radius-sm); }
+  .skip-link:focus { transform:translateY(0); }
+  .appointment-overlap { box-shadow:inset 4px 0 var(--danger);background:var(--danger-soft); }
+  .field-hint { display:block;margin-top:5px;color:var(--text-mute);font-size:var(--fs-xs); }
+  .field-hint.is-warning { color:var(--danger);font-weight:var(--fw-bold); }
+  .list-more { display:flex;align-items:center;justify-content:center;gap:12px;margin:18px 0;color:var(--text-mute); }
+  .sanitary-plan-summary { display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:10px 0 14px; }
+  .sanitary-plan-card { display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:12px;background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--radius-sm); }
+  .sanitary-history summary { cursor:pointer;font-weight:var(--fw-bold);padding:10px 0; }
+  .birthday-day { margin-bottom:24px; }
+  .stat-button { text-align:left;color:inherit;font:inherit;cursor:pointer;width:100%; }
+  .stat-button:hover { border-color:var(--accent);transform:translateY(-1px); }
+  .dashboard-action-card { cursor:pointer; }
+  .copy-code { font:700 1.3rem monospace;letter-spacing:.12em;background:var(--bg-soft);padding:16px;border-radius:var(--radius-sm);text-align:center;margin-top:12px; }
+  .backup-recency { padding:9px 12px;border-radius:var(--radius-sm);background:var(--success-soft);margin:8px 0; }
+  .backup-recency.is-warning { background:var(--warning-soft);color:var(--warning-strong); }

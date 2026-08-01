@@ -7,7 +7,7 @@ function showModal(html, large) {
   const c = document.getElementById('modalContainer');
   const active = document.activeElement;
   if (active && active !== document.body && !c.contains(active)) _modalReturnFocus = active;
-  c.innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal ${large?'modal-lg':''}" role="dialog" aria-modal="true">${html}</div></div>`;
+  c.innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this){const cancel=this.querySelector('[data-modal-cancel]');cancel?cancel.click():closeModal()}"><div class="modal ${large?'modal-lg':''}" role="dialog" aria-modal="true">${html}</div></div>`;
   focusFirstField(c);
 }
 
@@ -63,7 +63,12 @@ document.addEventListener('keydown', event => {
   }
   const modal = document.querySelector('#modalContainer .modal');
   if (!modal) return;
-  if (event.key === 'Escape') { event.preventDefault(); closeModal(); return; }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    const cancel = modal.querySelector('[data-modal-cancel]');
+    cancel ? cancel.click() : closeModal();
+    return;
+  }
   // Ctrl+Enter guarda sin ir hasta el botón. Enter solo no alcanza: en un
   // <textarea> de tratamiento se necesita para hacer un salto de línea.
   if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
@@ -310,6 +315,12 @@ function professionalFilterOptions(records, idKey, nameKey, selected, includeMin
 
 function escapeHtml(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
 function escapeAttr(s) { return escapeHtml(s); }
+
+function autoGrow(field) {
+  if (!field) return;
+  field.style.height = 'auto';
+  field.style.height = Math.min(Math.max(field.scrollHeight, 76), 260) + 'px';
+}
 
 // ========================================
 // [23] SEED DEMO DATA — datos de ejemplo (solo primer arranque)

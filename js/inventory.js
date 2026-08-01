@@ -11,19 +11,56 @@ function invNextExpiry(it){
 }
 function _fmtMoney(v){ return '$'+parseFloat(v||0).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
+function consumeInventoryProduct(productId, lotId, quantity) {
+  const item = (db.inventory || []).find(product => product.id === productId);
+  let remaining = Number(quantity) || 0;
+  if (!item || remaining <= 0) return false;
+  const lots = (item.lots || []).slice().sort((a,b) => {
+    if (lotId && a.id === lotId) return -1;
+    if (lotId && b.id === lotId) return 1;
+    return String(a.expiry||'9999-12-31').localeCompare(String(b.expiry||'9999-12-31'));
+  });
+  if (lots.reduce((sum,lot)=>sum+(Number(lot.qty)||0),0) < remaining) {
+    toast(`Stock insuficiente de ${item.name}; el registro se guardó sin descontar`, 'warn');
+    return false;
+  }
+  lots.forEach(lot => {
+    if (remaining <= 0) return;
+    const used = Math.min(Number(lot.qty)||0, remaining);
+    lot.qty = (Number(lot.qty)||0) - used;
+    remaining -= used;
+  });
+  item.lots = (item.lots || []).filter(lot => Number(lot.qty) > 0);
+  return true;
+}
+
+let inventoryQuery = '';
+let inventoryCategory = '';
+
+function setInventoryFilter(key,value) {
+  if (key === 'query') inventoryQuery = value;
+  else inventoryCategory = value;
+  render();
+}
+
 // ---- INVENTARIO: solo stock de productos ya existentes ----
 function renderInventory() {
+  const categories = [...new Set((db.inventory||[]).map(item=>item.category).filter(Boolean))].sort(compareEs);
+  const query = normalizedRecordName(inventoryQuery);
+  const items = (db.inventory||[]).filter(item => (!inventoryCategory || item.category===inventoryCategory)
+    && (!query || normalizedRecordName([item.name,item.category,item.supplier].join(' ')).includes(query)));
   return `
     <div class="page-header">
-      <div class="title"><small>Control de stock</small><h1>Inventario</h1></div>
+      <div class="title"><small>Control de stock</small><h1>Inventario</h1></div>${canWriteEntity('inventory')?'<button class="btn btn-primary" onclick="openInvModal()">+ Nuevo producto</button>':''}
     </div>
+    <div class="list-filters"><label>Buscar<input class="input" value="${escapeAttr(inventoryQuery)}" oninput="inventoryQuery=this.value;clearTimeout(window._inventoryTimer);window._inventoryTimer=setTimeout(render,180)" placeholder="Producto o proveedor"></label><label>Categoría<select class="input" onchange="setInventoryFilter('category',this.value)"><option value="">Todas</option>${categories.map(category=>`<option ${category===inventoryCategory?'selected':''}>${escapeHtml(category)}</option>`).join('')}</select></label><span class="list-filter-count">${items.length} de ${db.inventory.length}</span></div>
     ${db.inventory.length === 0
-      ? '<div class="empty-state">No hay productos cargados. Definí primero el catálogo desde Opciones › Catálogo de productos.</div>'
+      ? '<div class="empty-state">No hay productos cargados. Usá “+ Nuevo producto” para crear el primero.</div>'
       : `<div class="table-wrap">
       <table>
         <thead><tr><th>Producto</th><th class="col-sec">Categoría</th><th>Stock</th><th class="col-sec">Mínimo</th><th class="col-sec">Precio</th><th class="col-sec">Próx. venc.</th><th>Stock</th></tr></thead>
         <tbody>
-          ${db.inventory.map(i => {
+          ${items.map(i => {
             const total = invTotalStock(i);
             const low = total <= parseInt(i.minStock||0);
             const next = invNextExpiry(i);
@@ -79,6 +116,7 @@ function openCatalog() {
 
 // ---- Alta / edicion de producto ----
 function openInvModal(id) {
+  if(!canWriteEntity('inventory')){ toast('Tu rol no permite modificar el inventario'); return; }
   const i = id ? db.inventory.find(x=>x.id===id) : { id: uid(), lots: [] };
   const isNew = !id;
   const cats = ['Medicamento','Vacuna','Alimento','Insumo','Accesorio'];

@@ -44,7 +44,7 @@ function toast(msg, type = '') {
   toast._t = setTimeout(() => t.classList.remove('show'), 2800);
 }
 
-function exportVetcare(type) {
+async function exportVetcare(type) {
   type = type || 'full';
   const meta = { _meta: {
     app: 'VetCare', version: '2.0',
@@ -61,15 +61,38 @@ function exportVetcare(type) {
       settings: 'Preferencias de la aplicacion'
     }
   }};
+  let source=db;
+  if(type==='full'&&apiConfigured()&&authToken){
+    try{
+      source=await api('/api/data');
+      // Si hay cambios locales pendientes o en conflicto, se superponen a la
+      // copia del servidor para que el respaldo no pierda justo ese trabajo.
+      for(const table of _ENTITY_TABLES){
+        const local=db[table]||[];const previous=_lastSnapshot[table]||[];
+        const localIds=new Set(local.map(item=>item.id));
+        source[table]=(source[table]||[]).filter(item=>localIds.has(item.id)||!previous.some(old=>old.id===item.id));
+        for(const item of local){
+          const old=previous.find(entry=>entry.id===item.id);
+          if(old&&_sameSnapshotValue(item,old))continue;
+          const index=source[table].findIndex(entry=>entry.id===item.id);
+          if(index===-1)source[table].push(_cloneSyncValue(item));else source[table][index]=_cloneSyncValue(item);
+        }
+      }
+      if(canManageSettings()&&(!_sameSnapshotValue(db.settings,_lastSnapshot.settings)||db.clinicName!==_lastSnapshot.clinicName)){
+        source.settings=_cloneSyncValue(db.settings);source.clinicName=db.clinicName;
+      }
+    }catch(e){toast('No se pudo armar el respaldo completo desde el servidor','error');return;}
+  }
   const data = (type === 'lite')
-    ? { ...db, pets: db.pets.map(p => ({...p, images:[]})), ...meta }
-    : { ...db, ...meta };
+    ? { ...source, pets: source.pets.map(p => ({...p, images:[]})), ...meta }
+    : { ...source, ...meta };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = (db.clinicName || 'vetcare').toLowerCase().replace(/\s+/g, '-') + '-' + localDateKey() + '.vetcare';
   a.click(); URL.revokeObjectURL(url);
+  try { localStorage.setItem('vetcare_last_backup', new Date().toISOString()); } catch(e) {}
   toast('Archivo .vetcare exportado');
 }
 
@@ -109,6 +132,11 @@ document.querySelectorAll('.nav-item').forEach(el => {
 
 function render() {
   const main = document.getElementById('mainContent');
+  if(apiConfigured() && !dataHydrated && currentView!=='today') {
+    main.innerHTML='<div class="empty-state">Cargando los registros de la clínica…</div>';
+    hydrateFullData();
+    return;
+  }
   updateReceiptModuleVisibility();
   updateBadges();
   switch (currentView) {

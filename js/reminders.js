@@ -87,8 +87,9 @@ function getUpcomingBirthdays(days = 30) {
   today.setHours(0,0,0,0);
   const result = [];
   db.pets.forEach(pet => {
-    if (!pet.birthdate) return;
-    const bd = new Date(pet.birthdate);
+    if (!pet.birthdate || pet.deceasedAt || petIsInactive(pet)) return;
+    const [year,month,day] = pet.birthdate.split('-').map(Number);
+    const bd = new Date(year, month - 1, day);
     const thisYear = new Date(today.getFullYear(), bd.getMonth(), bd.getDate());
     if (thisYear < today) thisYear.setFullYear(today.getFullYear() + 1);
     const diff = Math.floor((thisYear - today) / (1000*60*60*24));
@@ -97,6 +98,17 @@ function getUpcomingBirthdays(days = 30) {
     }
   });
   return result.sort((a,b) => a.daysUntil - b.daysUntil);
+}
+
+let birthdayWindowDays = 7;
+
+function setBirthdayWindow(days) { birthdayWindowDays = Number(days) || 7; render(); }
+
+async function copyBirthdayContacts(dateKey) {
+  const pets = getUpcomingBirthdays(birthdayWindowDays).filter(p => localDateKey(p.nextBirthday) === dateKey);
+  const lines = pets.flatMap(p => petOwners(p).map(o => `${p.name} · ${o.name} · ${o.phone || o.altPhone || o.email || 'sin contacto'}`));
+  try { await navigator.clipboard.writeText(lines.join('\n')); toast('Contactos del día copiados'); }
+  catch (e) { toast('No se pudieron copiar los contactos', 'error'); }
 }
 
 var DEFAULT_BIRTHDAY_TEMPLATE = '🎉 ¡Hola! [nombre] está por cumplir [edad] años el [fecha] 🎂\n\nDesde la veterinaria le queremos regalar un 15% de descuento en su próximo control y baño. ¡Esperamos su visita!';
@@ -121,15 +133,21 @@ function saveBirthdayTemplate(){
 }
 
 function renderBirthdays() {
-  const upcoming = getUpcomingBirthdays(60);
+  const upcoming = getUpcomingBirthdays(birthdayWindowDays);
+  const groups = upcoming.reduce((map,pet) => {
+    const key = localDateKey(pet.nextBirthday);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(pet);
+    return map;
+  }, new Map());
   return `
     <div class="page-header">
       <div class="title"><small>Marketing y fidelización</small><h1>Cumpleaños próximos</h1></div>
     </div>
-    <p style="margin-bottom:18px;color:var(--text-soft)">Mascotas que cumplen años en los próximos 60 días. Aprovecha para enviar promociones y descuentos.</p>
-    ${upcoming.length === 0 ? '<div class="empty-state">No hay cumpleaños próximos en los siguientes 60 días</div>' :
-      `<div class="pets-grid">
-        ${upcoming.map(pet => {
+    <div class="list-filters"><label>Ventana<select class="input" onchange="setBirthdayWindow(this.value)"><option value="7" ${birthdayWindowDays===7?'selected':''}>Próximos 7 días</option><option value="30" ${birthdayWindowDays===30?'selected':''}>Próximos 30 días</option><option value="60" ${birthdayWindowDays===60?'selected':''}>Próximos 60 días</option></select></label><span class="list-filter-count">${upcoming.length} pacientes activos</span></div>
+    ${upcoming.length === 0 ? `<div class="empty-state">No hay cumpleaños en los próximos ${birthdayWindowDays} días</div>` :
+      [...groups.entries()].map(([dateKey,pets]) => `<section class="birthday-day"><div class="section-title"><h3>${dateKey===localDateKey()?'Hoy':formatDate(dateKey)} <span class="count">${pets.length}</span></h3><button class="btn btn-sm" onclick="copyBirthdayContacts('${dateKey}')">Copiar contactos</button></div><div class="pets-grid">
+        ${pets.map(pet => {
           const owners = (pet.ownerIds||[]).map(id => db.owners.find(o=>o.id===id)).filter(Boolean);
           const promoMsg = fillBirthdayMsg(pet);
           return `<div class="pet-card" onclick="openPetDetail('${pet.id}')">
@@ -149,7 +167,7 @@ function renderBirthdays() {
             </div>
           </div>`;
         }).join('')}
-      </div>`
+      </div></section>`).join('')
     }
     <div class="card" style="margin-top:24px">
       <h3>Plantilla de mensaje promocional</h3>

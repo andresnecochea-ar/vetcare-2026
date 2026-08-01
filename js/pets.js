@@ -1,6 +1,9 @@
 // En movil arranca en lista (mas comodo); en desktop en grilla.
 let petViewMode = (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) ? 'list' : 'grid';
 let petsShowArchive = false;
+let petsIncludeInactive = false;
+let petVisibleLimit = 100;
+const PET_PAGE_SIZE = 100;
 
 // ---------------------------------------------------------------------
 // IDENTIFICACIÓN DEL PACIENTE
@@ -34,13 +37,32 @@ function petDisplayName(pet) {
   return String((pet && pet.name) || '').trim() || '(sin nombre)';
 }
 
+function normalizedRecordName(value) {
+  return String(value || '').trim().toLocaleLowerCase('es')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+}
+
 // Fecha de la última atención registrada (YYYY-MM-DD) o '' si no hay ninguna.
 function petLastVisit(pet) {
-  let last = '';
+  let last = pet?.lastVisit || '';
   for (const entry of (pet && pet.history) || []) {
     if (entry.date && entry.date > last) last = entry.date;
   }
   return last;
+}
+
+function petIsInactive(pet) {
+  if (!pet || pet.deceasedAt) return true;
+  if (pet.inactiveAt) return true;
+  const last = petLastVisit(pet);
+  return Boolean(last && (yearsSince(last) ?? 0) >= 3);
+}
+
+function petActivityStatus(pet) {
+  if (pet.deceasedAt) return 'Fallecido';
+  if (pet.inactiveAt) return 'Inactivo';
+  if (petIsInactive(pet)) return 'Inactivo por antigüedad';
+  return 'Activo';
 }
 
 // Línea secundaria: especie, raza, tutor y última visita. Es lo mínimo para
@@ -54,6 +76,7 @@ function petContextLine(pet, index) {
   const last = petLastVisit(pet);
   parts.push(last ? 'últ. visita ' + formatDate(last) : 'sin visitas');
   if (pet.deceasedAt) parts.unshift('FALLECIDO');
+  else if (petIsInactive(pet)) parts.unshift('INACTIVO');
   return parts.join(' · ');
 }
 
@@ -111,6 +134,26 @@ function renderVitalWarnings() {
     temp: document.getElementById('hTemp')?.value,
     hr: document.getElementById('hHR')?.value
   });
+  renderWeightComparison();
+}
+
+function previousWeightRecord(pet, beforeDate) {
+  return ((pet && pet.history) || [])
+    .filter(entry => entry.weight && (!beforeDate || !entry.date || entry.date <= beforeDate))
+    .sort((a,b) => String(b.date||'').localeCompare(String(a.date||'')))[0] || null;
+}
+
+function renderWeightComparison() {
+  const box = document.getElementById('hWeightComparison');
+  const pet = (db.pets || []).find(item => item.id === currentPetId);
+  if (!box || !pet) return;
+  const previous = previousWeightRecord(pet, document.getElementById('hDate')?.value || '');
+  if (!previous) { box.textContent = 'Sin peso anterior registrado'; box.className = 'field-hint'; return; }
+  const current = Number.parseFloat(document.getElementById('hWeight')?.value || '');
+  const prior = Number.parseFloat(previous.weight);
+  const change = Number.isFinite(current) && prior > 0 ? ((current-prior)/prior)*100 : null;
+  box.textContent = `Anterior: ${prior.toLocaleString('es-AR')} kg (${formatDate(previous.date)})${change===null?'':` · ${change>=0?'+':''}${change.toFixed(1)} %`}`;
+  box.className = 'field-hint' + (change !== null && Math.abs(change) >= 10 ? ' is-warning' : '');
 }
 
 // Items para pickerOne() y assocPicker(). Por defecto excluye fallecidos, pero
@@ -121,7 +164,7 @@ function petPickerItems(options) {
   const keep = new Set([opts.keepId, ...(opts.keepIds || [])].filter(Boolean));
   const index = ownersById();
   return (db.pets || [])
-    .filter(p => !p.deceasedAt || keep.has(p.id))
+    .filter(p => (!petIsInactive(p) && !p.deceasedAt) || keep.has(p.id))
     .map(p => ({
       id: p.id,
       label: petDisplayName(p),
@@ -160,7 +203,8 @@ function renderPets() {
   const archivedPets = db.pets.filter(p => p.deceasedAt);
   if (petsShowArchive) return renderPetsArchive(archivedPets);
 
-  const activePets = db.pets.filter(p => !p.deceasedAt);
+  const activePets = db.pets.filter(p => !p.deceasedAt && (petsIncludeInactive || !petIsInactive(p)));
+  const inactiveCount = db.pets.filter(p => !p.deceasedAt && petIsInactive(p)).length;
   const species = [...new Set(activePets.map(p=>p.species).filter(Boolean))];
   return `
     <div class="page-header">
@@ -195,6 +239,8 @@ function renderPets() {
         ${PET_SORTS.map(s=>`<option value="${s.id}" ${petSortMode===s.id?'selected':''}>${s.label}</option>`).join('')}
       </select>
       <button class="btn btn-sm" onclick="clearPetFilters()">${iconX()} Limpiar</button>
+      <label class="settings-toggle compact"><input type="checkbox" ${petsIncludeInactive?'checked':''} onchange="petsIncludeInactive=this.checked;petVisibleLimit=PET_PAGE_SIZE;render()"><span>Incluir inactivos (${inactiveCount})</span></label>
+      ${canEditClinical() && inactiveCount ? `<button class="btn btn-sm" onclick="openInactiveReview()">Revisar inactivos</button>` : ''}
       ${archivedPets.length ? `<button class="btn btn-sm" style="margin-left:auto" onclick="togglePetsArchive(true)">Archivo (${archivedPets.length})</button>` : ''}
     </div>
     <div id="petsGrid">
@@ -291,6 +337,41 @@ async function deleteSelectedArchivedPets() {
   });
 }
 
+let inactiveReviewSelected = new Set();
+
+function openInactiveReview() {
+  const candidates = db.pets
+    .filter(p => !p.deceasedAt && !p.inactiveAt && petIsInactive(p))
+    .sort((a,b) => String(petLastVisit(a)).localeCompare(String(petLastVisit(b))));
+  const shown = candidates.slice(0, 100);
+  const rows = shown.map(p => `<tr>
+    <td><input type="checkbox" ${inactiveReviewSelected.has(p.id)?'checked':''} onchange="if(this.checked)inactiveReviewSelected.add('${p.id}');else inactiveReviewSelected.delete('${p.id}')"></td>
+    <td><button class="link-inline" onclick="closeModal();openPetDetail('${p.id}')">${escapeHtml(petDisplayName(p))}</button></td>
+    <td>${petLastVisit(p) ? formatDate(petLastVisit(p)) : 'Sin visitas'}</td>
+    <td>${escapeHtml(petOwnerNames(p)[0] || 'Sin tutor')}</td>
+  </tr>`).join('');
+  showModal(`<div class="modal-header"><div><small>Revisión por tandas</small><h2>Pacientes sin atención hace 3 años</h2></div><button class="close-btn" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body"><p>Se excluyen por defecto de búsquedas, avisos y cumpleaños. Confirmalos como inactivos para dejar registrado el criterio.</p>
+    ${shown.length ? `<div class="table-wrap"><table><thead><tr><th></th><th>Paciente</th><th>Última visita</th><th>Tutor</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty-state">No quedan pacientes para revisar.</div>'}
+    ${candidates.length>shown.length?`<small>Se muestran 100 de ${candidates.length}; confirmá esta tanda para continuar.</small>`:''}</div>
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" ${shown.length?'':'disabled'} onclick="confirmInactiveReview()">Marcar seleccionados inactivos</button></div>`, true);
+}
+
+function confirmInactiveReview() {
+  const ids = new Set(inactiveReviewSelected);
+  db.pets.forEach(p => {
+    if (ids.has(p.id)) {
+      p.inactiveAt = localDateKey();
+      p.inactiveReason = 'Sin atención registrada en los últimos 3 años';
+    }
+  });
+  const total = ids.size;
+  inactiveReviewSelected = new Set();
+  saveDB(`${total} paciente${total===1?'':'s'} marcado${total===1?'':'s'} como inactivo${total===1?'':'s'}`);
+  closeModal();
+  render();
+}
+
 function setPetView(mode) {
   petViewMode = mode;
   _filterPetsRun();
@@ -303,6 +384,11 @@ function clearPetFilters() {
   ['petSearch','filterSpecies','filterSex','filterChronic'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
+  _filterPetsRun();
+}
+
+function showMorePets() {
+  petVisibleLimit += PET_PAGE_SIZE;
   _filterPetsRun();
 }
 
@@ -324,6 +410,7 @@ function _filterPetsRun() {
   const index = ownersById();
   const filtered = db.pets.filter(p => {
     if (p.deceasedAt) return false;
+    if (!petsIncludeInactive && petIsInactive(p)) return false;
     // El tutor entra en la búsqueda: en el mostrador se pregunta por "el perro
     // de Poinsot" mucho más seguido que por la raza.
     if (q) {
@@ -343,8 +430,13 @@ function _filterPetsRun() {
 }
 
 function renderPetItems(pets) {
-  if (petViewMode === 'list') return renderPetList(pets);
-  return `<div class="pets-grid">${pets.length===0?`<div class="empty-state" style="grid-column:1/-1"><div class="ico">${icon('paw')}</div>Sin pacientes registrados.</div>`:pets.map(petCardHTML).join('')}</div>`;
+  const shown = pets.slice(0, petVisibleLimit);
+  const content = petViewMode === 'list'
+    ? renderPetList(shown)
+    : `<div class="pets-grid">${shown.length===0?`<div class="empty-state" style="grid-column:1/-1"><div class="ico">${icon('paw')}</div>Sin pacientes registrados.</div>`:shown.map(petCardHTML).join('')}</div>`;
+  return content + (pets.length > shown.length
+    ? `<div class="list-more"><button class="btn" onclick="showMorePets()">Ver ${Math.min(PET_PAGE_SIZE,pets.length-shown.length)} más</button><small>${shown.length} de ${pets.length}</small></div>`
+    : '');
 }
 
 function renderPetList(pets) {
@@ -355,7 +447,7 @@ function renderPetList(pets) {
     <tbody>${pets.map(p => {
       const owners = petOwners(p, index);
       const age = p.birthdate ? calcAge(p.birthdate) : '—';
-      const statusTag = p.chronicConditions ? '<span class="tag danger">Crónico</span>' : p.allergies ? '<span class="tag warning">Alergia</span>' : '<span class="tag">OK</span>';
+      const statusTag = petIsInactive(p) ? '<span class="tag">Inactivo</span>' : p.chronicConditions ? '<span class="tag danger">Crónico</span>' : p.allergies ? '<span class="tag warning">Alergia</span>' : '<span class="tag">Activo</span>';
       return `<tr>
         <td class="col-sec"><div class="pet-mini-avatar${p.photo?'':' is-silhouette'}" style="${petPhotoStyle(p)}"></div></td>
         <td data-primary><button type="button" class="link-cell" onclick="openPetDetail('${p.id}')">${escapeHtml(petDisplayName(p))}</button></td>
@@ -405,6 +497,7 @@ function petCardHTML(p) {
         <div class="meta">${escapeHtml(p.species || '—')} · ${escapeHtml(p.breed || '—')}</div>
         <div class="meta">${age} ${p.sex ? '· ' + escapeHtml(p.sex) : ''}</div>
         <div class="tags">
+          ${petIsInactive(p) ? '<span class="tag">Inactivo</span>' : ''}
           ${petAlertBadgeHTML(p, true)}
           ${owners.length ? `<button type="button" class="tag tag-link" onclick="event.stopPropagation();openOwnerModal('${owners[0].id}')">${escapeHtml(owners[0].name)}${owners.length > 1 ? ` +${owners.length-1}` : ''}</button>` : ''}
           ${p.allergies ? '<span class="tag warning">Alergias</span>' : ''}
@@ -417,8 +510,9 @@ function petCardHTML(p) {
 
 function attachPetListeners() {}
 
-function openPetModal(id) {
-  const pet = id ? db.pets.find(p => p.id === id) : { id: uid(), ownerIds: [] };
+async function openPetModal(id, preselectedOwnerId, draft) {
+  const pet = id ? await ensurePetFull(id) : (draft || { id: uid(), ownerIds: preselectedOwnerId ? [preselectedOwnerId] : [] });
+  if (!pet) return;
   const isNew = !id;
   const clinicalDisabled = canEditClinical() ? '' : ' disabled';
   const ownerItems = ownerPickerItems().map(it => ({ id:it.id, label:it.label + ' · ' + it.sub, search:it.search }));
@@ -457,9 +551,14 @@ function openPetModal(id) {
           <span class="field-error"></span>
         </div>
       </div>
+      <div class="form-row">
+        <div class="form-group"><label class="settings-toggle"><input type="checkbox" id="pInactive" ${pet.inactiveAt ? 'checked' : ''}><span>Inactivo</span></label></div>
+        <div class="form-group"><label for="pInactiveReason">Motivo de inactividad</label><input type="text" id="pInactiveReason" value="${escapeAttr(pet.inactiveReason||'')}" placeholder="Ej: no concurre hace años"></div>
+      </div>
       <div class="form-group">
         <label>Tutores asociados</label>
         ${db.owners.length ? assocPicker('petOwnersPicker', ownerItems, pet.ownerIds||[]) : '<small style="color:var(--text-mute)">No hay tutores todavía. Creá uno en la sección Tutores.</small>'}
+        <button type="button" class="btn btn-sm" style="margin-top:8px" onclick="createOwnerFromPetModal('${pet.id}',${isNew})">+ Crear tutor sin perder este paciente</button>
       </div>
       ${canEditClinical() ? '' : '<small style="display:block;color:var(--text-mute);margin-bottom:8px">Los datos clínicos son de solo lectura para Recepción.</small>'}
       <div class="form-group"><label>Alergias conocidas</label><textarea id="pAllergies"${clinicalDisabled}>${escapeHtml(pet.allergies||'')}</textarea></div>
@@ -472,6 +571,13 @@ function openPetModal(id) {
       <button class="btn btn-primary" onclick="savePet('${pet.id}', ${isNew})">Guardar</button>
     </div>
   `);
+}
+
+function createOwnerFromPetModal(petId,isNew) {
+  window._pendingPetDraft={
+    id:petId||uid(),name:document.getElementById('pName')?.value||'',species:document.getElementById('pSpecies')?.value||'',breed:document.getElementById('pBreed')?.value||'',sex:document.getElementById('pSex')?.value||'',color:document.getElementById('pColor')?.value||'',birthdate:document.getElementById('pBirth')?.value||'',weight:document.getElementById('pWeight')?.value||'',microchip:document.getElementById('pChip')?.value||'',ownerIds:document.getElementById('petOwnersPicker')?getAssocSelected('petOwnersPicker'):[],allergies:document.getElementById('pAllergies')?.value||'',chronicConditions:document.getElementById('pChronic')?.value||'',notes:document.getElementById('pNotes')?.value||'',inactiveAt:document.getElementById('pInactive')?.checked?localDateKey():'',inactiveReason:document.getElementById('pInactiveReason')?.value||''
+  };
+  openOwnerModal(null,true);
 }
 
 function toggleDeceasedDateField(checked) {
@@ -495,6 +601,19 @@ function savePet(id, isNew) {
   if (!validateField('pDeceasedDate', !birth || !deceasedDate || deceasedDate >= birth, 'El fallecimiento no puede ser anterior al nacimiento')) return;
   const ownerIds = document.getElementById('petOwnersPicker') ? getAssocSelected('petOwnersPicker') : (id ? (db.pets.find(p=>p.id===id)||{}).ownerIds||[] : []);
   const deceased = document.getElementById('pDeceased').checked;
+  const inactive = document.getElementById('pInactive').checked;
+  if (isNew) {
+    const duplicate = db.pets.find(p => normalizedRecordName(p.name) === normalizedRecordName(name)
+      && ownerIds.some(ownerId => (p.ownerIds || []).includes(ownerId)));
+    if (duplicate && !document.getElementById('pDuplicateConfirmed')) {
+      const notice = document.createElement('div');
+      notice.id = 'pDuplicateConfirmed';
+      notice.className = 'inline-warning';
+      notice.innerHTML = `${icon('alert','ico-sm')} Ya existe ${escapeHtml(petDisplayName(duplicate))} con el mismo tutor. <button type="button" class="link-inline" onclick="closeModal();openPetDetail('${duplicate.id}')">Abrir ficha</button> · Volvé a guardar para crear igualmente.`;
+      document.querySelector('#pName')?.closest('.form-row')?.after(notice);
+      return;
+    }
+  }
   const data = {
     id,
     name,
@@ -510,6 +629,8 @@ function savePet(id, isNew) {
     chronicConditions: document.getElementById('pChronic').value.trim(),
     notes: document.getElementById('pNotes').value.trim(),
     deceasedAt: deceased ? (document.getElementById('pDeceasedDate').value || localDateKey()) : '',
+    inactiveAt: !deceased && inactive ? ((db.pets.find(p=>p.id===id)||{}).inactiveAt || localDateKey()) : '',
+    inactiveReason: !deceased && inactive ? document.getElementById('pInactiveReason').value.trim() : '',
   };
   if (isNew) {
     data.history = [];
@@ -567,8 +688,9 @@ function encounterStatusClass(status) { return 'encounter-status-' + (status || 
 function toggleEncounterReopenField(status) { const field = document.querySelector('.encounter-reopen-field'); if (field) field.classList.toggle('is-visible', status === 'reopened'); }
 
 
-function openPetDetail(id) {
-  const pet = db.pets.find(p => p.id === id);
+async function openPetDetail(id) {
+  if (apiConfigured() && !dataHydrated && !(await hydrateFullData())) return;
+  const pet = await ensurePetFull(id);
   if (!pet) return;
   if (currentView !== 'pet-detail') {
     petDetailReturnView = currentView || 'pets';
@@ -581,6 +703,10 @@ function openPetDetail(id) {
   const petsNav = document.querySelector('[data-view="pets"]');
   if (petsNav) petsNav.classList.add('active');
   render();
+  setTimeout(() => {
+    renderWeightComparison();
+    document.querySelectorAll('#hDiag,#hDesc').forEach(autoGrow);
+  }, 0);
   window.scrollTo({ top: 0, behavior: 'auto' });
   if (window.innerWidth < 769) closeSidebar();
 }
@@ -942,9 +1068,9 @@ function requestStudy(petId) {
   studyModal(petId, { status: 'requested' });
 }
 
-function markStudyReceived(petId, studyId) {
+async function markStudyReceived(petId, studyId) {
   if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
-  const pet = db.pets.find(p => p.id === petId);
+  const pet = await ensurePetFull(petId);
   const study = pet ? (pet.studies||[]).find(s => s.id === studyId) : null;
   if (!study) return;
   study.status = 'received';
@@ -952,9 +1078,9 @@ function markStudyReceived(petId, studyId) {
   render();
 }
 
-function editStudyLink(petId, studyId) {
+async function editStudyLink(petId, studyId) {
   if(!canEditClinical()){ toast('Tu rol no permite modificar información clínica'); return; }
-  const pet = db.pets.find(p => p.id === petId);
+  const pet = await ensurePetFull(petId);
   const study = (pet.studies||[]).find(s => s.id === studyId);
   if (!study) return;
   studyModal(petId, study, studyId);
@@ -1004,13 +1130,14 @@ function openLightbox(src) {
   document.getElementById('lightbox').classList.add('show');
 }
 
-function addHistoryEntry(petId, editId) {
-  openEncounter(petId, editId);
+async function addHistoryEntry(petId, editId) {
+  await openEncounter(petId, editId);
 }
 
-function openEncounter(petId, editId, appointmentId) {
+async function openEncounter(petId, editId, appointmentId) {
   if (!canEditClinical()) { toast('Tu rol no permite modificar informacion clinica'); return; }
-  const pet = db.pets.find(p => p.id === petId);
+  if (apiConfigured() && !dataHydrated && !(await hydrateFullData())) return;
+  const pet = await ensurePetFull(petId);
   if (!pet) return;
   if (editId && !(pet.history || []).some(h => h.id === editId)) return;
   const existingEncounter = editId ? (pet.history || []).find(h => h.id === editId) : null;
@@ -1079,7 +1206,7 @@ function renderEncounter() {
           <div class="encounter-section encounter-vitals-section">
             <div class="encounter-section-heading"><span>2</span><div><h2>Signos vitales</h2><p>Quedan disponibles para ver la evoluci&oacute;n del paciente.</p></div></div>
             <div class="form-row-3">
-              <div class="form-group"><label for="hWeight">Peso (kg)</label><input type="number" id="hWeight" step="0.1" min="0" value="${attrValue('weight')}" placeholder="4.5" oninput="renderVitalWarnings()"></div>
+              <div class="form-group"><label for="hWeight">Peso (kg)</label><input type="number" id="hWeight" step="0.1" min="0" value="${attrValue('weight')}" placeholder="4.5" oninput="renderVitalWarnings()"><small id="hWeightComparison" class="field-hint"></small></div>
               <div class="form-group"><label for="hTemp">Temperatura (&deg;C)</label><input type="number" id="hTemp" step="0.1" min="0" value="${attrValue('temp')}" placeholder="38.5" oninput="renderVitalWarnings()"></div>
               <div class="form-group"><label for="hHR">FC (lpm)</label><input type="number" id="hHR" min="0" value="${attrValue('hr')}" placeholder="80" oninput="renderVitalWarnings()"></div>
             </div>
@@ -1094,9 +1221,9 @@ function renderEncounter() {
               </div>
               <textarea id="hExam" rows="6" placeholder="Hallazgos del examen f&iacute;sico">${textValue('exam')}</textarea>
             </div>
-            <div class="form-group"><label for="hDiag">Diagn&oacute;stico</label><input type="text" id="hDiag" value="${attrValue('diagnosis')}" placeholder="Presuntivo o definitivo"></div>
+            <div class="form-group"><label for="hDiag">Diagn&oacute;stico</label><textarea id="hDiag" rows="3" oninput="autoGrow(this)" placeholder="Presuntivo, definitivo y diagnósticos diferenciales">${textValue('diagnosis')}</textarea></div>
             <div class="form-group"><label for="hTreat">Tratamiento e indicaciones</label><textarea id="hTreat" rows="4" placeholder="Medicamentos, dosis, duraci&oacute;n e indicaciones">${textValue('treatment')}</textarea></div>
-            <div class="form-row"><div class="form-group"><label for="hNext">Pr&oacute;ximo control</label><input type="date" id="hNext" min="${today}" value="${attrValue('nextControl')}"><span class="field-error"></span></div><div class="form-group"><label for="hDesc">Observaciones</label><input type="text" id="hDesc" value="${attrValue('description')}" placeholder="Notas adicionales"></div></div>
+            <div class="form-row"><div class="form-group"><label for="hNext">Pr&oacute;ximo control</label><input type="date" id="hNext" min="${today}" value="${attrValue('nextControl')}"><span class="field-error"></span></div><div class="form-group"><label for="hDesc">Observaciones</label><textarea id="hDesc" rows="3" oninput="autoGrow(this)" placeholder="Notas adicionales">${textValue('description')}</textarea></div></div>
           </div>
         </section>
         <aside class="encounter-sidebar">
@@ -1168,6 +1295,45 @@ function encounterChargeRowHTML(item) {
     </div>`;
 }
 
+function closeSanitaryOptionsHTML(pet) {
+  const rows = [];
+  Object.keys(SANITARY_KINDS).forEach(kind => sanitaryList(pet,kind).forEach(record => {
+    const days = record.nextDose ? followUpDaysUntil(record.nextDose) : null;
+    if (!sanitaryHasPendingDose(record) || days === null || days > 30) return;
+    rows.push({kind,record,days});
+  }));
+  if (!rows.length) return '<div class="empty-state compact">No hay dosis vencidas o por vencer en 30 días.</div>';
+  return rows.map(({kind,record,days}) => `<label class="billing-toggle close-sanitary-row"><input type="checkbox" data-kind="${kind}" data-id="${record.id}"><span><strong>${escapeHtml(record.name||SANITARY_KINDS[kind].label)}</strong><small>${escapeHtml(followUpWhen(days))} · marcar si se aplicó hoy</small></span></label>`).join('');
+}
+
+function collectCloseSanitary() {
+  const vet = getAttendingValue('hVet');
+  const vetUserId = getAttendingUserId('hVet');
+  return [...document.querySelectorAll('.close-sanitary-row input:checked')].map(input => ({ kind:input.dataset.kind, id:input.dataset.id, vet, vetUserId }));
+}
+
+function applyCloseSanitary(petId, selected) {
+  const pet = db.pets.find(item=>item.id===petId);
+  if (!pet || !selected.length) return;
+  selected.forEach(choice => {
+    const previous = sanitaryRecord(pet,choice.kind,choice.id);
+    if (!previous) return;
+    previous.cancelled = '1';
+    syncSanitaryReminder(petId,choice.kind,previous);
+    const next = {
+      ...previous,
+      id:uid(), date:localDateKey(), cancelled:'', notifiedAt:'',
+      nextDose:sanitaryAddDays(localDateKey(),previous.intervalDays),
+      vet:choice.vet || previous.vet || '',
+      vetUserId:choice.vetUserId || previous.vetUserId || ''
+    };
+    pet[SANITARY_KINDS[choice.kind].collection].push(next);
+    syncSanitaryReminder(petId,choice.kind,next);
+    if (next.productId) consumeInventoryProduct(next.productId,'',1);
+  });
+  saveDB(`${selected.length} aplicación${selected.length===1?'':'es'} sanitaria${selected.length===1?'':'s'} registrada${selected.length===1?'':'s'}`);
+}
+
 function openEncounterCloseReview(petId, editId) {
   if (!canEditClinical()) { toast('Tu rol no permite modificar información clínica'); return; }
   const pet = db.pets.find(item => item.id === petId);
@@ -1230,6 +1396,7 @@ function openEncounterCloseReview(petId, editId) {
               <button class="btn btn-sm" type="button" onclick="addCloseStudyRow()">+ Agregar estudio</button>
             </div>
           </div>
+          <div class="close-review-studies"><h3>Vacunas y antiparasitarios aplicados hoy</h3><p class="close-review-help">Marcá las dosis aplicadas; se registrarán al cerrar.</p>${closeSanitaryOptionsHTML(pet)}</div>
         </section>
 
         ${canUseReceipts ? `<section class="close-review-card close-review-billing">
@@ -1319,19 +1486,21 @@ async function finalizeEncounterClose(petId, editId, encounterId, closeOperation
     invoice = { ownerId, items, total };
   }
   const studies = collectCloseStudies();
+  const sanitary = collectCloseSanitary();
   const closeButton = document.getElementById('finalizeEncounterCloseButton');
   if (closeButton) {
     closeButton.disabled = true;
     closeButton.textContent = 'Confirmando cierre...';
   }
   try {
-    await saveHistory(petId, editId, 'closed', {
+    const closed = await saveHistory(petId, editId, 'closed', {
       encounterId,
       idempotencyKey: `clinical-close:${closeOperationId}`,
       closedAt: closeTimestamp,
       invoice,
       studies,
     });
+    if (closed) applyCloseSanitary(petId, sanitary);
   } finally {
     const pendingButton = document.getElementById('finalizeEncounterCloseButton');
     if (pendingButton) {
@@ -1495,13 +1664,14 @@ async function saveHistory(petId, editId, forcedStatus, closeBundle) {
       toast(conflict
         ? 'La ficha cambió en otro equipo. Recargá antes de volver a cerrar.'
         : 'No se pudo confirmar el cierre. La consulta sigue abierta para reintentar.');
-      return;
+      return false;
     }
   } else {
     saveDB(message);
   }
   closeModal();
   closeEncounter();
+  return true;
 }
 
 function printHistEntry(petId, hId) {
@@ -1522,7 +1692,7 @@ function printHistEntry(petId, hId) {
     +(h.treatment?'<h2>Tratamiento</h2><p>'+escapeHtml(h.treatment)+'</p>':'')
     +(h.description?'<h2>Observaciones</h2><p>'+escapeHtml(h.description)+'</p>':'')
     +(h.nextControl?'<h2>Pr\u00f3ximo control</h2><p>'+formatDate(h.nextControl)+'</p>':'')
-    +'<div class="sign">'+escapeHtml(h.vet||'Profesional actuante')+'</div>');
+    +'<div class="sign">'+escapeHtml(professionalSignature(h.vet,h.vetUserId))+'</div>');
 }
 
 function deleteHistory(petId, hId) {

@@ -13,6 +13,15 @@ quedó apuntando de nuevo a producción.
 
 ---
 
+## Estado de implementación
+
+**Completado en VetCare 2.16.0.** Los bloques A–G (A1–A10, B11–B18, C19–C24,
+D25–D27, E28, F29–F34 y G35–G40) quedaron implementados. La entrega incluye la
+migración de esquema 0018, carga inicial liviana con historia clínica por paciente,
+tests de permisos e integridad y actualización de caché de los recursos web.
+
+---
+
 ## Resumen
 
 VetCare está mejor construida de lo que sugiere su tamaño: el cierre de consulta es

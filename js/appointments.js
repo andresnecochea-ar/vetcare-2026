@@ -76,10 +76,10 @@ function updateAppointmentStatus(id, status) {
   render();
 }
 
-function startAppointmentEncounter(id) {
+async function startAppointmentEncounter(id) {
   const appointment = db.appointments.find(item => item.id === id);
   if (!appointment) return;
-  const pet = db.pets.find(item => item.id === appointment.petId);
+  const pet = await ensurePetFull(appointment.petId);
   if (!pet) { toast('El turno no tiene un paciente valido', 'error'); return; }
   appointment.status = 'in_consultation';
   if (!appointment.startedAt) appointment.startedAt = new Date().toISOString();
@@ -109,10 +109,11 @@ function renderAppointments() {
     const momentLabel = terminal ? 'Cerrado' : (isPast ? 'Pasado' : 'Pr' + String.fromCharCode(243) + 'ximo');
     const notesShort = notesFull.length > 40 ? notesFull.slice(0,40)+'…' : notesFull;
     const owner = pet ? petOwners(pet)[0] : null;
-    return `<tr>
+    const overlaps = appointmentOverlaps(a);
+    return `<tr class="${overlaps.length?'appointment-overlap':''}">
       <td data-primary>${pet ? `<button type="button" class="link-cell" onclick="openPetDetail('${pet.id}')">${escapeHtml(petDisplayName(pet))}</button>` : '—'}</td>
       <td data-label="Fecha">${formatDate(a.date)}</td>
-      <td data-label="Hora">${a.time||'—'}</td>
+      <td data-label="Hora">${a.time||'—'}${overlaps.length?'<span class="tag danger">Superpuesto</span>':''}</td>
       <td data-label="Tipo">${escapeHtml(a.type||'—')}</td>
       <td data-label="Profesional">${escapeHtml(a.vet||'—')}</td>
       <td class="col-sec" data-label="Tutor">${owner ? `<button type="button" class="link-cell" onclick="openOwnerModal('${owner.id}')">${escapeHtml(owner.name)}</button>` : '—'}</td>
@@ -307,7 +308,7 @@ function renderGrooming() {
               <td data-label="Estado"><span class="tag ${a.status==='Completado'?'accent':a.status==='Cancelado'?'danger':''}">${a.status||'Pendiente'}</span></td>
               <td class="col-sec" data-label="Recordatorio">${a.reminder ? `<span style='font-size:var(--fs-2xs);background:var(--color-lilac-soft);color:#6a4fa0;border:1px solid var(--color-lilac);border-radius:20px;padding:2px 8px;'>${icon('bell','ico-sm')} ${escapeHtml(a.reminder)}</span>` : '<span style="color:var(--text-mute);font-size:var(--fs-xs)">—</span>'}</td>
               <td class="col-sec" data-label="Momento"><span class="tag ${isPast?'':'accent'}">${isPast?'Pasado':'Próximo'}</span></td>
-              <td><div class="actions"><button class="btn btn-sm" onclick="openGroomModal('${a.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="deleteGroom('${a.id}')" title="Eliminar">${iconX()}</button></div></td>
+              <td><div class="actions">${a.status==='Completado'&&!a.invoiceId?`<button class="btn btn-sm btn-primary" onclick="offerGroomingInvoice('${a.id}')">Generar recibo</button>`:''}${a.invoiceId?`<button class="btn btn-sm" onclick="openInvoiceModal('${a.invoiceId}')">Ver recibo</button>`:''}<button class="btn btn-sm" onclick="openGroomModal('${a.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="deleteGroom('${a.id}')" title="Eliminar">${iconX()}</button></div></td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -352,9 +353,23 @@ function saveGroom(id, isNew) {
   const _g1 = validateField('gPet', !!petId, 'Seleccioná un paciente');
   const _g2 = validateField('gDate', !!date, 'La fecha es obligatoria');
   if (!_g1 || !_g2) return;
-  const data = { id, petId, date, time: document.getElementById('gTime').value, service: document.getElementById('gService').value, groomer: getAttendingValue('gGroomer'), groomerUserId: getAttendingUserId('gGroomer'), price: document.getElementById('gPrice').value, status: document.getElementById('gStatus').value, reminder: document.getElementById('gReminder').value.trim(), notes: document.getElementById('gNotes').value };
+  const existing = db.groomingAppointments.find(a=>a.id===id);
+  const data = { id, petId, date, time: document.getElementById('gTime').value, service: document.getElementById('gService').value, groomer: getAttendingValue('gGroomer'), groomerUserId: getAttendingUserId('gGroomer'), price: document.getElementById('gPrice').value, status: document.getElementById('gStatus').value, reminder: document.getElementById('gReminder').value.trim(), notes: document.getElementById('gNotes').value, invoiceId: existing?.invoiceId||'' };
   if (isNew) db.groomingAppointments.push(data); else { const i = db.groomingAppointments.findIndex(a=>a.id===id); db.groomingAppointments[i] = data; }
   saveDB(isNew?'Turno de peluquería creado':'Turno de peluquería actualizado'); closeModal(); render();
+  if (data.status==='Completado' && !data.invoiceId && existing?.status!=='Completado') offerGroomingInvoice(id);
+}
+
+function offerGroomingInvoice(id) {
+  const appointment=db.groomingAppointments.find(item=>item.id===id);
+  if(!appointment||appointment.invoiceId)return;
+  const pet=db.pets.find(item=>item.id===appointment.petId);
+  const owner=pet&&petOwners(pet)[0];
+  if(!owner){toast('Asociá un tutor al paciente para generar el recibo','error');return;}
+  showConfirm(`¿Generar un recibo pendiente por ${appointment.service} ($${Number(appointment.price||0).toLocaleString('es-AR')})?`,()=>{
+    const invoice={id:uid(),number:nextLocalInvoiceNumber(),date:appointment.date,ownerId:owner.id,petId:pet.id,items:[{desc:appointment.service||'Peluquería',qty:1,price:Number(appointment.price||0),productId:''}],total:Number(appointment.price||0),status:'pending',notes:'Generado desde turno de peluquería',encounterId:'',paymentMethod:'',amountPaid:0,stockAppliedAt:''};
+    db.invoices.push(invoice);appointment.invoiceId=invoice.id;saveDB('Recibo de peluquería generado');closeModal();render();
+  },{okLabel:'Generar recibo',okClass:'btn-primary'});
 }
 
 function deleteGroom(id) {

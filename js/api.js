@@ -40,6 +40,7 @@ const defaultData = {
   reminders: [],
   inventory: [],
   invoices: [],
+  followupActions: [],
   clinicName: 'VetCare',
   settings: { theme: 'light', clinicName: '', receiptsEnabled: true, receiptAddress: '', receiptPhone: '', receiptTaxId: '' }
 };
@@ -60,6 +61,7 @@ const PALETTE = { navy:'#6F2DBD', lilac:'#A663CC', mint:'#F4B860', coral:'#e5484
 const API_BASE = String(window.VETCARE_CONFIG?.apiBase || '').replace(/\/+$/, '');
 let authToken = null;
 let currentUser = null;
+let _reauthDraft = null;
 try { authToken = localStorage.getItem('vetcare_token') || null; } catch(e){}
 function apiConfigured(){ return API_BASE && !API_BASE.startsWith('PEGAR_AQUI'); }
 const ROLE_LABELS = { admin:'Administrador', veterinarian:'Veterinario/a', reception:'Recepción' };
@@ -69,8 +71,8 @@ function isAdmin(){ return !apiConfigured() || currentRole()==='admin'; }
 function canWriteEntity(entity){
   if(!apiConfigured()||currentRole()==='admin')return true;
   const allowed=currentRole()==='veterinarian'
-    ?['owners','pets','appointments','groomingAppointments','reminders','inventory','invoices']
-    :['owners','pets','appointments','groomingAppointments','reminders','invoices'];
+    ?['owners','pets','appointments','groomingAppointments','reminders','inventory','invoices','followupActions']
+    :['owners','pets','appointments','groomingAppointments','reminders','invoices','followupActions'];
   return allowed.includes(entity);
 }
 function canDeleteEntity(entity){
@@ -85,7 +87,7 @@ async function api(path, opts){
   if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
   const res = await fetch(API_BASE + path, { method: opts.method || 'GET', headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
   let data = null; try { data = await res.json(); } catch(e){}
-  if (res.status === 401) { clearSession(); showLogin(); throw new Error('Sesion expirada'); }
+  if (res.status === 401) { captureReauthDraft(); clearSession(); showLogin(); throw new Error('Sesión expirada'); }
   if (!res.ok) {
     const error = new Error((data && data.error) || ('Error ' + res.status));
     error.status = res.status;
@@ -93,6 +95,67 @@ async function api(path, opts){
     throw error;
   }
   return data;
+}
+function captureReauthDraft(){
+  if(_reauthDraft)return;
+  const modal=document.querySelector('#modalContainer .modal');
+  const surface=modal||document.querySelector('#mainContent .encounter-page');
+  const hasPending=typeof _hasPendingChanges==='function'&&_hasPendingChanges();
+  if(!surface&&!hasPending)return;
+  const activePetId=typeof currentEncounterPetId!=='undefined'&&currentEncounterPetId
+    ?currentEncounterPetId:(typeof currentPetId!=='undefined'?currentPetId:null);
+  const pet=activePetId?(db.pets||[]).find(item=>item.id===activePetId):null;
+  _reauthDraft={
+    fields:surface?[...surface.querySelectorAll('input,select,textarea')].map(field=>({id:field.id,name:field.name,value:field.value,checked:field.checked,type:field.type})):[],
+    modalHtml:modal?modal.innerHTML:'',modalLarge:Boolean(modal?.classList.contains('modal-lg')),
+    pet:pet?_cloneSyncValue(pet):null,
+    pending:hasPending?{data:_snap(),previous:_cloneSyncValue(_lastSnapshot)}:null
+  };
+}
+function prepareReauthDraftData(){
+  if(!_reauthDraft)return false;
+  const pending=_reauthDraft.pending;
+  if(pending){
+    for(const table of _ENTITY_TABLES){
+      const local=pending.data[table]||[];const previous=pending.previous[table]||[];
+      const localIds=new Set(local.map(item=>item.id));
+      db[table]=(db[table]||[]).filter(item=>localIds.has(item.id)||!previous.some(old=>old.id===item.id));
+      for(const item of local){
+        const old=previous.find(entry=>entry.id===item.id);
+        if(old&&_sameSnapshotValue(item,old))continue;
+        const index=db[table].findIndex(entry=>entry.id===item.id);
+        if(index===-1)db[table].push(_cloneSyncValue(item));else db[table][index]=_cloneSyncValue(item);
+      }
+    }
+    if(canManageSettings()&&(!_sameSnapshotValue(pending.data.settings,pending.previous.settings)||pending.data.clinicName!==pending.previous.clinicName)){
+      db.settings=_cloneSyncValue(pending.data.settings);db.clinicName=pending.data.clinicName;
+    }
+  }
+  if(_reauthDraft.pet){
+    const pet=_reauthDraft.pet;
+    const wasPending=pending&&!_sameSnapshotValue(pet,(pending.previous.pets||[]).find(item=>item.id===pet.id));
+    const index=(db.pets||[]).findIndex(item=>item.id===pet.id);
+    if(index===-1)db.pets.push(pet);else db.pets[index]=pet;
+    if(!wasPending)_snapshotUpsert('pets',pet);
+  }
+  return Boolean(pending);
+}
+function restoreReauthDraft(){
+  if(!_reauthDraft)return false;
+  const draft=_reauthDraft;
+  if(draft.modalHtml)showModal(draft.modalHtml,draft.modalLarge);
+  draft.fields.forEach(saved=>{
+    const field=(saved.id&&document.getElementById(saved.id))||(saved.name&&document.querySelector(`#modalContainer [name="${CSS.escape(saved.name)}"]`));
+    if(!field)return;
+    if(saved.type==='checkbox'||saved.type==='radio')field.checked=saved.checked;else field.value=saved.value;
+  });
+  const studies=document.getElementById('closeRequestStudies');
+  if(studies){studies.addEventListener('change',toggleCloseStudies);toggleCloseStudies();}
+  const billing=document.getElementById('closeCreateInvoice');
+  if(billing){billing.addEventListener('change',toggleEncounterBilling);toggleEncounterBilling();updateEncounterCloseTotal();}
+  _reauthDraft=null;
+  document.querySelector('#modalContainer input:not([type=hidden]),#modalContainer textarea,#modalContainer select')?.focus();
+  return true;
 }
 function setSession(token, user){ authToken = token; currentUser = user; try { localStorage.setItem('vetcare_token', token); } catch(e){} }
 function clearSession(){
@@ -107,6 +170,7 @@ function clearSession(){
 // cerrada en vez de un campo de texto libre, donde "Dra. Laura Perez" y
 // "laura perez" terminaban siendo dos profesionales distintos.
 let clinicStaff = [];
+let dataHydrated = true;
 async function loadStaff(){
   if(!apiConfigured()||!authToken){ clinicStaff = []; return clinicStaff; }
   try { clinicStaff = (await api('/api/staff')).staff || []; }
@@ -117,7 +181,7 @@ async function loadStaff(){
 // así que no se ofrece; el nombre de quien está usando la app va primero.
 function attendingStaffRecords(){
   const records = clinicStaff
-    .filter(person => (person.role === 'veterinarian' || person.role === 'admin') && person.id && person.name);
+    .filter(person => Number(person.active ?? 1) === 1 && (person.role === 'veterinarian' || person.role === 'admin') && person.id && person.name);
   const own = currentUser && currentUser.name;
   const ordered = own ? [...records.filter(person => person.id === currentUser.id), ...records.filter(person => person.id !== currentUser.id)] : records;
   return ordered.filter((person,index,list) => list.findIndex(other => other.id === person.id) === index);
@@ -151,23 +215,64 @@ function restoreDerivedVitals(pet) {
   pet.vitals = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 async function loadFromAPI(){
-  const [d] = await Promise.all([api('/api/data'), loadStaff()]);
+  const [d] = await Promise.all([api('/api/data?scope=directory'), loadStaff()]);
   db = Object.assign(JSON.parse(JSON.stringify(defaultData)), d);
   if (!db.invoices) db.invoices = [];
   for (const pet of db.pets || []) restoreDerivedVitals(pet);
   _lastSnapshot = _snap();
+  dataHydrated = Boolean(d.directory) || !d.partial;
   _markSyncConfirmed();
   return true;
+}
+async function loadInitialFromAPI(){
+  const [d] = await Promise.all([api('/api/data?scope=core&date='+encodeURIComponent(localDateKey())), loadStaff()]);
+  db = Object.assign(JSON.parse(JSON.stringify(defaultData)), d);
+  for (const pet of db.pets || []) restoreDerivedVitals(pet);
+  _lastSnapshot = _snap();
+  dataHydrated = !d.partial;
+  _markSyncConfirmed();
+  return true;
+}
+async function hydrateFullData(){
+  if(dataHydrated)return true;
+  try{
+    if(_hasPendingChanges()){
+      const synced=await syncToAPI();
+      if(!synced||_hasPendingChanges())return false;
+    }
+    const d=await api('/api/data?scope=directory');
+    db=Object.assign(JSON.parse(JSON.stringify(defaultData)),d);
+    for(const pet of db.pets||[])restoreDerivedVitals(pet);
+    _lastSnapshot=_snap();dataHydrated=true;await saveIDB();render();updateBadges();
+    return true;
+  }catch(e){toast('No se pudo completar la carga del historial. Reintentaremos al navegar.','warn');return false;}
+}
+
+async function ensurePetFull(petId){
+  let pet=(db.pets||[]).find(item=>item.id===petId);
+  if(!pet||!pet._summaryOnly||!apiConfigured()||!authToken)return pet||null;
+  try{
+    const full=await api('/api/pets/'+encodeURIComponent(petId));
+    restoreDerivedVitals(full);
+    const index=db.pets.findIndex(item=>item.id===petId);
+    if(index===-1)db.pets.push(full);else db.pets[index]=full;
+    _snapshotUpsert('pets',full);
+    await saveIDB();
+    return full;
+  }catch(e){
+    toast(e.message||'No se pudo cargar la ficha clínica','error');
+    return null;
+  }
 }
 // ========================================
 // [03] PERSISTENCIA — IndexedDB (respaldo offline local)
 // ========================================
-const IDB_NAME='vetcare',IDB_VER=1;let idb=null;
+const IDB_NAME='vetcare',IDB_VER=2;let idb=null;
 function openIDB(){return new Promise(res=>{
   try {
     const r=indexedDB.open(IDB_NAME,IDB_VER);
     r.onupgradeneeded=e=>{const d=e.target.result;
-      ['pets','owners','appointments','groomingAppointments','reminders','inventory','invoices']
+      ['pets','owners','appointments','groomingAppointments','reminders','inventory','invoices','followupActions']
       .forEach(s=>{if(!d.objectStoreNames.contains(s))d.createObjectStore(s,{keyPath:'id'});});
       if(!d.objectStoreNames.contains('meta'))d.createObjectStore('meta',{keyPath:'key'});};
     r.onsuccess=e=>{idb=e.target.result;res(idb);};
@@ -187,8 +292,8 @@ let _syncState=apiConfigured()?'saved':'local';
 let _lastSyncAt=null;
 let _pendingSaveMessages=[];
 try { _lastSyncAt=localStorage.getItem('vetcare_last_sync')||null; } catch(e){}
-const _ENTITY_TABLES=['owners','pets','appointments','groomingAppointments','reminders','inventory','invoices'];
-function _snap(){return JSON.parse(JSON.stringify({owners:db.owners,pets:db.pets,appointments:db.appointments,groomingAppointments:db.groomingAppointments,reminders:db.reminders,inventory:db.inventory,invoices:db.invoices,clinicName:db.clinicName,settings:db.settings}));}
+const _ENTITY_TABLES=['owners','pets','appointments','groomingAppointments','reminders','inventory','invoices','followupActions'];
+function _snap(){return JSON.parse(JSON.stringify({owners:db.owners,pets:db.pets,appointments:db.appointments,groomingAppointments:db.groomingAppointments,reminders:db.reminders,inventory:db.inventory,invoices:db.invoices,followupActions:db.followupActions,clinicName:db.clinicName,settings:db.settings}));}
 function _sameSnapshotValue(a,b){return JSON.stringify(a)===JSON.stringify(b);}
 function _cloneSyncValue(value){return JSON.parse(JSON.stringify(value));}
 function _browserOnline(){return typeof navigator==='undefined'||navigator.onLine!==false;}
@@ -363,7 +468,7 @@ async function saveIDB(){
   if(!idb)return false;
   try {
     let saved=true;
-    const stores=['pets','owners','appointments','groomingAppointments','reminders','inventory','invoices'];
+    const stores=['pets','owners','appointments','groomingAppointments','reminders','inventory','invoices','followupActions'];
     for(const s of stores){
       try {
         const arr=db[s]||[];const tx=idb.transaction(s,'readwrite');const os=tx.objectStore(s);
@@ -449,7 +554,7 @@ if(typeof window!=='undefined'){
 async function loadIDB(){
   if(!idb)return false;
   try {
-    const stores=['pets','owners','appointments','groomingAppointments','reminders','inventory','invoices'];
+    const stores=['pets','owners','appointments','groomingAppointments','reminders','inventory','invoices','followupActions'];
     let has=false;
     for(const s of stores){
       try {const items=await idbAll(s);db[s]=items;if(items.length)has=true;}
@@ -494,7 +599,7 @@ async function createNewDB() {
   // Limpiar IDB si existe
   if (idb) {
     try {
-      const stores = ['pets','owners','appointments','groomingAppointments','reminders','inventory','invoices','meta'];
+      const stores = ['pets','owners','appointments','groomingAppointments','reminders','inventory','invoices','followupActions','meta'];
       for (const s of stores) {
         try { const tx=idb.transaction(s,'readwrite'); tx.objectStore(s).clear(); await new Promise(r=>{tx.oncomplete=r;tx.onerror=r;}); } catch(e){}
       }

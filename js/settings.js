@@ -4,7 +4,7 @@
    y de los recibos, y acceso al respaldo.
    ===================================================================== */
 
-var APP_VERSION = '2.15.0';
+var APP_VERSION = '2.16.0';
 
 function _ensureSettings(){
   if(!db.settings) db.settings = {};
@@ -51,6 +51,8 @@ function openSettings(){
   var s = db.settings;
   var dark = s.theme === 'dark';
   var admin = canManageSettings();
+  var lastBackup='';try{lastBackup=localStorage.getItem('vetcare_last_backup')||'';}catch(e){}
+  var backupAge=lastBackup?Math.floor((Date.now()-new Date(lastBackup).getTime())/86400000):null;
   var userSummary = currentUser
     ? escapeHtml(currentUser.name||currentUser.email||'Usuario') + ' · ' + escapeHtml(roleLabel(currentUser.role))
     : 'Modo local · Administrador';
@@ -101,11 +103,13 @@ function openSettings(){
     + '  <button class="btn btn-secondary" style="width:100%" onclick="openExamTemplates()">Plantillas de examen físico</button>'
     + '</div>'
 
+    + '<div class="settings-section"><div class="settings-label">Plan sanitario</div>'+(admin?'<button class="btn btn-secondary" style="width:100%" onclick="openVaccineCatalog()">Catálogo de vacunas e intervalos</button>':'<small>Solo una persona administradora puede modificar el catálogo.</small>')+'</div>'
+
     + '<div class="settings-section">'
     + '  <div class="settings-label">Recibos (opcional)</div>'
     + '  <label class="settings-toggle"><input type="checkbox" id="setReceiptsEnabled"' + (s.receiptsEnabled?' checked':'') + (admin?'':' disabled') + ' onchange="toggleReceiptSettingsFields(this.checked)"><span><strong>Mostrar módulo de recibos</strong><small>La atención clínica funciona normalmente aunque esté desactivado.</small></span></label>'
     + '  <div id="receiptSettingsFields"' + (s.receiptsEnabled?'':' hidden') + '>'
-    + '    <input class="input" id="setRecTax" placeholder="CUIT" value="' + escapeAttr(s.receiptTaxId) + '"' + (admin?'':' disabled') + '>'
+    + '    <div class="form-group"><label for="setRecTax">CUIT</label><input class="input" id="setRecTax" value="' + escapeAttr(s.receiptTaxId) + '"' + (admin?'':' disabled') + '></div>'
     + '    <small style="color:var(--text-mute);display:block;margin-top:6px">La dirección y el teléfono del recibo salen de los datos de la clínica.</small>'
     + '  </div>'
     + (admin
@@ -133,11 +137,12 @@ function openSettings(){
 
     + '<div class="settings-section">'
     + '  <div class="settings-label">Respaldo</div>'
+    + ((backupAge===null||backupAge>30)?'  <div class="inline-warning">'+icon('alert','ico-sm')+' '+(backupAge===null?'Todavía no se descargó una copia en este equipo.':'La última copia se descargó hace '+backupAge+' días.')+'</div>':'  <small>Última copia hace '+backupAge+' días.</small>')
     + '  <button class="btn btn-secondary" style="width:100%" onclick="closeModal();navigateTo(\'backup\')">Ir a Respaldo</button>'
     + '</div>'
 
     + '<div class="settings-section settings-version">'
-    + '  <div class="settings-label">Version</div>'
+    + '  <div class="settings-label">Versión</div>'
     + '  <div class="settings-version-row"><span>VetCare v' + APP_VERSION + '</span></div>'
     + '  <button class="btn btn-secondary" style="width:100%;margin-top:8px;display:flex;align-items:center;justify-content:center" onclick="forceUpdate()"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:1.05em;height:1.05em;vertical-align:-.16em;margin-right:8px"><circle cx="10.5" cy="10.5" r="5.8"/><path d="M15 15l4.5 4.5"/></svg>Buscar actualizaciones</button>'
     + '</div>'
@@ -235,13 +240,15 @@ function toggleReceiptSettingsFields(enabled){
 var AUDIT_ACTIONS = {
   register:'Alta de usuario', login:'Inicio de sesión', create:'Creación',
   update:'Modificación', delete:'Eliminación', role_change:'Cambio de rol',
-  password_reset:'Restablecer contraseña', close:'Cierre de consulta'
+  password_reset:'Restablecer contraseña', close:'Cierre de consulta',
+  invite:'Invitación de usuario', deactivate:'Desactivación de usuario',
+  invite_code_rotate:'Renovación del código general'
 };
 var AUDIT_ENTITIES = {
   users:'Usuario', sessions:'Sesión', pets:'Paciente', owners:'Tutor',
   appointments:'Turno', groomingAppointments:'Turno de peluquería',
   reminders:'Aviso', inventory:'Producto', invoices:'Recibo',
-  settings:'Configuración', clinical_encounter:'Consulta clínica'
+  followupActions:'Seguimiento', settings:'Configuración', clinical_encounter:'Consulta clínica'
 };
 var AUDIT_FIELDS = {
   email:'Correo', name:'Nombre', role:'Rol', pass_hash:'Contraseña',
@@ -260,7 +267,15 @@ var AUDIT_FIELDS = {
   items:'Conceptos', total:'Total', encounterId:'Consulta',
   encounter:'Consulta', appointment:'Turno', reminder:'Aviso', invoice:'Recibo',
   studies:'Estudios', history:'Historia clínica', vaccines:'Vacunas',
-  dewormings:'Antiparasitarios', images:'Imágenes'
+  dewormings:'Antiparasitarios', images:'Imágenes',
+  license:'Matrícula', active:'Usuario activo', inactiveAt:'Fecha de inactividad',
+  inactiveReason:'Motivo de inactividad', paymentMethod:'Medio de pago',
+  amountPaid:'Importe cobrado', stockAppliedAt:'Descuento de stock',
+  productId:'Producto de inventario', vaccineType:'Tipo de vacuna',
+  invoiceId:'Recibo vinculado', invite_code:'Código general',
+  kind:'Tipo de pendiente', refId:'Registro relacionado', action:'Decisión',
+  untilDate:'Pospuesto hasta', userId:'Usuario', userName:'Nombre de usuario',
+  createdAt:'Fecha de acción'
 };
 
 function _auditLabel(action){ return AUDIT_ACTIONS[action] || action; }
@@ -365,11 +380,13 @@ async function openAccessManagement(){
 
     var userRows=users.map(function(user){
       var own=currentUser&&currentUser.id===user.id;
+      var active=user.active===undefined||Number(user.active)===1;
       return '<tr><td><strong>'+escapeHtml(user.name||'Sin nombre')+'</strong><br><small>'+escapeHtml(user.email||'')+(own?' · Vos':'')+'</small></td>'
         +'<td><select class="input" data-role-current="'+escapeAttr(user.role)+'" data-user-id="'+escapeAttr(user.id)+'" data-person-name="'+escapeAttr(user.name||user.email||'esta persona')+'" aria-label="Rol de '+escapeAttr(user.name||user.email||'usuario')+'"'
         +' onchange="confirmUserRoleChange(this)">'
         +['admin','veterinarian','reception'].map(function(role){return '<option value="'+role+'" '+(user.role===role?'selected':'')+'>'+escapeHtml(roleLabel(role))+'</option>';}).join('')
-        +'</select></td>'
+        +'</select></td><td><input class="input user-license" style="min-width:110px" aria-label="Matrícula" value="'+escapeAttr(user.license||'')+'" onchange="saveUserLicense(this,\''+escapeAttr(user.id)+'\','+(active?'true':'false')+')"></td>'
+        +'<td><label class="settings-toggle compact"><input type="checkbox" '+(active?'checked':'')+' '+(own?'disabled':'')+' onchange="saveUserActive(this,\''+escapeAttr(user.id)+'\')"><span>'+(active?'Activo':'Inactivo')+'</span></label></td>'
         +'<td><button class="btn btn-secondary" style="white-space:nowrap" data-user-id="'+escapeAttr(user.id)+'" data-person-name="'+escapeAttr(user.name||user.email||'usuario')+'" onclick="resetUserPasswordFromButton(this)">Restablecer contraseña</button></td></tr>';
     }).join('');
 
@@ -397,8 +414,8 @@ async function openAccessManagement(){
     var hasFilters=Object.keys(_auditFilters).some(function(k){ return _auditFilters[k]; });
 
     showModal('<div class="modal-header"><h3>Accesos y auditoría</h3><button class="close-btn" onclick="closeModal()">&times;</button></div>'
-      +'<div class="modal-body"><div class="settings-section"><div class="settings-label">Usuarios</div>'
-      +(users.length?'<div class="table-wrap"><table><thead><tr><th>Persona</th><th>Rol</th><th></th></tr></thead><tbody>'+userRows+'</tbody></table></div>':'<div class="empty-state">Sin usuarios</div>')
+      +'<div class="modal-body"><div class="settings-section"><div class="settings-label">Usuarios</div><div class="actions" style="margin-bottom:10px"><button class="btn btn-primary" onclick="openUserInvite()">Invitar usuario</button><button class="btn" onclick="rotateClinicInviteCode()">Rotar código general</button></div>'
+      +(users.length?'<div class="table-wrap"><table><thead><tr><th>Persona</th><th>Rol</th><th>Matrícula</th><th>Acceso</th><th></th></tr></thead><tbody>'+userRows+'</tbody></table></div>':'<div class="empty-state">Sin usuarios</div>')
       +'</div><div class="settings-section"><div class="settings-label">Actividad</div>'
       +'<div class="audit-filters">'
       +'<select class="input" aria-label="Filtrar por persona" onchange="setAuditFilter(\'userId\',this.value)">'+userOpts+'</select>'
@@ -463,9 +480,15 @@ function resetUserPasswordFromButton(button){
   return resetUserPassword(button.dataset.userId,button.dataset.personName||'usuario');
 }
 
-async function resetUserPassword(userId,label){
-  var password=prompt('Contraseña temporal para '+label+' (mínimo 8 caracteres). Se la tenés que pasar vos por otro medio:');
-  if(password===null) return;
+function generatedPassword(){ return crypto.randomUUID().replaceAll('-','').slice(0,12)+'!'; }
+
+function resetUserPassword(userId,label){
+  var password=generatedPassword();
+  showModal('<div class="modal-header"><h3>Restablecer contraseña</h3><button class="close-btn" onclick="closeModal()">&times;</button></div><div class="modal-body"><p>Contraseña temporal para '+escapeHtml(label)+'. Al guardar se cerrarán sus sesiones activas.</p><div class="form-group"><label for="userTempPassword">Contraseña temporal</label><input id="userTempPassword" type="text" minlength="8" value="'+escapeAttr(password)+'"></div><button class="btn btn-sm" onclick="document.getElementById(\'userTempPassword\').value=generatedPassword()">Generar otra</button></div><div class="modal-footer"><button class="btn" onclick="openAccessManagement()">Cancelar</button><button class="btn btn-primary" onclick="submitUserPassword(\''+escapeAttr(userId)+'\')">Guardar contraseña</button></div>');
+}
+
+async function submitUserPassword(userId){
+  var password=document.getElementById('userTempPassword')?.value||'';
   if(password.length<8){ toast('La contraseña debe tener al menos 8 caracteres'); return; }
   try{
     await api('/api/users/'+encodeURIComponent(userId)+'/password',{method:'PUT',body:{password:password}});
@@ -473,6 +496,35 @@ async function resetUserPassword(userId,label){
   }catch(e){
     toast(e.message||'No se pudo restablecer la contraseña');
   }
+}
+
+function saveUserLicense(input,userId,active){ return saveUserProfile(userId,input.value,active); }
+function saveUserActive(input,userId){ return saveUserProfile(userId,input.closest('tr').querySelector('.user-license')?.value||'',input.checked); }
+async function saveUserProfile(userId,license,active){
+  try{
+    await api('/api/users/'+encodeURIComponent(userId)+'/profile',{method:'PUT',body:{license:license,active:active}});
+    await loadStaff();
+    toast(active?'Usuario actualizado':'Usuario desactivado');
+    await openAccessManagement();
+  }catch(e){toast(e.message||'No se pudo actualizar el usuario','error');await openAccessManagement();}
+}
+
+function openUserInvite(){
+  showModal('<div class="modal-header"><h3>Invitar usuario</h3><button class="close-btn" onclick="openAccessManagement()">&times;</button></div><div class="modal-body"><div class="form-group"><label for="inviteEmail">Email</label><input type="email" id="inviteEmail"></div><div class="form-group"><label for="inviteRole">Rol inicial</label><select id="inviteRole"><option value="reception">Recepción</option><option value="veterinarian">Veterinario/a</option><option value="admin">Administrador</option></select></div><p>Se generará un código de un solo uso válido durante 7 días.</p></div><div class="modal-footer"><button class="btn" onclick="openAccessManagement()">Cancelar</button><button class="btn btn-primary" onclick="createUserInvite()">Generar invitación</button></div>');
+}
+
+async function createUserInvite(){
+  try{
+    var result=await api('/api/invitations',{method:'POST',body:{email:document.getElementById('inviteEmail').value,role:document.getElementById('inviteRole').value}});
+    var body='Hola, te invito a VetCare. Usá este código para crear tu cuenta: '+result.code+' (vence '+new Date(result.expiresAt).toLocaleDateString('es-AR')+').';
+    showModal('<div class="modal-header"><h3>Invitación lista</h3><button class="close-btn" onclick="openAccessManagement()">&times;</button></div><div class="modal-body"><p>Enviá este código a <strong>'+escapeHtml(result.email)+'</strong>:</p><div class="copy-code">'+escapeHtml(result.code)+'</div></div><div class="modal-footer"><a class="btn btn-primary" href="mailto:'+encodeURIComponent(result.email)+'?subject='+encodeURIComponent('Invitación a VetCare')+'&body='+encodeURIComponent(body)+'">Abrir email</a><button class="btn" onclick="navigator.clipboard.writeText(\''+escapeAttr(result.code)+'\');toast(\'Código copiado\')">Copiar código</button></div>');
+  }catch(e){toast(e.message||'No se pudo crear la invitación','error');}
+}
+
+async function rotateClinicInviteCode(){
+  showConfirm('¿Rotar el código general? El código anterior dejará de funcionar.',async function(){
+    try{var result=await api('/api/access/invite-code',{method:'POST',body:{}});showModal('<div class="modal-header"><h3>Nuevo código general</h3><button class="close-btn" onclick="openAccessManagement()">&times;</button></div><div class="modal-body"><p>Guardalo ahora: por seguridad no volverá a mostrarse.</p><div class="copy-code">'+escapeHtml(result.code)+'</div></div><div class="modal-footer"><button class="btn btn-primary" onclick="navigator.clipboard.writeText(\''+escapeAttr(result.code)+'\');toast(\'Código copiado\')">Copiar código</button></div>');}catch(e){toast(e.message||'No se pudo rotar el código','error');}
+  },{okLabel:'Rotar código',okClass:'btn-primary'});
 }
 
 async function forceUpdate(){

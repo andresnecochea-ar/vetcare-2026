@@ -43,7 +43,7 @@ function showLogin(){
   ws.innerHTML = '<div style="max-width:380px;width:100%;background:#fff;border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.12);padding:32px;">'
     + '<div class="login-logo" style="width:56px;height:56px;margin:0 0 14px;display:flex;align-items:center;justify-content:flex-start;">'+(_logoHTML||'')+'</div>'
     + '<h1 style="margin:0 0 4px;font-size:26px;color:#6F2DBD;">VetCare</h1>'
-    + '<p id="authSub" style="margin:0 0 20px;color:#777;font-size:14px;">Ingresá con tu cuenta</p>'
+    + '<p id="authSub" style="margin:0 0 20px;color:#777;font-size:14px;">'+(_reauthDraft?'La sesión venció. Ingresá de nuevo para continuar sin perder lo escrito.':'Ingresá con tu cuenta')+'</p>'
     + '<div id="authError" style="display:none;background:#fde8e8;color:#c0392b;padding:10px;border-radius:10px;font-size:13px;margin-bottom:12px;"></div>'
     + '<div id="nameField" style="display:none;"><div style="margin-bottom:12px;"><input id="authName" type="text" placeholder="Tu nombre" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:10px;font-size:15px;box-sizing:border-box;"></div><div style="margin-bottom:12px;"><input id="authInvite" type="text" placeholder="Clave de invitación" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:10px;font-size:15px;box-sizing:border-box;"></div></div>'
     + '<div style="margin-bottom:12px;"><input id="authEmail" type="email" placeholder="Email" autocomplete="username" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:10px;font-size:15px;box-sizing:border-box;"></div>'
@@ -92,12 +92,15 @@ async function doAuth(){
   }
 }
 async function enterApp(){
-  await loadFromAPI();
-  _lastSnapshot=_snap();
+  const recoverPending=Boolean(_reauthDraft?.pending);
+  if(recoverPending)await loadFromAPI();else await loadInitialFromAPI();
+  const shouldResumeSync=prepareReauthDraftData();
   document.getElementById('welcomeScreen').style.display = 'none';
   document.getElementById('appShell').classList.remove('is-hidden');
   document.getElementById('globalSearchWrap').style.display = 'flex';
   applyTheme(); render(); updateBadges();
+  if(restoreReauthDraft()) toast('Sesión recuperada. Podés continuar donde estabas.');
+  if(shouldResumeSync)setTimeout(syncToAPI,0);
   var lb=document.getElementById('logoutBtn'); if(lb) lb.style.display='block';
   hideSplash();
   toast('Bienvenido ' + (currentUser && currentUser.name ? currentUser.name : '') + ' ✓');

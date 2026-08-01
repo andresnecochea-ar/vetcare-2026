@@ -1,4 +1,4 @@
-let invoiceFilters = { period: 'month', from: '', to: '', professional: '', status: '' };
+let invoiceFilters = { period: 'month', from: '', to: '', professional: '', status: '', query: '' };
 
 function setInvoiceFilter(key,value){
   if(key==='from'||key==='to'){
@@ -14,7 +14,16 @@ function setInvoiceFilter(key,value){
 function invoiceProfessional(invoice){
   const pet=(db.pets||[]).find(item=>item.id===invoice.petId);
   const encounter=pet&&(pet.history||[]).find(item=>item.id===invoice.encounterId);
-  return { vet:encounter?.vet||'', vetUserId:encounter?.vetUserId||'' };
+  const grooming=(db.groomingAppointments||[]).find(item=>item.invoiceId===invoice.id);
+  return { vet:encounter?.vet||grooming?.groomer||'', vetUserId:encounter?.vetUserId||grooming?.groomerUserId||'' };
+}
+
+function invoiceBalance(invoice) { return Math.max(0, Number(invoice.total||0) - Number(invoice.amountPaid||0)); }
+
+function applyInvoiceStock(invoice) {
+  if (!invoice || invoice.stockAppliedAt || invoice.status !== 'paid') return;
+  (invoice.items||[]).filter(item=>item.productId).forEach(item => consumeInventoryProduct(item.productId,'',Number(item.qty)||1));
+  invoice.stockAppliedAt = new Date().toISOString();
 }
 
 function renderInvoices() {
@@ -24,6 +33,12 @@ function renderInvoices() {
     const professional=invoiceProfessional(invoice);
     return dateMatchesFilter(invoice.date,invoiceFilters)
       && (!invoiceFilters.status||invoice.status===invoiceFilters.status)
+      && (!invoiceFilters.query || normalizedRecordName([
+        invoice.number,
+        db.owners.find(owner=>owner.id===invoice.ownerId)?.name,
+        db.pets.find(pet=>pet.id===invoice.petId)?.name,
+        ...(invoice.items||[]).map(item=>item.desc)
+      ].join(' ')).includes(normalizedRecordName(invoiceFilters.query)))
       && professionalMatches(professional,invoiceFilters.professional,'vetUserId','vet');
   });
   const summary = VetCareFinance.summarize(filtered);
@@ -47,6 +62,7 @@ function renderInvoices() {
         <option value="paid" ${invoiceFilters.status==='paid'?'selected':''}>Cobrado</option>
         <option value="cancelled" ${invoiceFilters.status==='cancelled'?'selected':''}>Cancelado</option>
       </select></label>
+      <label>Buscar<input class="input" value="${escapeAttr(invoiceFilters.query)}" oninput="invoiceFilters.query=this.value;clearTimeout(window._invoiceSearchTimer);window._invoiceSearchTimer=setTimeout(render,180)" placeholder="Tutor, paciente o número"></label>
       <span class="list-filter-count">${filtered.length} de ${invs.length} recibos</span>
     </div>
     <div class="table-wrap as-cards">
@@ -67,17 +83,42 @@ function renderInvoices() {
                 <td data-label="Paciente">${pet?`<button type="button" class="link-cell" onclick="openPetDetail('${pet.id}')">${escapeHtml(petDisplayName(pet))}</button>`:'—'}</td>
                 <td data-label="Fecha">${formatDate(inv.date)}</td>
                 <td class="col-sec" data-label="Profesional">${escapeHtml(professional.vet||'—')}</td>
-                <td data-label="Total"><strong>$${parseFloat(inv.total||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</strong></td>
+                <td data-label="Total"><strong>$${parseFloat(inv.total||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</strong>${invoiceBalance(inv)>0&&Number(inv.amountPaid)>0?`<small>Saldo $${invoiceBalance(inv).toLocaleString('es-AR')}</small>`:''}</td>
                 <td data-label="Estado"><span class="tag ${sc}">${sl}</span></td>
                 <td style="white-space:nowrap">
                   <button class="btn btn-sm" onclick="printInvoice('${inv.id}')" title="Imprimir" aria-label="Imprimir">${icon('print','ico-sm')}</button>
                   <button class="btn btn-sm" onclick="openInvoiceModal('${inv.id}')" title="Editar" aria-label="Editar">${icon('edit','ico-sm')}</button>
+                  ${inv.status==='pending'?`<button class="btn btn-sm btn-primary" onclick="openInvoicePayment('${inv.id}')">Cobrar</button>`:''}
                   ${canDeleteEntity('invoices') ? `<button class="btn btn-sm btn-danger" onclick="deleteInvoice('${inv.id}')" title="Eliminar">${iconX()}</button>` : ''}
                 </td></tr>`;}).join('')}
         </tbody>
       </table>
     </div>
   `;
+}
+
+function invoiceProductOptions(selected) {
+  return '<option value="">Ítem manual</option>' + (db.inventory||[]).map(product => `<option value="${escapeAttr(product.id)}" ${product.id===selected?'selected':''}>${escapeHtml(product.name)} · ${_fmtMoney(product.price)}</option>`).join('');
+}
+
+function invoiceItemHTML(item) {
+  return `<div class="form-row inv-item" style="margin-bottom:6px;align-items:center">
+    <select class="inv-product" onchange="fillInvoiceProduct(this)">${invoiceProductOptions(item.productId||'')}</select>
+    <input type="text" placeholder="Descripción" value="${escapeAttr(item.desc||'')}" class="inv-desc">
+    <input type="number" min="0.01" step="0.01" placeholder="Cant." value="${item.qty||1}" class="inv-qty" oninput="updateInvTotal()">
+    <input type="number" min="0" step="0.01" placeholder="Precio" value="${item.price||0}" class="inv-price" oninput="updateInvTotal()">
+    <button type="button" class="btn btn-sm btn-danger" onclick="this.closest('.inv-item').remove();updateInvTotal()" title="Quitar">${iconX()}</button>
+  </div>`;
+}
+
+function fillInvoiceProduct(select) {
+  const row = select.closest('.inv-item');
+  const product = (db.inventory||[]).find(item=>item.id===select.value);
+  if (product) {
+    row.querySelector('.inv-desc').value = product.name;
+    row.querySelector('.inv-price').value = product.price || 0;
+  }
+  updateInvTotal();
 }
 
 function openInvoiceModal(id) {
@@ -108,6 +149,10 @@ function openInvoiceModal(id) {
           ${petField}</div>
       </div>
       <div class="form-row">
+        <div class="form-group"><label for="invPaymentMethod">Medio de pago</label><select id="invPaymentMethod"><option value="">Sin indicar</option>${['Efectivo','Débito','Crédito','Transferencia','Mercado Pago','Otro'].map(method=>`<option value="${method}" ${inv.paymentMethod===method?'selected':''}>${method}</option>`).join('')}</select></div>
+        <div class="form-group"><label for="invAmountPaid">Importe abonado</label><input type="number" min="0" step="0.01" id="invAmountPaid" value="${escapeAttr(inv.amountPaid||0)}"></div>
+      </div>
+      <div class="form-row">
         <div class="form-group"><label for="invDate">Fecha</label><input type="date" id="invDate" value="${inv.date}"></div>
         <div class="form-group"><label for="invStatus">Estado</label>
           <select id="invStatus">
@@ -118,13 +163,7 @@ function openInvoiceModal(id) {
       </div>
       <label style="display:block;margin-bottom:8px;font-weight: var(--fw-bold)">Ítems / Servicios</label>
       <div id="invItems">
-        ${inv.items.map(item=>`
-          <div class="form-row inv-item" style="margin-bottom:6px;align-items:center">
-            <input type="text" placeholder="Descripción" value="${escapeAttr(item.desc||'')} " class="inv-desc" style="flex:3">
-            <input type="number" placeholder="Cant." value="${item.qty||1}" class="inv-qty" style="flex:0.7;min-width:55px" oninput="updateInvTotal()">
-            <input type="number" placeholder="Precio" value="${item.price||0}" class="inv-price" style="flex:1;min-width:75px" oninput="updateInvTotal()">
-            <button class="btn btn-sm btn-danger" onclick="this.closest('.inv-item').remove();updateInvTotal()" style="flex:none" title="Quitar">${iconX()}</button>
-          </div>`).join('')}
+        ${inv.items.map(invoiceItemHTML).join('')}
       </div>
       <button class="btn btn-sm" onclick="addInvItem()" style="margin-top:4px">+ Agregar ítem</button>
       <div style="text-align:right;font-size:var(--fs-md);font-family:var(--font-display);padding:12px;background:var(--bg-soft);border-radius:var(--radius-sm);margin-top:12px;margin-bottom:10px">
@@ -183,12 +222,7 @@ function syncInvoiceRelations(source){
 
 function addInvItem(){
   const c=document.getElementById('invItems');if(!c)return;
-  const d=document.createElement('div');d.className='form-row inv-item';d.style.cssText='margin-bottom:6px;align-items:center';
-  d.innerHTML=`<input type="text" placeholder="Descripción" class="inv-desc" style="flex:3">
-    <input type="number" placeholder="Cant." value="1" class="inv-qty" style="flex:0.7;min-width:55px" oninput="updateInvTotal()">
-    <input type="number" placeholder="Precio" value="0" class="inv-price" style="flex:1;min-width:75px" oninput="updateInvTotal()">
-    <button class="btn btn-sm btn-danger" onclick="this.closest('.inv-item').remove();updateInvTotal()" style="flex:none" title="Quitar">${iconX()}</button>`;
-  c.appendChild(d);
+  c.insertAdjacentHTML('beforeend',invoiceItemHTML({desc:'',qty:1,price:0,productId:''}));
 }
 
 function updateInvTotal(){
@@ -213,7 +247,8 @@ function saveInvoice(id,isNew){
     const desc=row.querySelector('.inv-desc')?.value||'';
     const qty=parseFloat(row.querySelector('.inv-qty')?.value||1);
     const price=parseFloat(row.querySelector('.inv-price')?.value||0);
-    if(desc.trim()){items.push({desc,qty,price});total+=qty*price;}});
+    const productId=row.querySelector('.inv-product')?.value||'';
+    if(desc.trim()){items.push({desc:desc.trim(),qty,price,productId});total+=qty*price;}});
   db.invoices=db.invoices||[];
   const existingInvoice=id?db.invoices.find(i=>i.id===id):null;
   const ownerId=getPickerOne('invOwner');
@@ -225,20 +260,47 @@ function saveInvoice(id,isNew){
     toast('El paciente no está asociado al tutor seleccionado','error');
     return;
   }
+  let amountPaid=Math.max(0,parseFloat(document.getElementById('invAmountPaid')?.value||0)||0);
+  let status=document.getElementById('invStatus')?.value||'pending';
+  if(status==='paid') amountPaid=total;
+  else if(status!=='cancelled'&&amountPaid>=total&&total>0) status='paid';
   const inv={
     id:id||uid(),
     ownerId,
     petId,
     date:document.getElementById('invDate')?.value||localDateKey(),
-    status:document.getElementById('invStatus')?.value||'pending',
+    status,
     items,total,
     notes:document.getElementById('invNotes')?.value||'',
     encounterId:existingInvoice?.encounterId||'',
+    paymentMethod:document.getElementById('invPaymentMethod')?.value||'',
+    amountPaid,
+    stockAppliedAt:existingInvoice?.stockAppliedAt||'',
     number:isNew?nextLocalInvoiceNumber():(existingInvoice?.number||nextLocalInvoiceNumber())
   };
+  applyInvoiceStock(inv);
   if(isNew){db.invoices.push(inv);}
   else{const idx=db.invoices.findIndex(i=>i.id===id);if(idx>-1)db.invoices[idx]=inv;else db.invoices.push(inv);}
   saveDB(isNew?'Recibo creado':'Recibo actualizado');closeModal();currentView='invoices';render();
+}
+
+function openInvoicePayment(id) {
+  const invoice=(db.invoices||[]).find(item=>item.id===id);
+  if(!invoice)return;
+  const balance=invoiceBalance(invoice)||Number(invoice.total||0);
+  showModal(`<div class="modal-header"><h2>Cobrar recibo #${escapeHtml(invoice.number||invoice.id.slice(-4))}</h2><button class="close-btn" onclick="closeModal()">&times;</button></div><div class="modal-body"><div class="form-row"><div class="form-group"><label for="payAmount">Importe</label><input type="number" min="0.01" step="0.01" max="${balance}" id="payAmount" value="${balance}"></div><div class="form-group"><label for="payMethod">Medio de pago</label><select id="payMethod">${['Efectivo','Débito','Crédito','Transferencia','Mercado Pago','Otro'].map(method=>`<option>${method}</option>`).join('')}</select></div></div><p>Saldo actual: <strong>${_fmtMoney(balance)}</strong>. Podés registrar un pago parcial.</p></div><div class="modal-footer"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="saveInvoicePayment('${id}')">Registrar cobro</button></div>`);
+}
+
+function saveInvoicePayment(id) {
+  const invoice=(db.invoices||[]).find(item=>item.id===id);
+  const amount=Math.max(0,Number(document.getElementById('payAmount')?.value)||0);
+  if(!invoice||amount<=0){toast('Ingresá un importe válido','error');return;}
+  invoice.amountPaid=Math.min(Number(invoice.total||0),Number(invoice.amountPaid||0)+amount);
+  invoice.paymentMethod=document.getElementById('payMethod')?.value||'';
+  invoice.status=invoice.amountPaid>=Number(invoice.total||0)?'paid':'pending';
+  applyInvoiceStock(invoice);
+  saveDB(invoice.status==='paid'?'Recibo cobrado':'Pago parcial registrado');
+  closeModal();render();
 }
 
 function deleteInvoice(id){

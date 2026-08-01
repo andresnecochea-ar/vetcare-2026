@@ -1,3 +1,13 @@
+let ownerVisibleLimit = 100;
+const OWNER_PAGE_SIZE = 100;
+let _ownerFilterTimer = null;
+
+function ownerItemsHTML(owners) {
+  const shown=owners.slice(0,ownerVisibleLimit);
+  return shown.map(o => ownerListCardHTML(o)).join('')
+    + (owners.length>shown.length?`<div class="list-more" style="grid-column:1/-1"><small>${shown.length} de ${owners.length} tutores</small><button class="btn" onclick="showMoreOwners()">Ver más</button></div>`:'');
+}
+
 function renderOwners() {
   return `
     <div class="page-header">
@@ -5,12 +15,18 @@ function renderOwners() {
       <button class="btn btn-primary" onclick="openOwnerModal()">+ Nuevo tutor</button>
     </div>
     <div class="search-bar">
-      <input type="text" placeholder="Buscar tutor..." onkeyup="filterOwners(this.value)">
+      <input type="text" id="ownerSearch" placeholder="Buscar tutor..." oninput="filterOwners(this.value)">
     </div>
     <div id="ownersGrid" class="pets-grid">
-      ${db.owners.length === 0 ? `<div class="empty-state" style="grid-column:1/-1"><div class="ico">${icon('users')}</div>Sin tutores registrados</div>` : db.owners.map(o => ownerListCardHTML(o)).join('')}
+      ${db.owners.length === 0 ? `<div class="empty-state" style="grid-column:1/-1"><div class="ico">${icon('users')}</div>Sin tutores registrados</div>` : ownerItemsHTML(db.owners)}
     </div>
   `;
+}
+
+function showOwnerInvoices(ownerId) {
+  const owner=db.owners.find(item=>item.id===ownerId);
+  invoiceFilters.query=owner?.name||'';
+  navigateTo('invoices');
 }
 
 // Items para pickerOne(). El teléfono y el DNI son lo que distingue a dos
@@ -28,6 +44,7 @@ function ownerPickerItems(options) {
 
 function ownerListCardHTML(o) {
   const pets = db.pets.filter(p => (p.ownerIds||[]).includes(o.id));
+  const balance = (db.invoices||[]).filter(inv=>inv.ownerId===o.id&&inv.status==='pending').reduce((sum,inv)=>sum+invoiceBalance(inv),0);
   return `
     <div class="pet-card is-static">
       <div class="pet-card-body">
@@ -36,12 +53,14 @@ function ownerListCardHTML(o) {
         ${o.altPhone ? `<div class="meta">${icon('phone','ico-sm')} ${escapeHtml(o.altPhone)} <small style="color:var(--text-mute)">(alt.)</small></div>` : ''}
         <div class="meta">${icon('mail','ico-sm')} ${escapeHtml(o.email||'sin email')}</div>
         <div class="tags">
+          ${balance?`<button type="button" class="tag warning tag-link" onclick="showOwnerInvoices('${o.id}')">Saldo ${_fmtMoney(balance)}</button>`:''}
           ${pets.map(p => `<button type="button" class="tag tag-link" onclick="openPetDetail('${p.id}')">${escapeHtml(p.name)}</button>`).join('') || '<span class="tag">Sin mascotas</span>'}
         </div>
         <div class="contact-links">
           ${waButtonHTML([o.phone, o.altPhone], { fixOnclick: `openOwnerModal('${o.id}')` })}
           ${o.email ? `<a class="contact-btn mail" href="mailto:${o.email}">Email</a>` : ''}
           <button class="btn btn-sm" style="margin-left:auto" onclick="openOwnerModal('${o.id}')">Editar</button>
+          <button class="btn btn-sm btn-primary" onclick="openPetModal(null,'${o.id}')">+ Paciente</button>
         </div>
       </div>
     </div>
@@ -72,16 +91,26 @@ function ownerCardHTML(o, petName) {
 }
 
 function filterOwners(q) {
-  q = q.toLowerCase();
-  const filtered = db.owners.filter(o => o.name.toLowerCase().includes(q) || (o.phone||'').includes(q) || (o.email||'').toLowerCase().includes(q));
-  document.getElementById('ownersGrid').innerHTML = filtered.length === 0 ? '<div class="empty-state" style="grid-column:1/-1">Sin resultados</div>' : filtered.map(ownerListCardHTML).join('');
+  clearTimeout(_ownerFilterTimer);
+  _ownerFilterTimer=setTimeout(()=>renderFilteredOwners(q),160);
 }
 
-function openOwnerModal(id) {
+function renderFilteredOwners(q) {
+  q = String(q||'').toLowerCase().trim();
+  const filtered = db.owners.filter(o => [o.name,o.phone,o.altPhone,o.email,o.dni].filter(Boolean).join(' ').toLowerCase().includes(q));
+  document.getElementById('ownersGrid').innerHTML = filtered.length === 0 ? '<div class="empty-state" style="grid-column:1/-1">Sin resultados</div>' : ownerItemsHTML(filtered);
+}
+
+function showMoreOwners() {
+  ownerVisibleLimit+=OWNER_PAGE_SIZE;
+  renderFilteredOwners(document.getElementById('ownerSearch')?.value||'');
+}
+
+function openOwnerModal(id, fromPet) {
   const owner = id ? db.owners.find(o => o.id === id) : { id: uid() };
   const isNew = !id;
   showModal(`
-    <div class="modal-header"><h2>${isNew?'Nuevo tutor':'Editar tutor'}</h2><button class="close-btn" onclick="closeModal()">&times;</button></div>
+    <div class="modal-header"><h2>${isNew?'Nuevo tutor':'Editar tutor'}</h2><button class="close-btn" ${fromPet?'data-modal-cancel':''} onclick="${fromPet?'cancelOwnerFromPet()':'closeModal()'}">&times;</button></div>
     <div class="modal-body">
       <div class="form-row">
         <div class="form-group"><label>Nombre completo *</label><input type="text" id="oName" value="${escapeAttr(owner.name||'')}"></div>
@@ -109,7 +138,7 @@ function openOwnerModal(id) {
     </div>
     <div class="modal-footer">
       ${!isNew && canDeleteEntity('owners') ? `<button class="btn btn-danger" onclick="deleteOwner('${owner.id}')">Eliminar</button>` : ''}
-      <button class="btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn" ${fromPet?'data-modal-cancel':''} onclick="${fromPet?'cancelOwnerFromPet()':'closeModal()'}">Cancelar</button>
       <button class="btn btn-primary" onclick="saveOwner('${owner.id}', ${isNew})">Guardar</button>
     </div>
   `);
@@ -128,6 +157,18 @@ function saveOwner(id, isNew) {
     dni: document.getElementById('oDni').value.trim(),
     notes: document.getElementById('oNotes').value.trim()
   };
+  if (isNew) {
+    const duplicate = db.owners.find(owner => normalizedRecordName(owner.name) === normalizedRecordName(name)
+      || (data.dni && owner.dni && normalizedRecordName(owner.dni) === normalizedRecordName(data.dni)));
+    if (duplicate && !document.getElementById('oDuplicateConfirmed')) {
+      const notice=document.createElement('div');notice.id='oDuplicateConfirmed';notice.className='inline-warning';
+      const duplicateAction=window._pendingPetDraft
+        ? `<button type="button" class="link-inline" onclick="useOwnerForPendingPet('${duplicate.id}')">Usar este tutor</button>`
+        : `<button type="button" class="link-inline" onclick="closeModal();openOwnerModal('${duplicate.id}')">Abrir tutor</button>`;
+      notice.innerHTML=`${icon('alert','ico-sm')} Ya existe ${escapeHtml(duplicate.name)}${duplicate.dni?' · DNI '+escapeHtml(duplicate.dni):''}. ${duplicateAction} · Volvé a guardar para crear igualmente.`;
+      document.getElementById('oName')?.closest('.form-row')?.after(notice);return;
+    }
+  }
   // Ya no se exige el formato internacional completo: con el código de área
   // configurado en Opciones, "15649798" se reconstruye solo. Sólo se avisa
   // cuando de verdad no se puede armar un celular, que es cuando el botón de
@@ -142,6 +183,22 @@ function saveOwner(id, isNew) {
     return;
   }
   persistOwner(id, isNew, data);
+}
+
+function useOwnerForPendingPet(ownerId) {
+  const draft=window._pendingPetDraft;
+  if (!draft) { closeModal();openOwnerModal(ownerId);return; }
+  window._pendingPetDraft=null;
+  draft.ownerIds=[...new Set([...(draft.ownerIds||[]),ownerId])];
+  closeModal();
+  openPetModal(null,ownerId,draft);
+}
+
+function cancelOwnerFromPet() {
+  const draft=window._pendingPetDraft;
+  window._pendingPetDraft=null;
+  closeModal();
+  if (draft) openPetModal(null,null,draft);
 }
 
 function persistOwner(id, isNew, data) {
@@ -159,7 +216,11 @@ function persistOwner(id, isNew, data) {
   }
   saveDB(isNew?'Tutor creado':'Tutor actualizado');
   closeModal();
-  render();
+  if (isNew && window._pendingPetDraft) {
+    const draft=window._pendingPetDraft;window._pendingPetDraft=null;
+    draft.ownerIds=[...(draft.ownerIds||[]),id];
+    openPetModal(null,id,draft);
+  } else render();
 }
 
 function deleteOwner(id) {

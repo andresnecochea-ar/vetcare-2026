@@ -67,8 +67,8 @@ describe('VetCare Worker', () => {
     expect(body).toMatchObject({
       status: 'ok',
       database: 'ready',
-      version: '2.15.0',
-      schemaVersion: 17,
+      version: '2.16.0',
+      schemaVersion: 18,
     });
 
     // Los estudios cargados antes de 0011 siguen contando como resultado recibido.
@@ -445,6 +445,8 @@ describe('VetCare Worker', () => {
         lot: 'L-2026-14',
         vet: 'Dra. Test',
         vetUserId: login.body.user.id,
+        vaccineType: 'Antirrábica',
+        productId: 'product-vaccine',
         intervalDays: '365',
         cancelled: '',
         notifiedAt: '',
@@ -457,6 +459,7 @@ describe('VetCare Worker', () => {
         lot: '',
         vet: 'Dra. Test',
         vetUserId: login.body.user.id,
+        productId: 'product-deworming',
         intervalDays: '31',
         cancelled: '',
         notifiedAt: '',
@@ -561,6 +564,9 @@ describe('VetCare Worker', () => {
       items: [{ desc: 'Consulta', qty: 1, price: 15000 }],
       total: 15000,
       status: 'paid',
+      paymentMethod: 'cash',
+      amountPaid: 15000,
+      stockAppliedAt: '2026-07-28T12:00:00.000Z',
       notes: 'Pagado en efectivo',
     };
     const savedInvoice = await jsonResponse('/api/invoices', {
@@ -613,6 +619,80 @@ describe('VetCare Worker', () => {
       },
     })).status).toBe(200);
 
+    const followupAction = {
+      id: `appointment:${appointment.id}`,
+      kind: 'appointment',
+      refId: appointment.id,
+      action: 'snooze',
+      untilDate: '2026-08-05',
+      userId: 'forged-user',
+      userName: 'Nombre adulterado',
+      createdAt: '2000-01-01T00:00:00.000Z',
+    };
+    const savedFollowup = await jsonResponse('/api/followupActions', {
+      method: 'POST',
+      headers: authenticated,
+      body: followupAction,
+    });
+    expect(savedFollowup.response.status).toBe(200);
+    expect(savedFollowup.body).toMatchObject({
+      id: followupAction.id,
+      action: 'snooze',
+      userId: login.body.user.id,
+      userName: 'Veterinaria Test',
+    });
+    expect(savedFollowup.body.createdAt).not.toBe(followupAction.createdAt);
+
+    const coreSnapshot = await jsonResponse('/api/data?scope=core&date=2026-08-01', { headers: authenticated });
+    expect(coreSnapshot.response.status).toBe(200);
+    expect(coreSnapshot.body.partial).toBe(true);
+    expect(coreSnapshot.body.groomingAppointments).toEqual([
+      expect.objectContaining({ id: grooming.id, petId: pet.id }),
+    ]);
+    expect(coreSnapshot.body.pets).toEqual([
+      expect.objectContaining({
+        id: pet.id,
+        history: [],
+        vaccines: [],
+        dewormings: [expect.objectContaining({ id: pet.dewormings[0].id })],
+        studies: [expect.objectContaining({ id: pet.studies[1].id, status: 'requested' })],
+      }),
+    ]);
+    expect(coreSnapshot.body.owners).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: owner.id }),
+    ]));
+    expect(coreSnapshot.body.inventory).toEqual([]);
+    expect(coreSnapshot.body.invoices).toEqual([]);
+    expect(coreSnapshot.body.followupActions).toEqual([
+      expect.objectContaining({ id: followupAction.id, userId: login.body.user.id }),
+    ]);
+
+    const directorySnapshot = await jsonResponse('/api/data?scope=directory', { headers: authenticated });
+    expect(directorySnapshot.response.status).toBe(200);
+    expect(directorySnapshot.body.directory).toBe(true);
+    const petSummary = directorySnapshot.body.pets.find((item) => item.id === pet.id);
+    expect(petSummary).toMatchObject({
+      id: pet.id,
+      lastVisit: '2026-07-01',
+      _summaryOnly: true,
+      history: [expect.objectContaining({ id: pet.history[0].id, date: pet.history[0].date })],
+      vaccines: [],
+      dewormings: [],
+      images: [],
+      studies: [],
+      ownerIds: [owner.id],
+    });
+    expect(directorySnapshot.body.inventory).toEqual([
+      expect.objectContaining({ id: inventory.id }),
+    ]);
+
+    const singlePet = await jsonResponse(`/api/pets/${pet.id}`, { headers: authenticated });
+    expect(singlePet.response.status).toBe(200);
+    expect(singlePet.body).toMatchObject({ id: pet.id, ownerIds: [owner.id] });
+    expect(singlePet.body.history).toEqual(pet.history);
+    expect(singlePet.body.vaccines).toEqual(pet.vaccines);
+    expect(singlePet.body.studies).toEqual(pet.studies);
+
     const snapshot = await jsonResponse('/api/data', { headers: authenticated });
     expect(snapshot.response.status).toBe(200);
 
@@ -631,6 +711,15 @@ describe('VetCare Worker', () => {
     expect(snapshot.body.inventory[0].lots).toEqual(inventory.lots);
     expect(snapshot.body.invoices[0].items).toEqual(invoice.items);
     expect(snapshot.body.invoices[0].encounterId).toBe(pet.history[0].id);
+    expect(snapshot.body.invoices[0]).toMatchObject({
+      paymentMethod: invoice.paymentMethod,
+      amountPaid: invoice.amountPaid,
+      stockAppliedAt: invoice.stockAppliedAt,
+    });
+    expect(snapshot.body.followupActions[0]).toMatchObject({
+      id: followupAction.id,
+      userId: login.body.user.id,
+    });
     expect(snapshot.body).toMatchObject({
       clinicName: 'VetCare Test',
       settings: { theme: 'dark', receiptTaxId: '20-12345678-9' },
@@ -1158,6 +1247,117 @@ describe('VetCare Worker', () => {
     expect(lastAdminDemotion.response.status).toBe(409);
     expect(lastAdminDemotion.body.error).toContain('al menos un administrador');
 
+    const invitedEmail = `invitada-${crypto.randomUUID()}@example.com`;
+    const invitation = await jsonResponse('/api/invitations', {
+      method: 'POST',
+      headers: authenticated,
+      body: { email: invitedEmail, role: 'veterinarian' },
+    });
+    expect(invitation.response.status).toBe(201);
+    expect(invitation.body).toMatchObject({ email: invitedEmail, role: 'veterinarian' });
+    expect(invitation.body.code).toMatch(/^[A-Z0-9]{12}$/);
+
+    const wrongInvitationEmail = await jsonResponse('/api/register', {
+      method: 'POST',
+      body: {
+        email: `otra-${crypto.randomUUID()}@example.com`,
+        password: 'clave-invitada-1234',
+        name: 'Otra persona',
+        inviteCode: invitation.body.code,
+      },
+    });
+    expect(wrongInvitationEmail.response.status).toBe(403);
+
+    const invitedRegistration = await jsonResponse('/api/register', {
+      method: 'POST',
+      body: {
+        email: invitedEmail,
+        password: 'clave-invitada-1234',
+        name: 'Veterinaria Invitada',
+        inviteCode: invitation.body.code,
+      },
+    });
+    expect(invitedRegistration.response.status).toBe(201);
+    expect(invitedRegistration.body.role).toBe('veterinarian');
+
+    const reusedInvitation = await jsonResponse('/api/register', {
+      method: 'POST',
+      body: {
+        email: `reuso-${crypto.randomUUID()}@example.com`,
+        password: 'clave-invitada-1234',
+        name: 'Intento de reuso',
+        inviteCode: invitation.body.code,
+      },
+    });
+    expect(reusedInvitation.response.status).toBe(403);
+
+    const invitedProfile = await jsonResponse(`/api/users/${invitedRegistration.body.id}/profile`, {
+      method: 'PUT',
+      headers: authenticated,
+      body: { active: true, license: 'MP 12345' },
+    });
+    expect(invitedProfile.response.status).toBe(200);
+    expect(invitedProfile.body).toMatchObject({ active: 1, license: 'MP 12345' });
+
+    const invitedLogin = await jsonResponse('/api/login', {
+      method: 'POST',
+      body: { email: invitedEmail, password: 'clave-invitada-1234' },
+    });
+    expect(invitedLogin.response.status).toBe(200);
+    expect(invitedLogin.body.user).toMatchObject({ role: 'veterinarian', license: 'MP 12345' });
+
+    const activeStaff = await jsonResponse('/api/staff', { headers: authenticated });
+    expect(activeStaff.body.staff).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: invitedRegistration.body.id, license: 'MP 12345' }),
+    ]));
+
+    const deactivatedInvitee = await jsonResponse(`/api/users/${invitedRegistration.body.id}/profile`, {
+      method: 'PUT',
+      headers: authenticated,
+      body: { active: false, license: 'MP 12345' },
+    });
+    expect(deactivatedInvitee.response.status).toBe(200);
+    expect(deactivatedInvitee.body.active).toBe(0);
+    expect((await request('/api/me', {
+      headers: { Authorization: `Bearer ${invitedLogin.body.token}` },
+    })).status).toBe(401);
+    expect((await request('/api/login', {
+      method: 'POST',
+      body: { email: invitedEmail, password: 'clave-invitada-1234' },
+    })).status).toBe(403);
+    const staffWithHistoricalLicense = await jsonResponse('/api/staff', { headers: authenticated });
+    expect(staffWithHistoricalLicense.body.staff).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: invitedRegistration.body.id, active: 0, license: 'MP 12345' }),
+    ]));
+
+    const rotatedAccess = await jsonResponse('/api/access/invite-code', {
+      method: 'POST',
+      headers: authenticated,
+    });
+    expect(rotatedAccess.response.status).toBe(200);
+    expect(rotatedAccess.body.code).toMatch(/^[A-Z0-9]{12}$/);
+    const oldGeneralCode = await jsonResponse('/api/register', {
+      method: 'POST',
+      body: {
+        email: `codigo-viejo-${crypto.randomUUID()}@example.com`,
+        password: 'clave-general-1234',
+        name: 'Código viejo',
+        inviteCode: 'test-invite-code',
+      },
+    });
+    expect(oldGeneralCode.response.status).toBe(403);
+    const generalRegistration = await jsonResponse('/api/register', {
+      method: 'POST',
+      body: {
+        email: `codigo-nuevo-${crypto.randomUUID()}@example.com`,
+        password: 'clave-general-1234',
+        name: 'Código renovado',
+        inviteCode: rotatedAccess.body.code,
+      },
+    });
+    expect(generalRegistration.response.status).toBe(201);
+    expect(generalRegistration.body.role).toBe('reception');
+
     const deletedReceptionPet = await jsonResponse(`/api/pets/${receptionPet.id}`, {
       method: 'DELETE',
       headers: authenticated,
@@ -1182,6 +1382,20 @@ describe('VetCare Worker', () => {
         target_label: 'Recepción Test',
       }),
       expect.objectContaining({
+        action: 'invite',
+        entity_type: 'users',
+        target_label: invitedEmail,
+      }),
+      expect.objectContaining({
+        action: 'deactivate',
+        entity_type: 'users',
+        entity_id: invitedRegistration.body.id,
+      }),
+      expect.objectContaining({
+        action: 'invite_code_rotate',
+        entity_type: 'settings',
+      }),
+      expect.objectContaining({
         action: 'update',
         entity_type: 'pets',
         entity_id: receptionPet.id,
@@ -1202,6 +1416,27 @@ describe('VetCare Worker', () => {
     expect(filteredAudit.body.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: roleAudit.id }),
     ]));
+
+    // Una edición masiva hecha desde el directorio resumido no debe interpretar
+    // los arrays vacíos como una orden de borrar la historia clínica.
+    const latestDirectory = await jsonResponse('/api/data?scope=directory', { headers: authenticated });
+    const summaryToArchive = latestDirectory.body.pets.find((item) => item.id === pet.id);
+    const historyCountBefore = (await env.DB.prepare('SELECT COUNT(*) AS total FROM pet_history WHERE pet_id = ?')
+      .bind(pet.id).first()).total;
+    const archivedSummary = await jsonResponse('/api/pets', {
+      method: 'POST',
+      headers: authenticated,
+      body: {
+        ...summaryToArchive,
+        inactiveAt: '2026-08-01',
+        inactiveReason: 'Prueba de archivado masivo',
+      },
+    });
+    expect(archivedSummary.response.status).toBe(200);
+    const historyCountAfter = (await env.DB.prepare('SELECT COUNT(*) AS total FROM pet_history WHERE pet_id = ?')
+      .bind(pet.id).first()).total;
+    expect(historyCountAfter).toBe(historyCountBefore);
+    expect((await jsonResponse(`/api/pets/${pet.id}`, { headers: authenticated })).body.history.length).toBe(historyCountBefore);
   });
 
   it('prefiere el celular sobre el fijo cuando hay varios números pegados', async () => {

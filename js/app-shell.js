@@ -20,6 +20,7 @@ function searchInHistory(q, limit) {
   const max = limit || 20;
   const results = [];
   for (const pet of db.pets) {
+    if (petIsInactive(pet)) continue;
     for (const entry of pet.history || []) {
       const searchable = [
         entry.type,
@@ -69,6 +70,7 @@ function _globalSearchRun(q) {
 
   const pets = [];
   for (const p of db.pets) {
+    if (petIsInactive(p)) continue;
     if (pets.length >= GS_PER_GROUP * 4) break;
     const hay = [p.name, p.species, p.breed, ...petOwnerNames(p, index)].filter(Boolean).join(' ').toLowerCase();
     if (hay.includes(ql)) {
@@ -81,7 +83,7 @@ function _globalSearchRun(q) {
     if (owners.length >= GS_PER_GROUP * 4) break;
     const hay = [o.name, o.phone, o.altPhone, o.dni, o.email].filter(Boolean).join(' ').toLowerCase();
     if (hay.includes(ql)) {
-      const petNames = db.pets.filter(p => (p.ownerIds || []).includes(o.id)).map(p => petDisplayName(p));
+      const petNames = db.pets.filter(p => !petIsInactive(p) && (p.ownerIds || []).includes(o.id)).map(p => petDisplayName(p));
       owners.push({
         type: 'owner',
         label: o.name,
@@ -223,12 +225,14 @@ function renderToday() {
     // que se necesita; y si el paciente no llega, hay que poder llamar al
     // tutor sin salir de la pantalla.
     const who = isClinical ? (a.vet || '') : (a.groomer || '');
+    const overlaps = isClinical && typeof appointmentOverlaps === 'function' ? appointmentOverlaps(a) : [];
+    if (overlaps.length) cls += ' appointment-overlap';
     const meta = [a.time || 'Sin hora', escapeHtml(a.type || a.service || 'Sin tipo'), who ? escapeHtml(who) : '']
       .filter(Boolean).join(' &middot; ');
     return `<div class="today-slot ${cls}">
       <div class="ts-info">
         <strong>${pet ? `<button type="button" class="link-inline" onclick="openPetDetail('${pet.id}')">${escapeHtml(petDisplayName(pet))}</button>` : escapeHtml('Paciente')}${isClinical ? `<span class="appointment-status ${appointmentStatusClass(status)}">${appointmentStatusLabel(status)}</span>` : ''}</strong>
-        <small>${meta}</small>
+        <small>${meta}${overlaps.length?' · <span class="tag danger">Superpuesto</span>':''}</small>
         ${owner ? `<small class="ts-owner"><button type="button" class="link-inline" onclick="openOwnerModal('${owner.id}')">${escapeHtml(owner.name)}</button>${owner.phone||owner.altPhone ? ` · <a class="link-inline" href="tel:${escapeAttr(telPhone(owner.phone||owner.altPhone))}">Llamar</a>` : ''}${waPhone([owner.phone, owner.altPhone]) ? ` · <a class="link-inline" href="https://wa.me/${waPhone([owner.phone, owner.altPhone])}" target="_blank" rel="noopener">WhatsApp</a>` : ''}</small>` : ''}
       </div>
       <div class="today-slot-actions">

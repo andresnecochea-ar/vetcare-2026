@@ -23,9 +23,9 @@ var _assocState = {};
 
 function _pickerFilter(items, q, limit){
   var query = (q||'').toLowerCase().trim();
-  var rows = query
+  var rows = query.length >= 2
     ? items.filter(function(it){ return (it.search||it.label||'').toLowerCase().indexOf(query) !== -1; })
-    : items;
+    : [];
   return { total: rows.length, rows: rows.slice(0, limit || PICKER_MAX_ROWS) };
 }
 
@@ -58,7 +58,7 @@ function _assocRows(containerId, q){
   var pool = st.items.filter(function(it){ return st.selected.indexOf(it.id) === -1; });
   var found = _pickerFilter(pool, q, PICKER_MAX_ROWS);
   var rows = selected.concat(found.rows);
-  if(rows.length === 0) return '<div class="assoc-empty">Sin resultados</div>';
+  if(rows.length === 0) return '<div class="assoc-empty">'+((q||'').trim().length<2?'Escribí al menos 2 caracteres':'Sin resultados')+'</div>';
   return rows.map(function(it){
     var on = st.selected.indexOf(it.id) !== -1;
     return '<label class="assoc-row">'

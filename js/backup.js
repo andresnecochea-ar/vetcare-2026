@@ -2,12 +2,15 @@ function renderBackup() {
   const sizeKB = (JSON.stringify(db).length / 1024).toFixed(1);
   const turnos = db.appointments.length + db.groomingAppointments.length;
   const sync = getSyncStatus();
+  let lastBackup='';try{lastBackup=localStorage.getItem('vetcare_last_backup')||'';}catch(e){}
+  const backupAge=lastBackup?Math.floor((Date.now()-new Date(lastBackup).getTime())/86400000):null;
   return `
     <div class="page-header">
       <div class="title"><small>Seguridad de datos</small><h1>Respaldo y restauración</h1></div>
     </div>
     <div class="card">
       <h3>Estado actual</h3>
+      <p class="backup-recency ${backupAge===null||backupAge>30?'is-warning':''}">${lastBackup?`Última copia descargada: ${new Date(lastBackup).toLocaleString('es-AR')} · hace ${backupAge} días`:'Todavía no se registró ninguna copia descargada en este equipo.'}</p>
       <p style="margin-bottom:8px"><span class="sync-summary sync-summary-${sync.state}" id="syncSummary">${escapeHtml(sync.label)}</span></p>
       <p id="syncSummaryDetail" style="color:var(--text-soft);margin-bottom:6px">${escapeHtml(sync.detail)}</p>
       <p id="syncSummaryLast" style="color:var(--text-mute);font-size:var(--fs-xs);margin-bottom:12px">${sync.lastSyncAt?'Última sincronización confirmada: '+escapeHtml(new Date(sync.lastSyncAt).toLocaleString('es-AR')):'Todavía no hay una sincronización confirmada.'}</p>

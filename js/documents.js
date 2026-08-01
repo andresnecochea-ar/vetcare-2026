@@ -23,6 +23,15 @@ function clinicContactLine() {
     .filter(Boolean).map(escapeHtml).join(' · ');
 }
 
+function professionalSignature(name, userId) {
+  const person = (clinicStaff || []).find(item => item.id === userId)
+    || (clinicStaff || []).find(item => item.name === name)
+    || (currentUser?.id === userId ? currentUser : null);
+  const professionalName = name || person?.name || 'Profesional actuante';
+  const license = person?.license || clinicInfo().license || '';
+  return professionalName + (license ? ` · Mat. ${license}` : '');
+}
+
 function documentPrintHead(title) {
   return '<html><head><title>' + escapeHtml(title) + '</title><meta charset="utf-8"><style>'
     + 'body{font-family:Georgia,serif;max-width:760px;margin:28px auto;padding:0 20px;color:#222}'
@@ -112,10 +121,7 @@ function openMedicalCertificate(petId, encounterId) {
         <textarea id="certText" rows="9">${escapeHtml(fillCertificate(pet, encounter))}</textarea>
         <small style="color:var(--text-mute)">Pod&eacute;s editarlo antes de imprimir. El texto base se configura en Opciones.</small>
       </div>
-      <div class="form-group">
-        <label for="certVet">Profesional que firma</label>
-        <input type="text" id="certVet" value="${escapeAttr(encounter?.vet || '')}" placeholder="Nombre y matr&iacute;cula">
-      </div>
+      ${attendingFieldHTML('certVet', encounter?.vet || defaultAttendingName(), 'Profesional que firma', encounter?.vetUserId || defaultAttendingUserId())}
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeModal()">Cancelar</button>
@@ -128,12 +134,13 @@ function printMedicalCertificate(petId) {
   const pet = db.pets.find(p => p.id === petId);
   if (!pet) return;
   const text = document.getElementById('certText')?.value || '';
-  const vet = document.getElementById('certVet')?.value.trim() || '';
+  const vet = getAttendingValue('certVet');
+  const vetUserId = getAttendingUserId('certVet');
   printDocument('Certificado médico',
     documentPatientMeta(pet)
     + '<div class="body-text">' + escapeHtml(text) + '</div>'
     + '<p style="margin-top:24px">Fecha de emisión: ' + formatDate(localDateKey()) + '</p>'
-    + '<div class="sign">' + escapeHtml(vet || 'Profesional actuante') + '</div>');
+    + '<div class="sign">' + escapeHtml(professionalSignature(vet, vetUserId)) + '</div>');
   closeModal();
 }
 

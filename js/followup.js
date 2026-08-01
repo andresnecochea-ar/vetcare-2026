@@ -13,23 +13,37 @@ const FOLLOWUP_SOON_DAYS = 30;
 const FOLLOWUP_STALE_DAYS = 365;
 let showStaleFollowUpAlerts = false;
 
-// "Archivar" un pendiente de la vista Hoy no lo resuelve (sigue en la ficha
-// del paciente, tal cual "Marcar hecho" no lo hace): solo deja de aparecer en
-// el agregado del día. Es una preferencia de qué mostrar, no un dato clínico,
-// así que se guarda local por dispositivo (no sincroniza entre equipos).
+// Las decisiones sobre un pendiente se sincronizan entre todos los equipos.
 const FOLLOWUP_DISMISS_KEY = 'vetcare_dismissed_followups';
 
 function followUpDismissKey(item) { return `${item.kind}:${item.refId}`; }
 
 function loadDismissedFollowUps() {
-  try { return new Set(JSON.parse(localStorage.getItem(FOLLOWUP_DISMISS_KEY) || '[]')); }
-  catch (e) { return new Set(); }
+  const today = localDateKey();
+  const shared = (db.followupActions || []).filter(item =>
+    item.action === 'archive' || (item.action === 'snooze' && item.untilDate && item.untilDate >= today));
+  const keys = new Set(shared.map(item => `${item.kind}:${item.refId}`));
+  try { JSON.parse(localStorage.getItem(FOLLOWUP_DISMISS_KEY) || '[]').forEach(key => keys.add(key)); } catch (e) {}
+  return keys;
 }
 
 function dismissFollowUp(kind, refId) {
-  const set = loadDismissedFollowUps();
-  set.add(`${kind}:${refId}`);
-  try { localStorage.setItem(FOLLOWUP_DISMISS_KEY, JSON.stringify([...set])); } catch (e) {}
+  setFollowUpAction(kind, refId, 'archive', '');
+}
+
+function snoozeFollowUp(kind, refId, days) {
+  setFollowUpAction(kind, refId, 'snooze', sanitaryAddDays(localDateKey(), days));
+}
+
+function setFollowUpAction(kind, refId, action, untilDate) {
+  db.followupActions = db.followupActions || [];
+  const existing = db.followupActions.find(item => item.kind === kind && item.refId === refId);
+  const data = {
+    id: existing?.id || `${kind}:${refId}`, kind, refId, action, untilDate: untilDate || '',
+    userId: currentUser?.id || '', userName: currentUser?.name || '', createdAt: new Date().toISOString()
+  };
+  if (existing) Object.assign(existing, data); else db.followupActions.push(data);
+  saveDB(action === 'archive' ? 'Pendiente archivado para todo el equipo' : `Pendiente pospuesto hasta ${formatDate(untilDate)}`);
   render();
 }
 
@@ -329,7 +343,7 @@ function renderPetFollowUp(pet) {
 // al que pertenecen. Alimenta la vista Hoy.
 function clinicFollowUpAlerts() {
   const rows = [];
-  (db.pets || []).filter(pet => !pet.deceasedAt).forEach(pet => {
+  (db.pets || []).filter(pet => !pet.deceasedAt && (typeof petIsInactive !== 'function' || !petIsInactive(pet))).forEach(pet => {
     const summary = petFollowUpSummary(pet);
     summary.items
       .filter(item => item.state === 'overdue' || item.state === 'today')
@@ -377,7 +391,7 @@ function followUpAlertItemHTML({ pet, item }) {
       <div class="followup-actions">
         <button class="btn btn-sm" onclick="openPetDetail('${pet.id}')">Abrir ficha</button>
         ${followUpReminderButtonHTML(pet, item)}
-        ${canArchive ? `<button class="btn btn-sm" title="Dejar de mostrar en Hoy; sigue en la ficha" onclick="dismissFollowUp('${item.kind}','${item.refId}')">Archivar</button>` : ''}
+        ${canArchive ? `<button class="btn btn-sm" title="Ocultar 30 días para todo el equipo" onclick="snoozeFollowUp('${item.kind}','${item.refId}',30)">+30 días</button><button class="btn btn-sm" title="Ocultar 90 días para todo el equipo" onclick="snoozeFollowUp('${item.kind}','${item.refId}',90)">+90 días</button><button class="btn btn-sm" title="Archivar para todo el equipo; sigue en la ficha" onclick="dismissFollowUp('${item.kind}','${item.refId}')">Archivar</button>` : ''}
       </div>
     </div>`;
 }

@@ -9,8 +9,8 @@
     const paid = rows.filter((invoice) => invoice.status === 'paid');
     const pending = rows.filter((invoice) => invoice.status === 'pending');
     return {
-      paidTotal: paid.reduce((sum, invoice) => sum + amount(invoice.total), 0),
-      pendingTotal: pending.reduce((sum, invoice) => sum + amount(invoice.total), 0),
+      paidTotal: rows.filter(invoice=>invoice.status!=='cancelled').reduce((sum, invoice) => sum + (invoice.amountPaid === undefined ? (invoice.status==='paid'?amount(invoice.total):0) : amount(invoice.amountPaid)), 0),
+      pendingTotal: pending.reduce((sum, invoice) => sum + Math.max(0, amount(invoice.total)-amount(invoice.amountPaid)), 0),
       paidCount: paid.length,
       invoiceCount: rows.length,
     };

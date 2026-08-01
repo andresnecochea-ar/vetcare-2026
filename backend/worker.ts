@@ -27,6 +27,7 @@ const TABLES: Record<string, EntityConfig> = {
     columns: [
       'id', 'name', 'species', 'breed', 'sex', 'color', 'birthdate', 'weight',
       'microchip', 'allergies', 'chronicConditions', 'notes', 'photo', 'deceasedAt',
+      'inactiveAt', 'inactiveReason',
     ],
   },
   appointments: {
@@ -38,7 +39,7 @@ const TABLES: Record<string, EntityConfig> = {
   groomingAppointments: {
     columns: [
       'id', 'petId', 'date', 'time', 'service', 'groomer', 'price', 'status',
-      'reminder', 'notes', 'groomerUserId',
+      'reminder', 'notes', 'groomerUserId', 'invoiceId',
     ],
   },
   reminders: {
@@ -55,9 +56,12 @@ const TABLES: Record<string, EntityConfig> = {
   invoices: {
     columns: [
       'id', 'number', 'date', 'ownerId', 'petId', 'items', 'total', 'status',
-      'notes', 'encounterId',
+      'notes', 'encounterId', 'paymentMethod', 'amountPaid', 'stockAppliedAt',
     ],
     jsonFields: ['items'],
+  },
+  followupActions: {
+    columns: ['id', 'kind', 'refId', 'action', 'untilDate', 'userId', 'userName', 'createdAt'],
   },
 };
 
@@ -69,14 +73,16 @@ const APPOINTMENT_STATUS_VALUES = new Set([
 const VETERINARIAN_WRITE = new Set([
   'owners', 'pets', 'appointments', 'groomingAppointments', 'reminders',
   'inventory', 'invoices',
+  'followupActions',
 ]);
 const RECEPTION_WRITE = new Set([
   'owners', 'pets', 'appointments', 'groomingAppointments', 'reminders', 'invoices',
+  'followupActions',
 ]);
-const OPERATIONAL_DELETE = new Set(['appointments', 'groomingAppointments', 'reminders']);
+const OPERATIONAL_DELETE = new Set(['appointments', 'groomingAppointments', 'reminders', 'followupActions']);
 const RECEPTION_CLINICAL_FIELDS = [
   'weight', 'allergies', 'chronicConditions', 'notes',
-  'history', 'vaccines', 'images', 'studies',
+  'history', 'vaccines', 'dewormings', 'images', 'studies',
 ] as const;
 
 function uid(): string {
@@ -333,10 +339,10 @@ async function getUserFromToken(env: Env, request: Request): Promise<JsonObject 
   if (!token) return null;
 
   const row = await env.DB.prepare(
-    `SELECT s.user_id, s.expires_at, u.email, u.name, u.role
+    `SELECT s.user_id, s.expires_at, u.email, u.name, u.role, u.active, u.license
      FROM sessions s
      JOIN users u ON u.id = s.user_id
-     WHERE s.token = ?`,
+     WHERE s.token = ? AND u.active = 1`,
   ).bind(token).first<JsonObject>();
 
   if (!row) return null;
@@ -350,6 +356,8 @@ async function getUserFromToken(env: Env, request: Request): Promise<JsonObject 
     email: row.email,
     name: row.name,
     role: row.role,
+    active: row.active,
+    license: row.license,
   };
 }
 
@@ -436,16 +444,16 @@ async function listEntity(env: Env, table: string): Promise<JsonObject[]> {
 
 async function listUsers(env: Env): Promise<JsonObject[]> {
   const { results } = await env.DB.prepare(
-    'SELECT id,email,name,role,created_at FROM users ORDER BY name,email',
+    'SELECT id,email,name,role,active,license,created_at FROM users ORDER BY name,email',
   ).all<JsonObject>();
   return results ?? [];
 }
 
-// Solo id, nombre y rol: alcanza para ofrecer "quién atendió" y no expone
-// datos de la cuenta a quien no administra.
+// Datos profesionales mínimos: alcanza para ofrecer quién atiende y conservar
+// la matrícula en documentos históricos, sin exponer email ni credenciales.
 async function listStaff(env: Env): Promise<JsonObject[]> {
   const { results } = await env.DB.prepare(
-    'SELECT id,name,role FROM users ORDER BY name',
+    'SELECT id,name,role,license,active FROM users ORDER BY name',
   ).all<JsonObject>();
   return results ?? [];
 }
@@ -460,12 +468,12 @@ async function changeUserRole(
   const role = stringValue(body.role) as UserRole;
   if (!USER_ROLES.has(role)) throw new HttpError('Rol inválido');
   const target = await env.DB.prepare(
-    'SELECT id,email,name,role,created_at FROM users WHERE id = ?',
+    'SELECT id,email,name,role,active,license,created_at FROM users WHERE id = ?',
   ).bind(targetId).first<JsonObject>();
   if (!target) throw new HttpError('Usuario no encontrado', 404);
   if (stringValue(target.role) === 'admin' && role !== 'admin') {
     const admins = await env.DB.prepare(
-      "SELECT COUNT(*) AS total FROM users WHERE role = 'admin'",
+      "SELECT COUNT(*) AS total FROM users WHERE role = 'admin' AND active = 1",
     ).first<{ total: number }>();
     if ((admins?.total ?? 0) <= 1) {
       throw new HttpError('Debe quedar al menos un administrador', 409);
@@ -474,6 +482,95 @@ async function changeUserRole(
   await env.DB.prepare('UPDATE users SET role = ? WHERE id = ?').bind(role, targetId).run();
   await writeAudit(env, actor, 'role_change', 'users', targetId, ['role'], stringValue(target.name, stringValue(target.email)));
   return { ...target, role };
+}
+
+async function updateUserProfile(
+  env: Env,
+  actor: JsonObject,
+  targetId: string,
+  body: JsonObject,
+): Promise<JsonObject> {
+  requireAdmin(actor);
+  const target = await env.DB.prepare(
+    'SELECT id,email,name,role,active,license,created_at FROM users WHERE id = ?',
+  ).bind(targetId).first<JsonObject>();
+  if (!target) throw new HttpError('Usuario no encontrado', 404);
+  const active = body.active === false || body.active === 0 ? 0 : 1;
+  const license = stringValue(body.license).trim();
+  if (Number(target.active ?? 1) === 1 && active === 0 && stringValue(target.role) === 'admin') {
+    const admins = await env.DB.prepare(
+      "SELECT COUNT(*) AS total FROM users WHERE role = 'admin' AND active = 1",
+    ).first<{ total: number }>();
+    if ((admins?.total ?? 0) <= 1) throw new HttpError('Debe quedar al menos un administrador activo', 409);
+  }
+  await env.DB.prepare('UPDATE users SET active = ?, license = ? WHERE id = ?')
+    .bind(active, license, targetId).run();
+  if (!active) await env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(targetId).run();
+  await writeAudit(env, actor, active ? 'update' : 'deactivate', 'users', targetId, ['active', 'license'], stringValue(target.name, stringValue(target.email)));
+  return { ...target, active, license };
+}
+
+function generatedAccessCode(): string {
+  return crypto.randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase();
+}
+
+async function createInvitation(env: Env, actor: JsonObject, body: JsonObject): Promise<JsonObject> {
+  requireAdmin(actor);
+  const email = stringValue(body.email).trim().toLowerCase();
+  const role = stringValue(body.role) as UserRole;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError('Email inválido');
+  if (!USER_ROLES.has(role)) throw new HttpError('Rol inválido');
+  const code = generatedAccessCode();
+  const { hash, salt } = await hashPassword(code);
+  const createdAt = new Date();
+  const expiresAt = new Date(createdAt.getTime() + 7 * 86400000);
+  const id = uid();
+  await env.DB.prepare(
+    `INSERT INTO user_invitations (id,email,role,code_hash,code_salt,created_at,expires_at,used_at,created_by)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
+  ).bind(id, email, role, hash, salt, createdAt.toISOString(), expiresAt.toISOString(), '', stringValue(actor.id)).run();
+  await writeAudit(env, actor, 'invite', 'users', id, ['email', 'role'], email);
+  return { id, email, role, code, expiresAt: expiresAt.toISOString() };
+}
+
+async function rotateInviteCode(env: Env, actor: JsonObject): Promise<JsonObject> {
+  requireAdmin(actor);
+  const code = generatedAccessCode();
+  const { hash, salt } = await hashPassword(code);
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO clinic_access (id,code_hash,code_salt,updated_at,updated_by)
+     VALUES ('singleton',?,?,?,?)
+     ON CONFLICT(id) DO UPDATE SET code_hash=excluded.code_hash,code_salt=excluded.code_salt,updated_at=excluded.updated_at,updated_by=excluded.updated_by`,
+  ).bind(hash, salt, now, stringValue(actor.id)).run();
+  await writeAudit(env, actor, 'invite_code_rotate', 'settings', 'clinic_access', ['invite_code']);
+  return { code, updatedAt: now };
+}
+
+async function resolveRegistrationRole(env: Env, email: string, code: string): Promise<UserRole> {
+  const now = new Date().toISOString();
+  const invitation = await env.DB.prepare(
+    `SELECT * FROM user_invitations
+     WHERE email = ? AND used_at = '' AND expires_at > ?
+     ORDER BY created_at DESC LIMIT 1`,
+  ).bind(email, now).first<JsonObject>();
+  if (invitation) {
+    const { hash } = await hashPassword(code, stringValue(invitation.code_salt));
+    if (await secureEqual(hash, stringValue(invitation.code_hash))) {
+      await env.DB.prepare('UPDATE user_invitations SET used_at = ? WHERE id = ?').bind(now, invitation.id).run();
+      return userRole(invitation);
+    }
+  }
+  const access = await env.DB.prepare('SELECT * FROM clinic_access WHERE id = ?').bind('singleton').first<JsonObject>();
+  if (access) {
+    const { hash } = await hashPassword(code, stringValue(access.code_salt));
+    if (await secureEqual(hash, stringValue(access.code_hash))) return 'reception';
+    // Desde la primera rotación, el código persistido reemplaza al secreto de
+    // despliegue. Dejar el valor viejo como alternativa volvería inútil rotarlo.
+    throw new HttpError('Clave de invitación incorrecta o vencida', 403);
+  }
+  if (env.INVITE_CODE && await secureEqual(code, env.INVITE_CODE)) return 'reception';
+  throw new HttpError('Clave de invitación incorrecta o vencida', 403);
 }
 
 async function resetUserPassword(
@@ -608,6 +705,105 @@ async function getPetsFull(env: Env): Promise<JsonObject[]> {
   });
 }
 
+async function getPetFull(env: Env, petId: string): Promise<JsonObject> {
+  const petRow = await env.DB.prepare('SELECT * FROM pets WHERE id = ?').bind(petId).first<JsonObject>();
+  if (!petRow) throw new HttpError('Paciente no encontrado', 404);
+  const [historyResult, vaccineResult, dewormingResult, imageResult, studyResult, ownerResult] = await Promise.all([
+    env.DB.prepare('SELECT * FROM pet_history WHERE pet_id = ?').bind(petId).all<JsonObject>(),
+    env.DB.prepare('SELECT * FROM pet_vaccines WHERE pet_id = ?').bind(petId).all<JsonObject>(),
+    env.DB.prepare('SELECT * FROM pet_dewormings WHERE pet_id = ?').bind(petId).all<JsonObject>(),
+    env.DB.prepare('SELECT * FROM pet_images WHERE pet_id = ?').bind(petId).all<JsonObject>(),
+    env.DB.prepare('SELECT * FROM pet_studies WHERE pet_id = ?').bind(petId).all<JsonObject>(),
+    env.DB.prepare('SELECT owner_id FROM pet_owners WHERE pet_id = ?').bind(petId).all<JsonObject>(),
+  ]);
+  const withoutPetId = ({ pet_id: _petId, ...row }: JsonObject): JsonObject => row;
+  const { syncToken: _syncToken, ...pet } = deserializeRow(petRow, tableConfig('pets'));
+  return {
+    ...pet,
+    history: (historyResult.results ?? []).map(withoutPetId),
+    vaccines: (vaccineResult.results ?? []).map(withoutPetId),
+    dewormings: (dewormingResult.results ?? []).map(withoutPetId),
+    images: (imageResult.results ?? []).map(withoutPetId),
+    studies: (studyResult.results ?? []).map(withoutPetId).map((study) => ({
+      ...study,
+      results: parseJson(study.results, {}),
+    })),
+    ownerIds: (ownerResult.results ?? []).map((row) => stringValue(row.owner_id)).filter(Boolean),
+  };
+}
+
+async function getPetsSummary(env: Env): Promise<JsonObject[]> {
+  const [petResult, ownerResult, historyResult] = await Promise.all([
+    env.DB.prepare(
+      `SELECT p.*, COALESCE(MAX(h.date), '') AS lastVisit
+       FROM pets p LEFT JOIN pet_history h ON h.pet_id = p.id
+       GROUP BY p.id ORDER BY p.name`,
+    ).all<JsonObject>(),
+    env.DB.prepare('SELECT pet_id,owner_id FROM pet_owners').all<JsonObject>(),
+    env.DB.prepare('SELECT id,pet_id,date,status,vet,vetUserId,appointmentId,title,nextControl FROM pet_history').all<JsonObject>(),
+  ]);
+  const links = ownerResult.results ?? [];
+  const history = groupBy(historyResult.results ?? [], 'pet_id');
+  const withoutPetId = ({ pet_id: _petId, ...row }: JsonObject): JsonObject => row;
+  return (petResult.results ?? []).map((row) => {
+    const { syncToken: _syncToken, ...pet } = deserializeRow(row, tableConfig('pets'));
+    return {
+      ...pet,
+      history: (history[stringValue(pet.id)] ?? []).map(withoutPetId),
+      vaccines: [], dewormings: [], images: [], studies: [],
+      ownerIds: links.filter((link) => link.pet_id === pet.id).map((link) => link.owner_id),
+      _summaryOnly: true,
+    };
+  });
+}
+
+async function getCoreData(env: Env, dateKey: string): Promise<JsonObject> {
+  const [appointmentResult, groomingResult, reminderResult, openHistoryResult, pendingStudyResult, vaccineResult, dewormingResult, appSettings, followupActions] = await Promise.all([
+    env.DB.prepare('SELECT * FROM appointments WHERE date = ? ORDER BY time').bind(dateKey).all<JsonObject>(),
+    env.DB.prepare('SELECT * FROM groomingAppointments WHERE date = ? ORDER BY time').bind(dateKey).all<JsonObject>(),
+    env.DB.prepare("SELECT * FROM reminders WHERE completed = 0 AND date BETWEEN date(?, '-30 day') AND date(?, '+7 day') ORDER BY date").bind(dateKey,dateKey).all<JsonObject>(),
+    env.DB.prepare("SELECT id,pet_id,date,status,vet,vetUserId,appointmentId,title,nextControl FROM pet_history WHERE status <> 'closed'").all<JsonObject>(),
+    env.DB.prepare("SELECT id,pet_id,type,title,date,status FROM pet_studies WHERE status = 'requested'").all<JsonObject>(),
+    env.DB.prepare("SELECT id,pet_id,name,date,nextDose,cancelled,vaccineType FROM pet_vaccines WHERE cancelled = '' AND nextDose BETWEEN date(?, '-365 day') AND date(?, '+90 day')").bind(dateKey,dateKey).all<JsonObject>(),
+    env.DB.prepare("SELECT id,pet_id,name,date,nextDose,cancelled FROM pet_dewormings WHERE cancelled = '' AND nextDose BETWEEN date(?, '-365 day') AND date(?, '+90 day')").bind(dateKey,dateKey).all<JsonObject>(),
+    getAppSettings(env),
+    listEntity(env,'followupActions'),
+  ]);
+  const appointments=(appointmentResult.results||[]).map(row=>deserializeRow(row,tableConfig('appointments')));
+  const groomingAppointments=(groomingResult.results||[]).map(row=>deserializeRow(row,tableConfig('groomingAppointments')));
+  const reminders=(reminderResult.results||[]).map(row=>deserializeRow(row,tableConfig('reminders')));
+  const clinicalRows=[...(openHistoryResult.results||[]),...(pendingStudyResult.results||[]),...(vaccineResult.results||[]),...(dewormingResult.results||[])];
+  const petIds=[...new Set([
+    ...[...appointments,...groomingAppointments,...reminders].map(row=>stringValue(row.petId)),
+    ...clinicalRows.map(row=>stringValue(row.pet_id)),
+  ].filter(Boolean))];
+  if(!petIds.length)return {pets:[],owners:[],appointments,groomingAppointments,reminders,inventory:[],invoices:[],followupActions,...appSettings,partial:true};
+  const placeholders=petIds.map(()=>'?').join(',');
+  const [petResult,ownerLinkResult]=await Promise.all([
+    env.DB.prepare(`SELECT p.id,p.name,p.species,p.breed,p.sex,p.birthdate,p.weight,p.deceasedAt,p.inactiveAt,p.inactiveReason,p.revision,
+      COALESCE((SELECT MAX(h.date) FROM pet_history h WHERE h.pet_id = p.id),'') AS lastVisit
+      FROM pets p WHERE p.id IN (${placeholders})`).bind(...petIds).all<JsonObject>(),
+    env.DB.prepare(`SELECT pet_id,owner_id FROM pet_owners WHERE pet_id IN (${placeholders})`).bind(...petIds).all<JsonObject>(),
+  ]);
+  const links=ownerLinkResult.results||[];
+  const ownerIds=[...new Set(links.map(row=>stringValue(row.owner_id)).filter(Boolean))];
+  const owners=ownerIds.length
+    ? (await env.DB.prepare(`SELECT * FROM owners WHERE id IN (${ownerIds.map(()=>'?').join(',')})`).bind(...ownerIds).all<JsonObject>()).results||[]
+    : [];
+  const withoutPetId=({pet_id:_petId,...row}:JsonObject):JsonObject=>row;
+  const histories=groupBy(openHistoryResult.results||[],'pet_id');
+  const studies=groupBy(pendingStudyResult.results||[],'pet_id');
+  const vaccines=groupBy(vaccineResult.results||[],'pet_id');
+  const dewormings=groupBy(dewormingResult.results||[],'pet_id');
+  const pets=(petResult.results||[]).map(pet=>({...pet,
+    history:(histories[stringValue(pet.id)]||[]).map(withoutPetId),
+    vaccines:(vaccines[stringValue(pet.id)]||[]).map(withoutPetId),
+    dewormings:(dewormings[stringValue(pet.id)]||[]).map(withoutPetId),
+    images:[],studies:(studies[stringValue(pet.id)]||[]).map(withoutPetId),
+    ownerIds:links.filter(link=>link.pet_id===pet.id).map(link=>link.owner_id),_summaryOnly:true}));
+  return {pets,owners,appointments,groomingAppointments,reminders,inventory:[],invoices:[],followupActions,...appSettings,partial:true};
+}
+
 type PetChildConfig = {
   bodyKey: string;
   table: string;
@@ -630,12 +826,12 @@ const PET_CHILDREN: readonly PetChildConfig[] = [
   {
     bodyKey: 'vaccines',
     table: 'pet_vaccines',
-    columns: ['name', 'date', 'nextDose', 'lot', 'vet', 'vetUserId', 'intervalDays', 'cancelled', 'notifiedAt'],
+    columns: ['name', 'date', 'nextDose', 'lot', 'vet', 'vetUserId', 'intervalDays', 'cancelled', 'notifiedAt', 'vaccineType', 'productId'],
   },
   {
     bodyKey: 'dewormings',
     table: 'pet_dewormings',
-    columns: ['name', 'date', 'nextDose', 'lot', 'vet', 'vetUserId', 'intervalDays', 'cancelled', 'notifiedAt'],
+    columns: ['name', 'date', 'nextDose', 'lot', 'vet', 'vetUserId', 'intervalDays', 'cancelled', 'notifiedAt', 'productId'],
   },
   {
     bodyKey: 'images',
@@ -656,10 +852,11 @@ function gatedPetChildren(
   petId: string,
   syncToken: string,
   body: JsonObject,
+  includeClinicalChildren = true,
 ): D1PreparedStatement[] {
   const statements: D1PreparedStatement[] = [];
 
-  for (const config of PET_CHILDREN) {
+  for (const config of includeClinicalChildren ? PET_CHILDREN : []) {
     const rows = arrayOfObjects(body[config.bodyKey]);
     const ids: string[] = [];
     const dbColumns = ['id', 'pet_id', ...config.columns];
@@ -746,7 +943,8 @@ async function ensureBilledHistoryPreserved(
 async function savePetFull(env: Env, body: JsonObject): Promise<JsonObject> {
   const config = tableConfig('pets');
   const id = optionalString(body.id) ?? uid();
-  await ensureBilledHistoryPreserved(env, id, body);
+  const summaryOnly = body._summaryOnly === true;
+  if (!summaryOnly) await ensureBilledHistoryPreserved(env, id, body);
   const row: JsonObject = { ...body, id };
   const fields = config.columns.filter((column) => Object.hasOwn(row, column));
   const placeholders = fields.map(() => '?').join(',');
@@ -767,7 +965,7 @@ async function savePetFull(env: Env, body: JsonObject): Promise<JsonObject> {
   ).bind(...fields.map((field) => serializeValue(row[field])), syncToken, expectedRevision);
   const statements = [
     parentStatement,
-    ...gatedPetChildren(env, id, syncToken, body),
+    ...gatedPetChildren(env, id, syncToken, body, !summaryOnly),
   ];
   const results = await env.DB.batch(statements);
   if (results[0]?.meta.changes !== 1) {
@@ -1274,9 +1472,10 @@ async function health(env: Env): Promise<{
              'pet_history', 'pet_vaccines', 'pet_dewormings', 'pet_images', 'pet_studies',
              'appointments', 'groomingAppointments', 'reminders',
              'inventory', 'invoices', 'app_settings', 'invoice_sequence',
-             'audit_log', 'clinical_close_operations'
+             'audit_log', 'clinical_close_operations', 'followupActions',
+             'user_invitations', 'clinic_access'
            )
-       ) = 19
+       ) = 22
        AND (SELECT COUNT(*) FROM pragma_table_info('owners') WHERE name IN ('dni', 'notes', 'altPhone')) = 3
        AND (
          SELECT COUNT(*)
@@ -1302,18 +1501,18 @@ async function health(env: Env): Promise<{
        AND (
          SELECT COUNT(*)
          FROM pragma_table_info('groomingAppointments')
-         WHERE name IN ('groomerUserId')
-       ) = 1
+         WHERE name IN ('groomerUserId', 'invoiceId')
+       ) = 2
        AND (
          SELECT COUNT(*)
          FROM pragma_table_info('pets')
-         WHERE name IN ('revision', 'syncToken', 'deceasedAt')
-       ) = 3
+         WHERE name IN ('revision', 'syncToken', 'deceasedAt', 'inactiveAt', 'inactiveReason')
+       ) = 5
         AND (
           SELECT COUNT(*)
           FROM pragma_table_info('invoices')
-          WHERE name = 'encounterId'
-        ) = 1
+          WHERE name IN ('encounterId', 'paymentMethod', 'amountPaid', 'stockAppliedAt')
+        ) = 4
         AND (
           SELECT COUNT(*)
           FROM sqlite_master
@@ -1327,9 +1526,10 @@ async function health(env: Env): Promise<{
         AND (
           SELECT COUNT(*)
          FROM pragma_table_info('pet_vaccines')
-         WHERE name IN ('lot', 'vet', 'vetUserId', 'intervalDays', 'cancelled', 'notifiedAt')
-       ) = 6
-       AND (SELECT COUNT(*) FROM pragma_table_info('pet_dewormings') WHERE name = 'vetUserId') = 1
+         WHERE name IN ('lot', 'vet', 'vetUserId', 'intervalDays', 'cancelled', 'notifiedAt', 'vaccineType', 'productId')
+       ) = 8
+       AND (SELECT COUNT(*) FROM pragma_table_info('pet_dewormings') WHERE name IN ('vetUserId', 'productId')) = 2
+       AND (SELECT COUNT(*) FROM pragma_table_info('users') WHERE name IN ('active', 'license')) = 2
        AND (
          SELECT COUNT(*)
          FROM pragma_table_info('audit_log')
@@ -1354,7 +1554,7 @@ async function health(env: Env): Promise<{
     status: ready ? 'ok' : 'degraded',
     version: stringValue(env.APP_VERSION, 'unknown'),
     database: ready ? 'ready' : 'migrations-pending',
-    schemaVersion: ready ? 17 : 0,
+    schemaVersion: ready ? 18 : 0,
   };
 }
 
@@ -1384,23 +1584,20 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError('Email inválido');
     if (password.length < 8) throw new HttpError('La contraseña debe tener al menos 8 caracteres');
-    if (!env.INVITE_CODE || !(await secureEqual(inviteCode, env.INVITE_CODE))) {
-      throw new HttpError('Clave de invitación incorrecta', 403);
-    }
-
     const exists = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
     if (exists) throw new HttpError('Ese email ya está registrado', 409);
 
     const { hash, salt } = await hashPassword(password);
     const userCount = await env.DB.prepare('SELECT COUNT(*) AS total FROM users')
       .first<{ total: number }>();
-    const role: UserRole = (userCount?.total ?? 0) === 0 ? 'admin' : 'reception';
+    const invitedRole = await resolveRegistrationRole(env, email, inviteCode);
+    const role: UserRole = (userCount?.total ?? 0) === 0 ? 'admin' : invitedRole;
     const id = uid();
     await env.DB.prepare(
-      `INSERT INTO users (id,email,name,pass_hash,pass_salt,role,created_at)
-       VALUES (?,?,?,?,?,?,?)`,
+      `INSERT INTO users (id,email,name,pass_hash,pass_salt,role,active,license,created_at)
+       VALUES (?,?,?,?,?,?,1,'',?)`,
     ).bind(id, email, name, hash, salt, role, new Date().toISOString()).run();
-    const registeredUser = { id, email, name, role };
+    const registeredUser = { id, email, name, role, active: 1, license: '' };
     await writeAudit(env, registeredUser, 'register', 'users', id, ['email', 'name', 'role']);
     return json({ ok: true, id, role }, 201, origin, env);
   }
@@ -1411,6 +1608,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     const password = stringValue(body.password);
     const user = await env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(email).first<JsonObject>();
     if (!user) throw new HttpError('Credenciales inválidas', 401);
+    if (Number(user.active ?? 1) !== 1) throw new HttpError('Esta cuenta está desactivada', 403);
 
     const { hash } = await hashPassword(password, stringValue(user.pass_salt));
     if (!(await secureEqual(hash, stringValue(user.pass_hash)))) {
@@ -1427,7 +1625,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
     return json({
       token,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, active: user.active, license: user.license },
     }, 200, origin, env);
   }
 
@@ -1477,6 +1675,24 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     );
   }
 
+  const userProfileMatch = path.match(/^\/api\/users\/([^/]+)\/profile$/);
+  if (userProfileMatch && (request.method === 'PUT' || request.method === 'POST')) {
+    return json(
+      await updateUserProfile(env, user, userProfileMatch[1], asObject(await request.json<unknown>())),
+      200,
+      origin,
+      env,
+    );
+  }
+
+  if (path === '/api/invitations' && request.method === 'POST') {
+    return json(await createInvitation(env, user, asObject(await request.json<unknown>())), 201, origin, env);
+  }
+
+  if (path === '/api/access/invite-code' && request.method === 'POST') {
+    return json(await rotateInviteCode(env, user), 200, origin, env);
+  }
+
   if (path === '/api/audit' && request.method === 'GET') {
     requireAdmin(user);
     const requestedLimit = Number.parseInt(url.searchParams.get('limit') ?? '50', 10);
@@ -1498,7 +1714,30 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   }
 
   if (path === '/api/data' && request.method === 'GET') {
-    const [pets, owners, appointments, groomingAppointments, reminders, inventory, invoices, appSettings] =
+    if (url.searchParams.get('scope') === 'core') {
+      const requestedDate=url.searchParams.get('date')||new Date().toISOString().slice(0,10);
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(requestedDate))throw new HttpError('Fecha inválida');
+      return json(await getCoreData(env,requestedDate),200,origin,env);
+    }
+    if (url.searchParams.get('scope') === 'directory') {
+      const [pets, owners, appointments, groomingAppointments, reminders, inventory, invoices, followupActions, appSettings] =
+        await Promise.all([
+          getPetsSummary(env),
+          listEntity(env, 'owners'),
+          listEntity(env, 'appointments'),
+          listEntity(env, 'groomingAppointments'),
+          listEntity(env, 'reminders'),
+          listEntity(env, 'inventory'),
+          listEntity(env, 'invoices'),
+          listEntity(env, 'followupActions'),
+          getAppSettings(env),
+        ]);
+      return json({
+        pets, owners, appointments, groomingAppointments, reminders,
+        inventory, invoices, followupActions, ...appSettings, directory: true,
+      }, 200, origin, env);
+    }
+    const [pets, owners, appointments, groomingAppointments, reminders, inventory, invoices, followupActions, appSettings] =
       await Promise.all([
         getPetsFull(env),
         listEntity(env, 'owners'),
@@ -1507,6 +1746,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         listEntity(env, 'reminders'),
         listEntity(env, 'inventory'),
         listEntity(env, 'invoices'),
+        listEntity(env, 'followupActions'),
         getAppSettings(env),
       ]);
 
@@ -1518,6 +1758,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       reminders,
       inventory,
       invoices,
+      followupActions,
       ...appSettings,
     }, 200, origin, env);
   }
@@ -1543,7 +1784,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   if (match) {
     const [, table, id] = match;
     if (table === 'pets') {
-      if (request.method === 'GET') return json(await getPetsFull(env), 200, origin, env);
+      if (request.method === 'GET') return json(id ? await getPetFull(env, id) : await getPetsFull(env), 200, origin, env);
       if (request.method === 'POST' || request.method === 'PUT') {
         requireMutationPermission(user, 'pets', 'write');
         const body = asObject(await request.json<unknown>());
@@ -1575,6 +1816,11 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       if (request.method === 'POST' || request.method === 'PUT') {
         requireMutationPermission(user, table, 'write');
         const body = asObject(await request.json<unknown>());
+        if (table === 'followupActions') {
+          body.userId = stringValue(user.id);
+          body.userName = stringValue(user.name);
+          body.createdAt = new Date().toISOString();
+        }
         const existed = optionalString(body.id)
           ? await env.DB.prepare(`SELECT id FROM ${table} WHERE id = ?`).bind(body.id).first()
           : null;
