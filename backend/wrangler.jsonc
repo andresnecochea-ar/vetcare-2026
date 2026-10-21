@@ -1,6 +1,7 @@
 {
   "$schema": "../node_modules/wrangler/config-schema.json",
   "name": "vetcare-api",
+  "account_id": "930d054277b5ab3e2adca108517e9aeb",
   "main": "./worker.ts",
   "compatibility_date": "2026-07-28",
   "compatibility_flags": ["nodejs_compat"],
@@ -27,7 +28,7 @@
     {
       "binding": "DB",
       "database_name": "vetcare",
-      "database_id": "57abd6e4-a2c0-4ae3-a0ae-c3b7ccd5d799",
+      "database_id": "ff69acbe-d754-4f3a-9b8d-e5811a24156e",
       "migrations_dir": "migrations"
     }
   ]

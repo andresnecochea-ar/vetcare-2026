@@ -34,7 +34,7 @@ El archivo `backend/wrangler.jsonc` referencia la base D1 `vetcare` con este
 identificador:
 
 ```text
-57abd6e4-a2c0-4ae3-a0ae-c3b7ccd5d799
+ff69acbe-d754-4f3a-9b8d-e5811a24156e
 ```
 
 Confirmá que pertenece a la cuenta conectada. Si creás una base nueva:
@@ -45,6 +45,27 @@ npx wrangler d1 create vetcare
 
 Después reemplazá `database_id` en `backend/wrangler.jsonc` por el valor
 devuelto.
+
+### Cuenta propia de VetCare
+
+La cuenta **VetCare** tiene el ID `930d054277b5ab3e2adca108517e9aeb` y queda
+fijada mediante `account_id` en `backend/wrangler.jsonc`. Contiene el Worker
+`vetcare-api` y la base D1 `vetcare`. Faneroo y Chep Desktop tienen sus propias
+cuentas y no son destinos válidos para publicar VetCare.
+
+El secreto de GitHub `CLOUDFLARE_ACCOUNT_ID` debe coincidir con esta cuenta.
+El token de despliegue está limitado a esta cuenta, con escritura de Workers
+y D1 y lectura de configuración. Vence el **20/10/2027**; renovarlo y actualizar
+`CLOUDFLARE_API_TOKEN` antes de esa fecha. No guardar tokens en Git.
+
+El traslado conserva usuarios, verificadores de contraseña y datos clínicos.
+El código de invitación se configura como secreto en el Worker nuevo;
+no se reemplaza por el valor de ejemplo de `backend/.dev.vars`. La dirección
+anterior se conserva temporalmente como puente hacia la nueva API después
+del cambio, para atender pestañas que todavía usan la configuración anterior.
+Su código y configuración están en `backend/legacy-proxy/`; no contiene base
+ni secreto de invitación. Se administra aparte con credenciales de la cuenta
+Faneroo; el token del repositorio sólo permite publicar en VetCare.
 
 ## 3. Configurar el secreto
 
@@ -75,11 +96,11 @@ npm run worker:deploy
 Verificá:
 
 ```text
-https://vetcare-api.vetcare-neco.workers.dev/api/health
+https://vetcare-api.vetcare-necochea.workers.dev/api/health
 ```
 
 El resultado esperado contiene `"status": "ok"`, `"database": "ready"` y
-`"schemaVersion": 6`.
+`"schemaVersion": 18`.
 
 La migración `0006_roles_and_audit.sql` convierte las cuentas existentes con
 el rol anterior `staff` en administradoras. Esto evita bloquear el acceso al
@@ -91,11 +112,12 @@ La URL de la API está separada del código en `js/config.js`:
 
 ```javascript
 window.VETCARE_CONFIG = Object.freeze({
-  apiBase: 'https://vetcare-api.vetcare-neco.workers.dev'
+  apiBase: 'https://vetcare-api.vetcare-necochea.workers.dev'
 });
 ```
 
-Si cambia el dominio del Worker, actualizá solamente ese archivo. El origen
+Si cambia el dominio del Worker, actualizá ese archivo y el parámetro de versión
+de su etiqueta `<script>` en `index.html` para renovar las copias del navegador. El origen
 público también debe estar incluido en `ALLOWED_ORIGINS` dentro de
 `backend/wrangler.jsonc`.
 

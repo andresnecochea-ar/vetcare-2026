@@ -1,0 +1,17 @@
+{
+  "name": "vetcare-api",
+  "account_id": "5799c5585cb81cf37162834b3a213eb1",
+  "main": "./worker.mjs",
+  "compatibility_date": "2026-07-28",
+  "workers_dev": true,
+  "vars": {
+    "VETCARE_TARGET": "https://vetcare-api.vetcare-necochea.workers.dev"
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    }
+  }
+}
